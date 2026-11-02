@@ -1,12 +1,12 @@
 # STATUS
 
-Requisitos: OK 33 · PARTIAL 29 · MISSING 29 · BUG 0 · N/A 2 (93). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
+Requisitos: OK 34 · PARTIAL 28 · MISSING 29 · BUG 0 · N/A 2 (93). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
 
 | Plano | OK | PARTIAL | MISSING | BUG | N/A | Estado |
 |---|---|---|---|---|---|---|
 | [Visão geral, arquitetura e fases](00-visao-geral.md) | 1 | 2 | 0 | 0 | 1 | Em andamento |
 | [Núcleo de ordenação](01-nucleo-ordenacao.md) | 9 | 1 | 0 | 0 | 0 | Em andamento |
-| [Geração das passadas em PDF](02-geracao-pdf.md) | 4 | 3 | 0 | 0 | 0 | Em andamento |
+| [Geração das passadas em PDF](02-geracao-pdf.md) | 5 | 2 | 0 | 0 | 0 | Em andamento |
 | [Modo simulação](03-simulacao.md) | 7 | 2 | 1 | 0 | 1 | Em andamento |
 | [Calibração](04-calibracao.md) | 2 | 3 | 0 | 0 | 0 | Em andamento |
 | [Tamanhos de papel](05-tamanhos-de-papel.md) | 5 | 1 | 2 | 0 | 0 | Em andamento |
@@ -45,8 +45,5 @@ Requisitos: OK 33 · PARTIAL 29 · MISSING 29 · BUG 0 · N/A 2 (93). Detalhes e
 
 ## Bloqueado ou dependente do usuário
 
-- Face que a laser imprime: plano `19-modelos-de-impressora`.
-
-- Impressora real: confirmação dos planos `04-calibracao`, `07-cli-impressao` e `08-impressao-windows`.
+- Impressora real, que o usuário não tem à mão: confirmação dos planos `04-calibracao`, `07-cli-impressao` e `08-impressao-windows`.
 - Imagem da tela de abertura: plano `10-splash`.
-- Validação das passadas no Firefox: plano `02-geracao-pdf`.

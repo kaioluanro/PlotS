@@ -1,6 +1,6 @@
 # Geração das passadas em PDF
 
-**Estado:** Em andamento · OK 4 · PARTIAL 3 · MISSING 0 · BUG 0 · N/A 0
+**Estado:** Em andamento · OK 5 · PARTIAL 2 · MISSING 0 · BUG 0 · N/A 0
 
 ## Objetivo
 
@@ -11,7 +11,7 @@ Transformar o plano de cada lote em PDFs com a ordem e a rotação certas, sem p
 - [x] `plots-pdf` gera as passadas com `lopdf`, com rotação e página em branco
 - [x] `plots gerar-pdf`, sem sobrescrever e removendo só o que criou em caso de falha
 - [x] Recusa de PDF criptografado e de formulários que exigem regeneração
-- [ ] Validar ordem e rotação no Firefox (o modo headless não gerou imagem; aguarda escolha do usuário)
+- [x] Validar ordem e rotação no Firefox: conferido pelo usuário em 2026-11-02
 - [x] Aceitar PDFs comuns: assinatura aplicada vira carimbo com a mesma aparência, com aviso de que a cópia não contém a assinatura; 64 de 64 PDFs reais aceitos, com imagens iguais no PyMuPDF (25557c9)
 - [x] Tirar `/ID` e `SigFlags` do PDF gerado
 - [ ] Tirar do PDF gerado recursos de páginas de fora do lote, com teste
@@ -33,7 +33,7 @@ Os PDFs gerados abrem no Firefox com a ordem e a rotação certas.
 | PS-A010 | Gerar `passada1.pdf` e `passada2.pdf` temporários com lopdf | PARTIAL |
 | PS-A036 | Exportar `passada1.pdf` e `passada2.pdf` para abrir no Firefox | PARTIAL |
 | PS-A041 | lopdf para reordenar, extrair, inserir página em branco e `/Rotate` | OK |
-| PS-A072 | Os PDFs gerados abrem no Firefox com ordem e rotação certas | PARTIAL |
+| PS-A072 | Os PDFs gerados abrem no Firefox com ordem e rotação certas | OK |
 | PS-A084 | Não sobrescrever arquivos existentes; em falha, remover só o que foi criado | OK |
 | PS-A085 | PDF criptografado e inválido são recusados com mensagem | OK |
 | PS-A087 | Página em branco com ponto discreto para o driver não descartar a folha | OK |

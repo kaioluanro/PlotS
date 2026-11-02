@@ -2,7 +2,7 @@
 
 Data: 2026-11-02. A especificação foi dividida depois em `plan/`, então as linhas de `AGENTS.md` citadas abaixo são da versão anterior. Escopo: especificação em `AGENTS.md` (seções de Fases, Modo simulação, Perfis, Papel, Múltiplas impressoras, Windows e Interface). Nenhum código de produto foi alterado. Nenhum commit. `Cargo.toml`, `Cargo.lock`, `AGENTS.md`, `CLAUDE.md` e `estilo-ui-ux.md` mantêm os mesmos hashes (md5 conferido antes e depois). **Atenção:** o `.gitignore` foi reescrito às 13:56:41, durante a auditoria, por outro processo ou usuário (este agente não o editou). O conteúdo novo acrescenta `/.claude/`, `/.codex/`, `/estilo-ui-ux.md`, `/plan/`, `/AUDIT-*.md` e `/STATUS-MANUAIS.md`, e por isso o `git status` mostra só `AGENTS.md` e `CLAUDE.md`. Não foi revertido; decisão do usuário.
 
-Contagem: **OK 33 · PARTIAL 29 · MISSING 29 · BUG 0 · N/A 2** (93 requisitos)
+Contagem: **OK 34 · PARTIAL 28 · MISSING 29 · BUG 0 · N/A 2** (93 requisitos)
 
 Verificação executada:
 - `cargo test --workspace --locked`: 51 testes passam (9 de integração do CLI, 19 em plots-core, 12 em plots-pdf, 11 em plots-print). Tempo de 30 s.
@@ -96,7 +96,7 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A069 | Fase 1 | Crate `plots-core` com lógica pura, sem E/S | OK | `plots-core/src/` (sem dependências externas em `plots-core/Cargo.toml`). |
 | PS-A070 | Fase 2 | PDF de teste de calibração com números grandes e setas | OK (cf22592) | Não há geração de texto em `src/`. `.qa-pdf/make.py` é um script de QA com PyMuPDF, fora do repositório, sem integração. |
 | PS-A071 | Fase 2 | Calibração: 2 folhas com páginas 1 a 4, duas perguntas e ajuste do perfil | PARTIAL | `ajustar_perfil_por_calibracao` (`plots-core/src/lib.rs:78-86`, teste 469-493). Falta o PDF, as perguntas e o comando. |
-| PS-A072 | Fase 2 | Os PDFs gerados abrem no Firefox com ordem e rotação certas | PARTIAL | Verificado com pypdf (texto, caixa e Rotate) em 7 casos. Firefox e pdf.js não foram testados. |
+| PS-A072 | Fase 2 | Os PDFs gerados abrem no Firefox com ordem e rotação certas | OK | O usuário abriu no Firefox as passadas e as folhas finais de um documento de 4 páginas: ordem e rotação certas (2026-11-02). |
 | PS-A073 | Fase 2 | Backend Simulado com impressoras virtuais | OK | `SimBackend` (`plots-print/src/job.rs:159`) e `plots simular`. |
 | PS-A074 | Fase 3 | `plots imprimir doc.pdf --impressora X --lote 10` | PARTIAL | `plots imprimir --simular` conduz os lotes com pausa (92772e5); falta o envio real. |
 | PS-A075 | Fase 3 | `plots calibrar X` | PARTIAL | `plots calibrar` faz as perguntas e grava o perfil (92772e5); falta enviar e confirmar em impressora real. |
