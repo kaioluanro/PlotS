@@ -34,6 +34,8 @@ Levantamento de 2026-11-02, a partir das licenças declaradas nos metadados; o t
 
 **npm** (35 pacotes de produção): OFL-1.1 em `@fontsource/inter` (fonte, ver Ativos); MIT em 30; ISC em `lucide-react`, cuja licença também cita ícones derivados do Feather, usados aqui (`minus`, `plus`, `square`, `x`), então o aviso leva as duas partes; 0BSD em `tslib`; `Apache-2.0 OR MIT` em `@tauri-apps/api` e `@tauri-apps/plugin-dialog`.
 
+**`pdfium-render` 0.9.5** (MIT OR Apache-2.0), versão exata. **`pdfium.dll`**, de `bblanchon/pdfium-binaries`, tag `chromium/8125`, `pdfium-win-x64.tgz` sem V8, 3 904 987 bytes, sha256 `9a964261760cff52570aabf038ab346d3a5034dd8b30d0d5fe8861235d356b8b`, sha256 da DLL `<preencher>`, distribuída sem alteração. Scripts sob MIT; PDFium sob BSD-3 e Apache-2.0; terceiros conforme `licenses/`, conferidos em `<data>`: `<lista>`. A DLL não entra no Git; é obtida por `<script>`.
+
 ## Só na compilação
 
 Não entram no binário; repetir a checagem do grafo ao montar o instalador.
@@ -45,6 +47,7 @@ Não entram no binário; repetir a checagem do grafo ao montar o instalador.
 ## A conferir antes de distribuir
 
 - **`webview2-com-sys` 0.39.1:** declara MIT, mas traz binários da Microsoft (`WebView2Loader`). Ler os termos do SDK e do Runtime, confirmar o tipo de vínculo no release e registrar os avisos exigidos.
+- **PDFium:** textos de `licenses/` lidos e completos, incluindo o que o pacote omitir; crédito da FreeType e do IJG; decisão registrada sobre patentes de JPEG2000, HTJ2K e JBIG2; confirmação de que a DLL não exige outro redistribuível e de eventuais `NOTICE` da Apache; cópia do `.tgz` guardada fora do Git; uso de "PDFium" só nos avisos, sem sugerir vínculo.
 - **Caminhos locais no executável:** o build de debug contém o nome de usuário. Compilar o release com `--remap-path-prefix` e conferir com busca no arquivo final.
 - **Nome e licença do projeto:** busca de anterioridade de "PlotS" e definição da licença própria.
 - **Linux:** `gtk`, `webkit2gtk` e `soup3` estão no lock; conferir as licenças das bibliotecas do sistema ao empacotar (plano `18-linux-e-macos`).

@@ -16,6 +16,11 @@ Enviar cada passada direto ao spooler, na ordem do PlotS, sem diálogo de impres
 - [ ] Testar sem gastar papel na fila "Microsoft Print to PDF"
 - [ ] Confirmar em impressora real
 
+## Decisões
+
+- **Fim da frente:** a confirmação do spooler só garante a entrega, não a saída do papel. O botão do verso libera com ela, e o cartão pede para esperar a última folha. O momento real se mede em impressora real.
+- **PDF protegido:** todo PDF passa pela barreira de `PdfOrigem::carregar` antes do PDFium.
+
 ## Pronto quando
 
 Duas passadas saem na ordem enviada, e o verso só libera quando o spooler confirma o fim da frente.

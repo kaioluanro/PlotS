@@ -70,7 +70,7 @@ A camada de backends é um `trait` com duas implementações, para o núcleo nã
 | Config | `serde` + `toml` + `directories` | Perfis em `%APPDATA%/plots/perfis.toml` |
 | Erros e log | `thiserror`, `tracing` | Diagnóstico de falhas de impressão |
 
-Frontend: React + TypeScript com CSS Modules e os tokens da norma de estilo (`theme.css`), ícones `lucide-react` e Radix para diálogos e menus. Nenhuma regra de negócio fica no frontend. No Windows, vale avaliar o SumatraPDF por linha de comando para imprimir PDF sem rasterizar.
+Frontend: React + TypeScript com CSS Modules e os tokens da norma de estilo (`theme.css`), ícones `lucide-react` e Radix para diálogos e menus. Nenhuma regra de negócio fica no frontend. No Windows, a rasterização usa `pdfium-render`, com `Windows.Data.Pdf` como plano B.
 
 ### Fases de implementação
 
@@ -96,7 +96,7 @@ O maior risco técnico é a impressão no Windows; o maior risco de uso é o dri
 | Risco | Efeito | Mitigação |
 | --- | --- | --- |
 | Driver com "ordem inversa" ou "pular páginas em branco" ativo | Ordem errada; folha sem verso fica fora de sincronia | Calibração detecta; página "em branco" leva um ponto quase invisível |
-| Windows não aceita PDF direto na maioria dos drivers | Precisa rasterizar | `pdfium-render` a 300 dpi, ou SumatraPDF por linha de comando |
+| Windows não aceita PDF direto na maioria dos drivers | Precisa rasterizar | `pdfium-render` na resolução da impressora, ou `Windows.Data.Pdf` |
 | Impressora virtual é trabalhosa (backend CUPS; porta de impressora no Windows) | Atrasa a integração com o Firefox | Fica na Fase 5; antes disso, abrir o PDF no app |
 | Papel puxado em dobro ou atolado no verso | Lote inteiro desalinhado | "Reimprimir lote" e lotes pequenos (10 folhas) |
 
