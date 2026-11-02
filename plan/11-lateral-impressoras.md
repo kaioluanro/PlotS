@@ -1,6 +1,6 @@
 # Barra lateral de impressoras
 
-**Estado:** Em andamento · OK 0 · PARTIAL 1 · MISSING 2 · BUG 0 · N/A 0
+**Estado:** Em andamento · OK 2 · PARTIAL 1 · MISSING 0 · BUG 0 · N/A 0
 
 ## Objetivo
 
@@ -8,10 +8,14 @@ Escolher por documento quais impressoras recebem o arquivo e em que modo de pape
 
 ## Plano de implementação
 
-- [ ] Listar filas e impressoras simuladas, com caixa de seleção e seletor de modo
-- [ ] Seleção por aba; aba nova começa sem nenhuma marcada
-- [ ] Campo de lote com resumo e botão "Imprimir frente" com a contagem
-- [ ] "Calibrar…" em impressora sem modo
+- [x] Listar filas e impressoras simuladas, com caixa de seleção e modo somente leitura (f6e3433)
+- [ ] Seletor de modo interativo de 24 px, reavaliando a linha
+- [x] Seleção por aba; aba nova começa sem nenhuma marcada
+- [x] Campo de lote com resumo e botão "Imprimir frente" com a contagem, desabilitado
+- [ ] Ligar "Imprimir frente" ao envio real. Impressora sem modo, offline ou com PDF recusado não pode contar em "Imprimir frente (N)"
+- [ ] Resumo do lote considerar a divisão por papel
+- [x] "Calibrar…" em impressora sem modo, com o comando para copiar
+- [ ] Quando houver instalador, voltar o comando de `.\plots-cli` para `plots` e retirar a frase de instalação
 
 ## A reavaliar com o conteúdo real
 
@@ -38,9 +42,9 @@ Trocar de aba troca a seleção, e o modo escolhido define `passada1_inversa`.
 
 | ID | Requisito | Situação |
 |---|---|---|
-| PS-A014 | Marcar impressoras e tamanho do lote (padrão 10 folhas) | PARTIAL |
-| PS-A021 | Barra lateral de impressoras com caixa de seleção e seletor de modo (Traseira, Gaveta, "Calibrar…") | MISSING |
-| PS-A024 | Seleção de impressoras por documento (decidido no AGENTS) | MISSING |
+| PS-A014 | Marcar impressoras e tamanho do lote (padrão 10 folhas) | OK (f6e3433) |
+| PS-A021 | Barra lateral de impressoras com caixa de seleção e seletor de modo (Traseira, Gaveta, "Calibrar…") | PARTIAL (f6e3433) |
+| PS-A024 | Seleção de impressoras por documento (decidido no AGENTS) | OK (f6e3433) |
 
 ## Especificação
 

@@ -34,7 +34,7 @@ Nenhuma.
 
 | ID | Requisito | Situação |
 |---|---|---|
-| PS-A026 | Tokens da norma de estilo, tema escuro, foco visível, ESC fecha diálogos, sem emoji, `aria-live` para o estado | PARTIAL (353f54d) |
+| PS-A026 | Tokens da norma de estilo, tema escuro, foco visível, ESC fecha diálogos, sem emoji, `aria-live` para o estado | PARTIAL (f6e3433) |
 | PS-A027 | Textos em pt-BR e en via `t()` | OK (353f54d) |
 | PS-A047 | Frontend React + TypeScript, CSS Modules, lucide-react, Radix | OK (353f54d) |
 

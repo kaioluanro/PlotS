@@ -1,6 +1,6 @@
 # STATUS
 
-Requisitos: OK 35 · PARTIAL 34 · MISSING 22 · BUG 0 · N/A 2 (93). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
+Requisitos: OK 37 · PARTIAL 34 · MISSING 20 · BUG 0 · N/A 2 (93). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
 
 | Plano | OK | PARTIAL | MISSING | BUG | N/A | Estado |
 |---|---|---|---|---|---|---|
@@ -15,7 +15,7 @@ Requisitos: OK 35 · PARTIAL 34 · MISSING 22 · BUG 0 · N/A 2 (93). Detalhes e
 | [Impressão no Windows](08-impressao-windows.md) | 1 | 6 | 1 | 0 | 0 | Em andamento |
 | [Janela, barra superior e abas](09-janela-e-abas.md) | 1 | 3 | 0 | 0 | 0 | Em andamento |
 | [Tela de abertura](10-splash.md) | 0 | 0 | 1 | 0 | 0 | Não iniciado |
-| [Barra lateral de impressoras](11-lateral-impressoras.md) | 0 | 1 | 2 | 0 | 0 | Em andamento |
+| [Barra lateral de impressoras](11-lateral-impressoras.md) | 2 | 1 | 0 | 0 | 0 | Em andamento |
 | [Visualizador de PDF](12-visualizador.md) | 0 | 1 | 2 | 0 | 0 | Em andamento |
 | [Fluxo de impressão e recolocação](13-fluxo-e-recolocacao.md) | 0 | 2 | 4 | 0 | 0 | Em andamento |
 | [Padrão visual e idiomas](14-padrao-visual-e-idiomas.md) | 2 | 1 | 0 | 0 | 0 | Em andamento |
@@ -41,6 +41,7 @@ Requisitos: OK 35 · PARTIAL 34 · MISSING 22 · BUG 0 · N/A 2 (93). Detalhes e
 | interface-base | `353f54d` | concluído; janela aprovada pelo usuário |
 | windows-filas | `a9f9185` | concluído |
 | windows-envio | `126ac26` | concluído; conferido só na fila de PDF do Windows, sem impressora real |
+| lateral-impressoras | `f6e3433` | concluído; botão de imprimir ainda desabilitado |
 
 **Próximo:** impressoras virtuais dos dois modelos (`19-modelos-de-impressora`).
 
