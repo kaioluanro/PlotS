@@ -1,0 +1,5 @@
+﻿[workspace]
+members = ["plots-core", "plots-print", "plots-cli", "plots-pdf"]
+resolver = "2"
+
+

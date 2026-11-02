@@ -1,0 +1,12 @@
+/target/
+/target-*/
+/.qa-pdf/
+/.deps-fetch/
+/graphify-out/
+/codex-session-*.md
+/.claude/
+/.codex/
+/alethe-ui-ux.md
+/plan/
+/AUDIT-*.md
+/STATUS-MANUAIS.md

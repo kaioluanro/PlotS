@@ -1,0 +1,8 @@
+﻿[package]
+name = "plots-pdf"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+plots-core = { path = "../plots-core" }
+lopdf = "0.46.0"
