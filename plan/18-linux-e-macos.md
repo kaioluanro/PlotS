@@ -10,6 +10,8 @@ Levar a impressão para CUPS depois do Windows.
 
 - [ ] Backend IPP ou `lp` implementando o mesmo `trait Backend`
 - [ ] Status do job com `Get-Job-Attributes`
+- [ ] Gravar `perfis.toml` com permissão 0600
+- [ ] Decidir o caminho padrão dos perfis nessas plataformas
 
 ## Pronto quando
 

@@ -12,7 +12,9 @@ Deixar o programa pronto para outra pessoa usar.
 - [ ] "Reimprimir lote" e histórico na interface
 - [ ] Folha de controle opcional
 - [ ] Instalador com `tauri bundle`
-- [ ] Avisos de terceiros e busca do nome no INPI e USPTO
+- [ ] Avisos de terceiros, gerados dos arquivos de licença de cada crate, e busca do nome no INPI e USPTO
+  - `option-ext` (MPL-2.0): texto da licença e origem do código-fonte
+- [ ] Dizer na documentação onde os perfis ficam e como apagá-los, porque a pasta Roaming pode acompanhar perfis móveis
 
 ## Pronto quando
 

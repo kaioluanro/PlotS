@@ -28,6 +28,15 @@ Um perfil salvo é reaberto igual, e arquivo corrompido nunca derruba o programa
 | PS-A045 | Config com serde, toml e directories; perfis em `%APPDATA%/plots/perfis.toml` | MISSING |
 | PS-A063 | Perfil por fila: chave com o nome da fila e apelido amigável | MISSING |
 
+## Licenças de terceiros
+
+`option-ext` 0.2.0, usado por `directories` e `dirs-sys`, é MPL-2.0 e não permissivo. Usado sem alterações, por decisão do usuário em 2026-11-02. Ao distribuir o binário: incluir o texto da MPL 2.0 nos avisos de terceiros e informar a origem do código-fonte, https://github.com/soc/option-ext.
+
+## Cuidados ao levar para a interface
+
+- Os erros de TOML vêm em inglês e reproduzem a linha do arquivo, que pode conter nome de fila ou apelido. Traduzir antes de mostrar, e não gravar esse detalhe em log nem enviá-lo para fora.
+- A mensagem "1 MB" se refere a 1.048.576 bytes.
+
 ## Especificação
 
 Cada impressora vira um perfil com quatro parâmetros, todos medidos por um assistente de calibração (seção Fases, etapa 2). Com eles, um único algoritmo gera a ordem de envio para qualquer impressora.
