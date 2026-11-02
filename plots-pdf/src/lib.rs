@@ -66,6 +66,36 @@ impl PdfOrigem {
         Ok(Self { documento, paginas })
     }
 
+    /// Indica se alguma página tem um campo de assinatura digital já aplicada. As passadas
+    /// mostram a aparência dela, mas não a contêm.
+    pub fn tem_assinatura_aplicada(&self) -> Result<bool, ErroPdf> {
+        for id in &self.paginas {
+            let pagina = self.documento.get_object(*id)?.as_dict()?;
+            let Ok(anotacoes) = pagina.get(b"Annots") else {
+                continue;
+            };
+            let anotacoes = self.documento.dereference(anotacoes)?.1.as_array()?;
+            if anotacoes.len() > LIMITE_PAGINAS {
+                return Err(ErroPdf::DocumentoInvalido("anotações demais"));
+            }
+            for anotacao in anotacoes {
+                let Ok(dict) = self
+                    .documento
+                    .dereference(anotacao)
+                    .and_then(|(_, o)| o.as_dict())
+                else {
+                    continue;
+                };
+                let widget =
+                    dict.get(b"Subtype").ok().and_then(|v| v.as_name().ok()) == Some(b"Widget");
+                if widget && campo_assinado(&self.documento, dict)? {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
+    }
+
     pub fn total_paginas(&self) -> usize {
         self.paginas.len()
     }
@@ -137,6 +167,7 @@ impl PdfOrigem {
                 )
                 .ok_or(ErroPdf::PaginaInexistente(numero))?;
             let mut dict = pagina_com_heranca(&self.documento, *id)?;
+            retirar_dados_fora_do_desenho(&mut dict);
             let user_unit = dict.get(b"UserUnit").ok().cloned();
             if let Some(valor) = &user_unit {
                 let numero = self.documento.dereference(valor)?.1.as_float()?;
@@ -225,7 +256,7 @@ impl PdfOrigem {
             let catalogo_origem = self.documento.get_object(catalogo_origem)?.as_dict()?;
             if let Ok(original) = catalogo_origem.get(b"AcroForm") {
                 let original = self.documento.dereference(original)?.1.as_dict()?;
-                for chave in [b"DA".as_slice(), b"DR", b"Q", b"SigFlags"] {
+                for chave in [b"DA".as_slice(), b"DR", b"Q"] {
                     if let Ok(valor) = original.get(chave) {
                         acroform.set(chave, valor.clone());
                     }
@@ -240,6 +271,7 @@ impl PdfOrigem {
         saida.trailer.set("Root", catalogo);
         // Não conservar metadados nem objetos inalcançáveis do documento original.
         saida.trailer.remove(b"Info");
+        saida.trailer.remove(b"ID");
         remover_inacessiveis(&mut saida, &proibidos, &paginas_novas)?;
         let mut bytes = Vec::new();
         saida.save_to(&mut bytes).map_err(ErroPdf::Escrita)?;
@@ -521,11 +553,100 @@ impl PdfOrigem {
         paginas_novas.insert(catalogo);
         saida.trailer.set("Root", catalogo);
         saida.trailer.remove(b"Info");
+        saida.trailer.remove(b"ID");
         remover_inacessiveis(&mut saida, &proibidos, &paginas_novas)?;
         let mut bytes = Vec::new();
         saida.save_to(&mut bytes).map_err(ErroPdf::Escrita)?;
         Ok(bytes)
     }
+}
+
+/// Entradas da página que não participam do que é impresso e costumam apontar de volta
+/// para outras páginas: fios de artigo, dados privados de aplicativo e a chave da
+/// estrutura marcada (a árvore de estrutura não é copiada, então a chave ficaria solta).
+fn retirar_dados_fora_do_desenho(pagina: &mut Dictionary) {
+    for chave in [b"B".as_slice(), b"PieceInfo", b"StructParents"] {
+        pagina.remove(chave);
+    }
+}
+
+/// Indica se o campo (ou algum campo acima dele) guarda uma assinatura digital já aplicada:
+/// há um valor `/V` e ele é um dicionário de assinatura ou o tipo do campo (`/FT`, herdado
+/// na subida até o campo pai) é `Sig`.
+fn campo_assinado(origem: &Document, widget: &Dictionary) -> Result<bool, ErroPdf> {
+    let mut atual = widget.clone();
+    let mut valor_assinatura = None;
+    let mut tipo_sig = None;
+    for _ in 0..32 {
+        if valor_assinatura.is_none() {
+            if let Ok(valor) = atual.get(b"V") {
+                valor_assinatura = Some(match origem.dereference(valor)?.1 {
+                    Object::Dictionary(d) => matches!(
+                        d.get(b"Type").ok().and_then(|v| v.as_name().ok()),
+                        Some(b"Sig") | Some(b"DocTimeStamp")
+                    ),
+                    _ => false,
+                });
+            }
+        }
+        if tipo_sig.is_none() {
+            if let Ok(tipo) = atual.get(b"FT") {
+                tipo_sig = Some(origem.dereference(tipo)?.1.as_name().ok() == Some(b"Sig"));
+            }
+        }
+        match atual.get(b"Parent").and_then(Object::as_reference) {
+            Ok(pai) => atual = origem.get_object(pai)?.as_dict()?.clone(),
+            Err(_) => {
+                return Ok(match valor_assinatura {
+                    Some(dicionario_sig) => dicionario_sig || tipo_sig == Some(true),
+                    None => false,
+                })
+            }
+        }
+    }
+    Err(ErroPdf::DocumentoInvalido(
+        "ciclo ou profundidade excessiva em campos",
+    ))
+}
+
+/// Texto do PDF (UTF-16BE com marca de ordem) para o comentário do carimbo.
+fn texto_pdf(texto: &str) -> Object {
+    let mut bytes = vec![0xFE, 0xFF];
+    for unidade in texto.encode_utf16() {
+        bytes.extend(unidade.to_be_bytes());
+    }
+    Object::String(bytes, lopdf::StringFormat::Hexadecimal)
+}
+
+const COMENTARIO_CARIMBO: &str = "Cópia para impressão: a assinatura digital original não está neste arquivo. / Print copy: the original digital signature is not in this file.";
+
+/// Troca o campo de assinatura por um carimbo com a mesma aparência e a mesma área. O valor
+/// da assinatura nunca é impresso, pode apontar de volta para o catálogo do documento e
+/// deixaria de valer de qualquer forma, pois o conteúdo do arquivo muda. Como carimbo, a
+/// aparência continua igual na impressão e nenhum visualizador a trata como campo pendente.
+fn assinatura_como_carimbo(widget: &mut Dictionary) {
+    for chave in [
+        b"FT".as_slice(),
+        b"V",
+        b"T",
+        b"TU",
+        b"TM",
+        b"Ff",
+        b"Lock",
+        b"SV",
+        b"DA",
+        b"DV",
+        b"MK",
+        b"AS",
+        b"Parent",
+        b"Kids",
+        b"AA",
+        b"A",
+    ] {
+        widget.remove(chave);
+    }
+    widget.set("Subtype", "Stamp");
+    widget.set("Contents", texto_pdf(COMENTARIO_CARIMBO));
 }
 
 fn clonar_anotacoes(
@@ -576,7 +697,13 @@ fn clonar_anotacoes(
         if remover_acao {
             dict.remove(b"A");
         }
-        let widget = dict.get(b"Subtype").ok().and_then(|v| v.as_name().ok()) == Some(b"Widget");
+        let mut widget =
+            dict.get(b"Subtype").ok().and_then(|v| v.as_name().ok()) == Some(b"Widget");
+        if widget && campo_assinado(origem, &dict)? {
+            validar_aparencia_widget(origem, &dict)?;
+            assinatura_como_carimbo(&mut dict);
+            widget = false;
+        }
         if widget {
             validar_aparencia_widget(origem, &dict)?;
             if let Ok(parent) = dict.get(b"Parent") {
@@ -826,7 +953,7 @@ fn remover_inacessiveis(
         match objeto {
             Object::Reference(id) if proibidos.contains(id) => {
                 return Err(ErroPdf::DocumentoInvalido(
-                    "referência insegura à árvore de páginas original",
+                    "a página usa referências a outras páginas do documento que não podem ser retiradas sem alterar a impressão",
                 ))
             }
             Object::Reference(id) if ids.insert(*id) => pilha.push((
@@ -845,7 +972,7 @@ fn remover_inacessiveis(
                         .is_some_and(|tipo| matches!(tipo, b"Page" | b"Pages" | b"Catalog"))
                 {
                     return Err(ErroPdf::DocumentoInvalido(
-                        "objeto de página embutido inseguro",
+                        "a página embute dados de outras páginas do documento que não podem ser retirados sem alterar a impressão",
                     ));
                 }
                 pilha.extend(dict.iter().map(|(_, valor)| (valor, false)));
@@ -1613,6 +1740,334 @@ mod tests {
             .is_err());
         let muitas = vec![folha_de_teste(Some((1, false)), None); LIMITE_PAGINAS + 1];
         assert!(origem.gerar_folhas_finais(&muitas, 1).is_err());
+    }
+
+    fn aparencia_vazia(doc: &mut Document) -> ObjectId {
+        doc.add_object(lopdf::Stream::new(dictionary! {"Type" => "XObject", "Subtype" => "Form", "BBox" => vec![0.into(), 0.into(), 10.into(), 10.into()]}, b"q Q".to_vec()))
+    }
+
+    /// Assinatura no estilo de certificação: o dicionário de valor aponta de volta
+    /// para o catálogo (e, por ele, para toda a árvore de páginas).
+    fn assinatura_certificada(doc: &mut Document) -> ObjectId {
+        let catalogo = doc.trailer.get(b"Root").unwrap().as_reference().unwrap();
+        let referencia =
+            dictionary! {"Type" => "SigRef", "TransformMethod" => "DocMDP", "Data" => catalogo};
+        doc.add_object(dictionary! {"Type" => "Sig", "Filter" => "Adobe.PPKLite", "Reference" => vec![Object::Dictionary(referencia)]})
+    }
+
+    fn definir_anotacoes(doc: &mut Document, pagina: ObjectId, anotacoes: Vec<ObjectId>) {
+        doc.get_object_mut(pagina)
+            .unwrap()
+            .as_dict_mut()
+            .unwrap()
+            .set(
+                "Annots",
+                anotacoes
+                    .into_iter()
+                    .map(Object::Reference)
+                    .collect::<Vec<_>>(),
+            );
+    }
+
+    fn passada_da_primeira(origem: &PdfOrigem) -> Result<Document, ErroPdf> {
+        let bytes = origem.gerar_passada(
+            &[Pagina {
+                numero: Some(1),
+                girar_180: false,
+            }],
+            1,
+        )?;
+        Ok(Document::load_mem(&bytes).unwrap())
+    }
+
+    fn sem_conteudo_da_pagina_excluida(doc: &Document, excluida: ObjectId) {
+        assert!(!doc.objects.contains_key(&excluida));
+        for objeto in doc.objects.values() {
+            if let Ok(fluxo) = objeto.as_stream() {
+                let conteudo = fluxo.decompressed_content().unwrap_or_default();
+                assert!(!conteudo.windows(5).any(|w| w == b"3 4 m"));
+            }
+        }
+    }
+
+    #[test]
+    fn assinatura_que_aponta_ao_catalogo_vira_carimbo_sem_o_valor() {
+        let mut origem = PdfOrigem::carregar(&fixture()).unwrap();
+        let (p1, p2) = (origem.paginas[0], origem.paginas[1]);
+        let assinatura = assinatura_certificada(&mut origem.documento);
+        let aparencia = aparencia_vazia(&mut origem.documento);
+        let widget = origem.documento.add_object(dictionary! {"Type" => "Annot", "Subtype" => "Widget", "FT" => "Sig", "T" => Object::string_literal("assina"), "P" => p1, "F" => 4, "Rect" => vec![0.into(), 0.into(), 10.into(), 10.into()], "AP" => dictionary! {"N" => aparencia}, "V" => assinatura});
+        definir_anotacoes(&mut origem.documento, p1, vec![widget]);
+        let doc = passada_da_primeira(&origem).unwrap();
+        let pagina = *doc.get_pages().values().next().unwrap();
+        let anotacoes = doc
+            .get_object(pagina)
+            .unwrap()
+            .as_dict()
+            .unwrap()
+            .get(b"Annots")
+            .unwrap()
+            .as_array()
+            .unwrap();
+        let saida = doc
+            .get_object(anotacoes[0].as_reference().unwrap())
+            .unwrap()
+            .as_dict()
+            .unwrap();
+        assert!(saida.has(b"AP") && saida.has(b"Rect"));
+        assert_eq!(saida.get(b"Subtype").unwrap().as_name().unwrap(), b"Stamp");
+        assert!(!saida.has(b"V") && !saida.has(b"FT"));
+        assert!(!doc.objects.contains_key(&assinatura));
+        sem_conteudo_da_pagina_excluida(&doc, p2);
+    }
+
+    #[test]
+    fn assinatura_no_campo_pai_vira_carimbo_sem_o_valor() {
+        let mut origem = PdfOrigem::carregar(&fixture()).unwrap();
+        let (p1, p2) = (origem.paginas[0], origem.paginas[1]);
+        let assinatura = assinatura_certificada(&mut origem.documento);
+        let aparencia = aparencia_vazia(&mut origem.documento);
+        let pai = origem.documento.new_object_id();
+        let widget = origem.documento.add_object(dictionary! {"Type" => "Annot", "Subtype" => "Widget", "Parent" => pai, "P" => p1, "AP" => dictionary! {"N" => aparencia}});
+        origem.documento.objects.insert(pai, Object::Dictionary(dictionary! {"FT" => "Sig", "T" => Object::string_literal("campo"), "V" => assinatura, "Kids" => vec![Object::Reference(widget)]}));
+        definir_anotacoes(&mut origem.documento, p1, vec![widget]);
+        let doc = passada_da_primeira(&origem).unwrap();
+        assert!(!doc.objects.contains_key(&assinatura));
+        let mut carimbos = 0;
+        for objeto in doc.objects.values() {
+            if let Ok(dict) = objeto.as_dict() {
+                assert!(!dict.has(b"V") && !dict.has(b"FT"));
+                let carimbo = dict.get(b"Subtype").ok().and_then(|v| v.as_name().ok())
+                    == Some(b"Stamp".as_slice());
+                carimbos += usize::from(carimbo && dict.has(b"AP"));
+            }
+        }
+        assert_eq!(carimbos, 1);
+        sem_conteudo_da_pagina_excluida(&doc, p2);
+    }
+
+    #[test]
+    fn valor_de_campo_comum_continua_sendo_preservado() {
+        let mut origem = PdfOrigem::carregar(&fixture()).unwrap();
+        let p1 = origem.paginas[0];
+        let aparencia = aparencia_vazia(&mut origem.documento);
+        let widget = origem.documento.add_object(dictionary! {"Type" => "Annot", "Subtype" => "Widget", "FT" => "Tx", "T" => Object::string_literal("a"), "V" => Object::string_literal("texto"), "P" => p1, "AP" => dictionary! {"N" => aparencia}});
+        definir_anotacoes(&mut origem.documento, p1, vec![widget]);
+        let doc = passada_da_primeira(&origem).unwrap();
+        let tem_valor = doc.objects.values().any(|o| {
+            o.as_dict()
+                .ok()
+                .and_then(|d| d.get(b"V").ok())
+                .and_then(|v| v.as_str().ok())
+                == Some(b"texto".as_slice())
+        });
+        assert!(tem_valor);
+    }
+
+    #[test]
+    fn dados_da_pagina_que_voltam_as_paginas_sao_retirados() {
+        let mut origem = PdfOrigem::carregar(&fixture()).unwrap();
+        let (p1, p2) = (origem.paginas[0], origem.paginas[1]);
+        let estrutura = origem
+            .documento
+            .add_object(dictionary! {"Type" => "StructElem", "S" => "P", "Pg" => p2});
+        let fio = origem.documento.new_object_id();
+        let conta = origem.documento.add_object(dictionary! {"Type" => "Bead", "T" => fio, "P" => p2, "R" => vec![0.into(), 0.into(), 5.into(), 5.into()]});
+        origem.documento.objects.insert(
+            fio,
+            Object::Dictionary(dictionary! {"Type" => "Thread", "F" => conta}),
+        );
+        let pagina = origem
+            .documento
+            .get_object_mut(p1)
+            .unwrap()
+            .as_dict_mut()
+            .unwrap();
+        pagina.set("B", vec![Object::Reference(conta)]);
+        pagina.set(
+            "PieceInfo",
+            dictionary! {"App" => dictionary! {"Data" => estrutura}},
+        );
+        pagina.set("StructParents", 0);
+        let doc = passada_da_primeira(&origem).unwrap();
+        let saida = doc
+            .get_object(*doc.get_pages().values().next().unwrap())
+            .unwrap()
+            .as_dict()
+            .unwrap();
+        for chave in [b"B".as_slice(), b"PieceInfo", b"StructParents"] {
+            assert!(!saida.has(chave));
+        }
+        assert!(saida.has(b"Contents"));
+        assert!(!doc.objects.contains_key(&estrutura));
+        sem_conteudo_da_pagina_excluida(&doc, p2);
+    }
+
+    #[test]
+    fn referencia_no_desenho_da_pagina_continua_recusada_com_motivo_claro() {
+        let mut origem = PdfOrigem::carregar(&fixture()).unwrap();
+        let (p1, p2) = (origem.paginas[0], origem.paginas[1]);
+        let forma = origem.documento.add_object(lopdf::Stream::new(dictionary! {"Type" => "XObject", "Subtype" => "Form", "BBox" => vec![0.into(), 0.into(), 10.into(), 10.into()], "Outra" => p2}, b"q Q".to_vec()));
+        origem
+            .documento
+            .get_object_mut(p1)
+            .unwrap()
+            .as_dict_mut()
+            .unwrap()
+            .set(
+                "Resources",
+                dictionary! {"XObject" => dictionary! {"F" => forma}},
+            );
+        let erro = passada_da_primeira(&origem).err().unwrap();
+        assert!(matches!(erro, ErroPdf::DocumentoInvalido(_)));
+        let texto = erro.to_string();
+        assert!(!texto.contains("insegura"), "{texto}");
+        assert!(texto.contains("outras páginas"), "{texto}");
+    }
+
+    fn texto_do_comentario(objeto: &Object) -> String {
+        let bytes = objeto.as_str().unwrap();
+        assert_eq!(&bytes[..2], &[0xFE, 0xFF]);
+        let unidades: Vec<u16> = bytes[2..]
+            .chunks(2)
+            .map(|p| u16::from_be_bytes([p[0], p[1]]))
+            .collect();
+        String::from_utf16(&unidades).unwrap()
+    }
+
+    fn carimbos(doc: &Document) -> Vec<&Dictionary> {
+        doc.objects
+            .values()
+            .filter_map(|o| o.as_dict().ok())
+            .filter(|d| d.get(b"Subtype").ok().and_then(|v| v.as_name().ok()) == Some(b"Stamp"))
+            .collect()
+    }
+
+    fn definir_acroform(doc: &mut Document, campos: Vec<ObjectId>) {
+        let raiz = doc.trailer.get(b"Root").unwrap().as_reference().unwrap();
+        let campos: Vec<Object> = campos.into_iter().map(Object::Reference).collect();
+        doc.get_object_mut(raiz)
+            .unwrap()
+            .as_dict_mut()
+            .unwrap()
+            .set(
+                "AcroForm",
+                dictionary! {"Fields" => campos, "SigFlags" => 3, "DA" => Object::string_literal("/Helv 0 Tf")},
+            );
+    }
+
+    #[test]
+    fn acroform_novo_nao_declara_assinaturas_e_campo_comum_fica() {
+        let mut origem = PdfOrigem::carregar(&fixture()).unwrap();
+        let p1 = origem.paginas[0];
+        let assinatura = assinatura_certificada(&mut origem.documento);
+        let aparencia = aparencia_vazia(&mut origem.documento);
+        let sig = origem.documento.add_object(dictionary! {"Type" => "Annot", "Subtype" => "Widget", "FT" => "Sig", "T" => Object::string_literal("s"), "P" => p1, "Rect" => vec![0.into(), 0.into(), 10.into(), 10.into()], "AP" => dictionary! {"N" => aparencia}, "V" => assinatura});
+        let texto = origem.documento.add_object(dictionary! {"Type" => "Annot", "Subtype" => "Widget", "FT" => "Tx", "T" => Object::string_literal("t"), "V" => Object::string_literal("ok"), "P" => p1, "Rect" => vec![0.into(), 0.into(), 10.into(), 10.into()], "AP" => dictionary! {"N" => aparencia}});
+        definir_anotacoes(&mut origem.documento, p1, vec![sig, texto]);
+        definir_acroform(&mut origem.documento, vec![sig, texto]);
+        let doc = passada_da_primeira(&origem).unwrap();
+        let raiz = doc.trailer.get(b"Root").unwrap().as_reference().unwrap();
+        let catalogo = doc.get_object(raiz).unwrap().as_dict().unwrap();
+        let acroform = doc
+            .get_object(catalogo.get(b"AcroForm").unwrap().as_reference().unwrap())
+            .unwrap()
+            .as_dict()
+            .unwrap();
+        assert!(!acroform.has(b"SigFlags"));
+        assert!(acroform.has(b"DA"));
+        let campos = acroform.get(b"Fields").unwrap().as_array().unwrap();
+        assert_eq!(campos.len(), 1);
+        let campo = doc
+            .get_object(campos[0].as_reference().unwrap())
+            .unwrap()
+            .as_dict()
+            .unwrap();
+        assert_eq!(campo.get(b"V").unwrap().as_str().unwrap(), b"ok");
+        assert_eq!(carimbos(&doc).len(), 1);
+    }
+
+    #[test]
+    fn carimbo_da_assinatura_leva_o_comentario_mesmo_com_contents_anterior() {
+        let mut origem = PdfOrigem::carregar(&fixture()).unwrap();
+        let p1 = origem.paginas[0];
+        let assinatura = assinatura_certificada(&mut origem.documento);
+        let aparencia = aparencia_vazia(&mut origem.documento);
+        let com = origem.documento.add_object(dictionary! {"Type" => "Annot", "Subtype" => "Widget", "FT" => "Sig", "P" => p1, "Contents" => Object::string_literal("antigo"), "Rect" => vec![0.into(), 0.into(), 10.into(), 10.into()], "AP" => dictionary! {"N" => aparencia}, "V" => assinatura});
+        let sem = origem.documento.add_object(dictionary! {"Type" => "Annot", "Subtype" => "Widget", "FT" => "Sig", "P" => p1, "Rect" => vec![0.into(), 0.into(), 10.into(), 10.into()], "AP" => dictionary! {"N" => aparencia}, "V" => assinatura});
+        definir_anotacoes(&mut origem.documento, p1, vec![com, sem]);
+        let doc = passada_da_primeira(&origem).unwrap();
+        let todos = carimbos(&doc);
+        assert_eq!(todos.len(), 2);
+        for carimbo in todos {
+            assert_eq!(
+                texto_do_comentario(carimbo.get(b"Contents").unwrap()),
+                "Cópia para impressão: a assinatura digital original não está neste arquivo. / Print copy: the original digital signature is not in this file."
+            );
+        }
+    }
+
+    #[test]
+    fn assinatura_sem_type_e_reconhecida_pelo_tipo_do_campo() {
+        let mut origem = PdfOrigem::carregar(&fixture()).unwrap();
+        let (p1, p2) = (origem.paginas[0], origem.paginas[1]);
+        let catalogo = origem.documento.trailer.get(b"Root").unwrap().clone();
+        let valor = origem.documento.add_object(dictionary! {"Filter" => "Adobe.PPKLite", "Name" => Object::string_literal("signatário"), "Reference" => vec![Object::Dictionary(dictionary! {"Data" => catalogo})]});
+        let aparencia = aparencia_vazia(&mut origem.documento);
+        let direto = origem.documento.add_object(dictionary! {"Type" => "Annot", "Subtype" => "Widget", "FT" => "Sig", "P" => p1, "Rect" => vec![0.into(), 0.into(), 10.into(), 10.into()], "AP" => dictionary! {"N" => aparencia}, "V" => valor});
+        let pai = origem.documento.new_object_id();
+        let filho = origem.documento.add_object(dictionary! {"Type" => "Annot", "Subtype" => "Widget", "Parent" => pai, "P" => p1, "Rect" => vec![0.into(), 0.into(), 10.into(), 10.into()], "AP" => dictionary! {"N" => aparencia}});
+        origem.documento.objects.insert(pai, Object::Dictionary(dictionary! {"FT" => "Sig", "T" => Object::string_literal("pai"), "V" => valor, "Kids" => vec![Object::Reference(filho)]}));
+        definir_anotacoes(&mut origem.documento, p1, vec![direto, filho]);
+        assert!(origem.tem_assinatura_aplicada().unwrap());
+        let doc = passada_da_primeira(&origem).unwrap();
+        assert_eq!(carimbos(&doc).len(), 2);
+        assert!(!doc.objects.contains_key(&valor));
+        for objeto in doc.objects.values() {
+            if let Ok(dict) = objeto.as_dict() {
+                assert!(!dict.has(b"V") && !dict.has(b"FT"));
+            }
+        }
+        sem_conteudo_da_pagina_excluida(&doc, p2);
+    }
+
+    #[test]
+    fn detecta_assinatura_aplicada_somente_com_valor() {
+        let mut origem = PdfOrigem::carregar(&fixture()).unwrap();
+        assert!(!origem.tem_assinatura_aplicada().unwrap());
+        let p2 = origem.paginas[1];
+        let aparencia = aparencia_vazia(&mut origem.documento);
+        let vazio = origem.documento.add_object(dictionary! {"Type" => "Annot", "Subtype" => "Widget", "FT" => "Sig", "P" => p2, "AP" => dictionary! {"N" => aparencia}});
+        definir_anotacoes(&mut origem.documento, p2, vec![vazio]);
+        assert!(!origem.tem_assinatura_aplicada().unwrap());
+        let assinatura = assinatura_certificada(&mut origem.documento);
+        origem
+            .documento
+            .get_object_mut(vazio)
+            .unwrap()
+            .as_dict_mut()
+            .unwrap()
+            .set("V", assinatura);
+        assert!(origem.tem_assinatura_aplicada().unwrap());
+    }
+
+    #[test]
+    fn id_do_trailer_nao_vai_para_as_copias() {
+        let mut origem = PdfOrigem::carregar(&fixture()).unwrap();
+        origem.documento.trailer.set(
+            "ID",
+            vec![
+                Object::string_literal("identificador-a"),
+                Object::string_literal("identificador-b"),
+            ],
+        );
+        let passada = passada_da_primeira(&origem).unwrap();
+        assert!(!passada.trailer.has(b"ID"));
+        let bytes = origem
+            .gerar_folhas_finais(&[folha_de_teste(Some((1, false)), None)], 1)
+            .unwrap();
+        let folhas = Document::load_mem(&bytes).unwrap();
+        assert!(!folhas.trailer.has(b"ID"));
     }
 }
 

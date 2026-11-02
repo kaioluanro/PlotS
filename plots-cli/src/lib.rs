@@ -18,7 +18,7 @@ pub const USO_GERAL: &str = "Uso:\n  plots simular --paginas N --lote K --impres
 pub const USO_SIMULAR: &str = "Uso:\n  plots simular --paginas N --lote K --impressora traseira|gaveta [--ordem pares|impares] [--simular-erro sem-virar|girado|folha-a-menos] [--guiado]\nA simulação não envia nada à impressora. Com --simular-erro, o gesto errado vale para todos os lotes; com folha-a-menos, cada lote é reimpresso desde a frente.\n";
 
 /// Texto de uso do subcomando `gerar-pdf`.
-pub const USO_GERAR_PDF: &str = "Uso:\n  plots gerar-pdf ARQUIVO --lote K --impressora traseira|gaveta [--ordem pares|impares] [--folhas-finais] --saida DIRETORIO\n--folhas-finais grava também lote-NNNN-folhas-finais.pdf, com uma página por folha: a página de número menor à esquerda e a maior à direita, em tamanho real, na ordem do maço e com a recolocação correta. As anotações não aparecem nessas folhas.\nOs PDFs gerados não são enviados à impressora.\n";
+pub const USO_GERAR_PDF: &str = "Uso:\n  plots gerar-pdf ARQUIVO --lote K --impressora traseira|gaveta [--ordem pares|impares] [--folhas-finais] --saida DIRETORIO\n--folhas-finais grava também lote-NNNN-folhas-finais.pdf, com uma página por folha: a página de número menor à esquerda e a maior à direita, em tamanho real, na ordem do maço e com a recolocação correta. As anotações não aparecem nessas folhas.\nSe o PDF tiver assinatura digital, as passadas mostram a aparência dela, mas não a contêm: servem só para imprimir e não comprovam a assinatura. Para enviar ou guardar o documento, use o arquivo original.\nOs PDFs gerados não são enviados à impressora.\n";
 
 /// Texto de uso do subcomando `gerar-calibracao`.
 pub const USO_GERAR_CALIBRACAO: &str = "Uso:\n  plots gerar-calibracao --saida DIRETORIO [--papel a4|a5|carta|oficio|legal]\nGrava calibracao.pdf com as páginas 1 a 4 e uma seta para cima em cada uma. Nada é enviado à impressora, e um arquivo existente nunca é sobrescrito.\n";
@@ -486,6 +486,7 @@ fn gerar_pdfs(args: &[String], saida: &mut impl Write) -> Result<(), String> {
     }
     let bytes = std::fs::read(entrada).map_err(|e| format!("não foi possível ler o PDF: {e}"))?;
     let pdf = plots_pdf::PdfOrigem::carregar(&bytes).map_err(|e| e.to_string())?;
+    let assinado = pdf.tem_assinatura_aplicada().map_err(|e| e.to_string())?;
     let dimensoes = pdf.dimensoes_paginas().map_err(|e| e.to_string())?;
     let lotes = plano_lotes_por_papel(&dimensoes, tamanho, ordem, impressora.perfil())
         .map_err(|e| e.to_string())?;
@@ -542,6 +543,13 @@ fn gerar_pdfs(args: &[String], saida: &mut impl Write) -> Result<(), String> {
     }
     if ordem == OrdemPassadas::ImparesPrimeiro {
         writeln!(saida, "{MSG_AVISO_IMPARES}").map_err(|e| e.to_string())?;
+    }
+    if assinado {
+        writeln!(
+            saida,
+            "Aviso: este PDF tem assinatura digital. As cópias geradas servem só para imprimir: mostram a aparência da assinatura, mas não a contêm. Para enviar ou guardar o documento, use o arquivo original."
+        )
+        .map_err(|e| e.to_string())?;
     }
     writeln!(
         saida,

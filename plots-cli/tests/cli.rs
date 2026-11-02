@@ -1230,3 +1230,66 @@ fn folhas_finais_repetida_e_recusada_sem_criar_arquivos() {
     assert!(erro.contains("mais de uma vez"), "{erro}");
     assert_eq!(std::fs::read_dir(pasta.caminho()).unwrap().count(), 1);
 }
+
+/// Duas páginas; a primeira tem um campo de assinatura já aplicado, se pedido.
+fn pdf_com_assinatura(assinado: bool) -> Vec<u8> {
+    use lopdf::{dictionary, Document, Object};
+    let mut doc = Document::with_version("1.5");
+    let raiz = doc.new_object_id();
+    let aparencia = doc.add_object(lopdf::Stream::new(
+        dictionary! {"Type" => "XObject", "Subtype" => "Form", "BBox" => vec![0.into(), 0.into(), 10.into(), 10.into()]},
+        b"q Q".to_vec(),
+    ));
+    let valor = doc.add_object(dictionary! {"Type" => "Sig", "Filter" => "Adobe.PPKLite"});
+    let mut campo = dictionary! {"Type" => "Annot", "Subtype" => "Widget", "FT" => "Sig", "T" => Object::string_literal("a"), "Rect" => vec![0.into(), 0.into(), 10.into(), 10.into()], "AP" => dictionary! {"N" => aparencia}};
+    if assinado {
+        campo.set("V", valor);
+    }
+    let widget = doc.add_object(campo);
+    let mut filhos = Vec::new();
+    for i in 0..2 {
+        let mut pagina = dictionary! {"Type" => "Page", "Parent" => raiz, "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()], "Resources" => dictionary! {}};
+        if i == 0 {
+            pagina.set("Annots", vec![Object::Reference(widget)]);
+        }
+        filhos.push(Object::Reference(doc.add_object(pagina)));
+    }
+    doc.objects.insert(
+        raiz,
+        Object::Dictionary(dictionary! {"Type" => "Pages", "Count" => 2, "Kids" => filhos}),
+    );
+    let catalogo = doc.add_object(dictionary! {"Type" => "Catalog", "Pages" => raiz});
+    doc.trailer.set("Root", catalogo);
+    let mut bytes = Vec::new();
+    doc.save_to(&mut bytes).unwrap();
+    bytes
+}
+
+const AVISO_ASSINATURA: &str = "Aviso: este PDF tem assinatura digital. As cópias geradas servem só para imprimir: mostram a aparência da assinatura, mas não a contêm. Para enviar ou guardar o documento, use o arquivo original.";
+
+#[test]
+fn gerar_pdf_avisa_quando_o_pdf_tem_assinatura_e_so_entao() {
+    let pasta = Pasta::nova("com-marca");
+    let entrada = pasta.caminho().join("assinado.pdf");
+    std::fs::write(&entrada, pdf_com_assinatura(true)).unwrap();
+    let saida = executar(&argumentos_gerar(&entrada, pasta.caminho(), "10")).unwrap();
+    let aviso = saida.find(AVISO_ASSINATURA).expect(&saida);
+    assert!(aviso < saida.find("Gerados").unwrap());
+
+    let outra = Pasta::nova("sem-marca");
+    let campo_vazio = outra.caminho().join("campo-vazio.pdf");
+    std::fs::write(&campo_vazio, pdf_com_assinatura(false)).unwrap();
+    let saida = executar(&argumentos_gerar(&campo_vazio, outra.caminho(), "10")).unwrap();
+    assert!(!saida.contains("assinatura"), "{saida}");
+    let terceira = Pasta::nova("sem-marca-2");
+    let comum = terceira.caminho().join("comum.pdf");
+    std::fs::write(&comum, pdf_de_paginas(&[(595, 842), (595, 842)])).unwrap();
+    let saida = executar(&argumentos_gerar(&comum, terceira.caminho(), "10")).unwrap();
+    assert!(!saida.contains("assinatura"), "{saida}");
+}
+
+#[test]
+fn ajuda_do_gerar_pdf_explica_que_a_copia_nao_contem_a_assinatura() {
+    let ajuda = executar(&["gerar-pdf".to_string(), "--help".to_string()]).unwrap();
+    assert!(ajuda.contains("Se o PDF tiver assinatura digital, as passadas mostram a aparência dela, mas não a contêm: servem só para imprimir e não comprovam a assinatura. Para enviar ou guardar o documento, use o arquivo original."));
+}
