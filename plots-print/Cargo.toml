@@ -5,3 +5,6 @@ edition = "2021"
 
 [dependencies]
 plots-core = { path = "../plots-core" }
+
+[dev-dependencies]
+proptest = { version = "1.11", default-features = false, features = ["std"] }

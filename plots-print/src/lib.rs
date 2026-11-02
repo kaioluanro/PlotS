@@ -265,6 +265,89 @@ impl Simulador {
     }
 }
 
+/// Motivo pelo qual uma folha final não está correta.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Defeito {
+    /// As páginas das duas faces não são o par esperado para aquela folha.
+    ParNaoEsperado,
+    /// Uma face recebeu uma segunda impressão em vez da face vazia.
+    Sobreposta,
+    /// O verso tem orientação diferente da frente.
+    VersoDeCabecaParaBaixo,
+}
+
+impl Defeito {
+    pub const fn descricao(self) -> &'static str {
+        match self {
+            Self::ParNaoEsperado => "as páginas não formam o par esperado",
+            Self::Sobreposta => "uma face recebeu duas impressões",
+            Self::VersoDeCabecaParaBaixo => "o verso está de cabeça para baixo",
+        }
+    }
+}
+
+/// Resultado do julgamento de uma folha final.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Veredito {
+    Certa,
+    Errada(Vec<Defeito>),
+}
+
+/// Ordena o par de páginas de uma folha; a página em branco fica por último.
+fn ordenar_par(par: (Option<usize>, Option<usize>)) -> (Option<usize>, Option<usize>) {
+    match par {
+        (None, Some(_)) => (par.1, par.0),
+        (Some(a), Some(b)) if a > b => (par.1, par.0),
+        _ => par,
+    }
+}
+
+/// Julga cada folha da pilha, na mesma ordem em que aparece em `pilha`.
+///
+/// `pares_esperados` lista o par de páginas de cada folha do lote, sem repetição.
+/// Uma folha está certa quando as duas faces formam um par ainda não usado por
+/// outra folha, nenhuma face recebeu segunda impressão e as duas faces têm a
+/// mesma orientação. Uma folha sem as duas faces impressas não forma par.
+pub fn conferir_folhas(
+    pilha: &[Folha],
+    pares_esperados: &[(Option<usize>, Option<usize>)],
+) -> Vec<Veredito> {
+    let mut restantes: Vec<_> = pares_esperados
+        .iter()
+        .map(|par| ordenar_par(*par))
+        .collect();
+    pilha
+        .iter()
+        .map(|folha| {
+            let mut defeitos = Vec::new();
+            let par = match (folha.face_a, folha.face_b) {
+                (Some(a), Some(b)) => {
+                    if a.girada != b.girada {
+                        defeitos.push(Defeito::VersoDeCabecaParaBaixo);
+                    }
+                    Some(ordenar_par((a.pagina, b.pagina)))
+                }
+                _ => None,
+            };
+            if folha.sobreimpressao.is_some() {
+                defeitos.push(Defeito::Sobreposta);
+            }
+            let casou = par
+                .and_then(|p| restantes.iter().position(|r| *r == p))
+                .map(|posicao| restantes.swap_remove(posicao))
+                .is_some();
+            if !casou {
+                defeitos.insert(0, Defeito::ParNaoEsperado);
+            }
+            if defeitos.is_empty() {
+                Veredito::Certa
+            } else {
+                Veredito::Errada(defeitos)
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -626,6 +709,257 @@ mod tests {
             .map(|f| (f.face_b.unwrap().pagina, f.face_a.unwrap().pagina))
             .collect();
         assert_eq!(pares, vec![(Some(1), Some(2)), (Some(3), Some(4))]);
+    }
+
+    fn marca_de_teste(pagina: Option<usize>, girada: bool) -> Option<Marca> {
+        Some(Marca { pagina, girada })
+    }
+
+    fn folha_de_teste(face_a: Option<Marca>, face_b: Option<Marca>, sobreposta: bool) -> Folha {
+        Folha {
+            face_a,
+            face_b,
+            face_a_para_cima: true,
+            girada: false,
+            sobreimpressao: sobreposta.then_some((
+                true,
+                Marca {
+                    pagina: Some(99),
+                    girada: false,
+                },
+            )),
+        }
+    }
+
+    #[test]
+    fn conferir_folhas_separa_par_orientacao_e_sobreposicao() {
+        let pilha = [
+            folha_de_teste(
+                marca_de_teste(Some(2), false),
+                marca_de_teste(Some(1), false),
+                false,
+            ),
+            folha_de_teste(
+                marca_de_teste(Some(3), false),
+                marca_de_teste(Some(4), true),
+                false,
+            ),
+            folha_de_teste(
+                marca_de_teste(Some(5), false),
+                marca_de_teste(None, false),
+                false,
+            ),
+            folha_de_teste(
+                marca_de_teste(Some(6), false),
+                marca_de_teste(Some(7), false),
+                true,
+            ),
+            folha_de_teste(
+                marca_de_teste(Some(2), false),
+                marca_de_teste(Some(1), false),
+                false,
+            ),
+            folha_de_teste(marca_de_teste(Some(9), false), None, true),
+        ];
+        let esperados = [
+            (Some(1), Some(2)),
+            (Some(3), Some(4)),
+            (Some(5), None),
+            (Some(6), Some(7)),
+        ];
+        assert_eq!(
+            conferir_folhas(&pilha, &esperados),
+            vec![
+                Veredito::Certa,
+                Veredito::Errada(vec![Defeito::VersoDeCabecaParaBaixo]),
+                Veredito::Certa,
+                Veredito::Errada(vec![Defeito::Sobreposta]),
+                // Mesmo par já usado pela primeira folha: não conta de novo.
+                Veredito::Errada(vec![Defeito::ParNaoEsperado]),
+                Veredito::Errada(vec![Defeito::ParNaoEsperado, Defeito::Sobreposta]),
+            ]
+        );
+    }
+
+    #[test]
+    fn conferir_folhas_aceita_par_em_qualquer_ordem_e_branco_final() {
+        let pilha = [folha_de_teste(
+            marca_de_teste(None, false),
+            marca_de_teste(Some(5), false),
+            false,
+        )];
+        assert_eq!(
+            conferir_folhas(&pilha, &[(Some(5), None)]),
+            vec![Veredito::Certa]
+        );
+        assert_eq!(
+            conferir_folhas(&pilha, &[(Some(4), None)]),
+            vec![Veredito::Errada(vec![Defeito::ParNaoEsperado])]
+        );
+    }
+
+    fn perfil_da_mascara(mascara: u8) -> PerfilImpressora {
+        PerfilImpressora {
+            passada1_inversa: mascara & 1 != 0,
+            passada2_inversa: mascara & 2 != 0,
+            verso_girar_180: mascara & 4 != 0,
+            ..Default::default()
+        }
+    }
+
+    fn mecanica_da_mascara(mascara: u8) -> Mecanica {
+        Mecanica {
+            saida_face_impressa_para_cima: mascara & 1 != 0,
+            saida_no_topo: mascara & 2 != 0,
+            imprime_face_para_cima: mascara & 4 != 0,
+            entrada_pelo_topo: mascara & 8 != 0,
+            giro_segunda_passada: mascara & 16 != 0,
+        }
+    }
+
+    fn gestos_possiveis() -> Vec<Recolocacao> {
+        let mut gestos = Vec::new();
+        for virar_maco in [false, true] {
+            for inverter_ordem in [false, true] {
+                for girar_180 in [false, true] {
+                    gestos.push(Recolocacao {
+                        virar_maco,
+                        inverter_ordem,
+                        girar_180,
+                        retirar_folhas: 0,
+                    });
+                }
+            }
+        }
+        gestos
+    }
+
+    type Combinacao = (PerfilImpressora, Mecanica, Recolocacao);
+
+    /// Para cada um dos oito perfis, escolhe a primeira mecânica (entre as 32
+    /// combinações dos cinco booleanos físicos) e o primeiro gesto que deixam um
+    /// lote-piloto de quatro páginas na ordem certa. Um perfil sem nenhuma
+    /// combinação faz a inicialização falhar; nenhum perfil é descartado.
+    fn combinacoes_coerentes() -> &'static [Combinacao] {
+        static TABELA: std::sync::OnceLock<Vec<Combinacao>> = std::sync::OnceLock::new();
+        TABELA
+            .get_or_init(|| {
+                (0u8..8)
+                    .map(|mascara_perfil| {
+                        let perfil = perfil_da_mascara(mascara_perfil);
+                        let encontrada = (0u8..32)
+                            .flat_map(|mascara| {
+                                gestos_possiveis()
+                                    .into_iter()
+                                    .map(move |gesto| (mecanica_da_mascara(mascara), gesto))
+                            })
+                            .find(|(mecanica, gesto)| {
+                                lote_correto(
+                                    executar(4, *mecanica, perfil, *gesto).pilha(),
+                                    1,
+                                    2,
+                                    4,
+                                )
+                            });
+                        let (mecanica, gesto) = encontrada.unwrap_or_else(|| {
+                            panic!("o perfil {mascara_perfil} não tem mecânica coerente")
+                        });
+                        (perfil, mecanica, gesto)
+                    })
+                    .collect()
+            })
+            .as_slice()
+    }
+
+    /// Confere o maço inteiro de um documento: cada lote deve sair com as
+    /// folhas certas, na ordem 1|2, 3|4…, e sem nenhuma folha de cabeça para baixo.
+    fn maco_confere(
+        total: usize,
+        folhas_por_lote: usize,
+        ordem: OrdemPassadas,
+        perfil: PerfilImpressora,
+        mecanismo: Mecanica,
+        gesto: Recolocacao,
+    ) -> Result<(), String> {
+        let lotes =
+            plano_documento(total, folhas_por_lote, ordem, perfil).map_err(|e| e.to_string())?;
+        let mut primeira_pagina = 1;
+        for lote in lotes {
+            let folhas_esperadas =
+                ((total.saturating_sub(primeira_pagina) + 2) / 2).min(folhas_por_lote);
+            let resultado = executar_lote(&lote.passada1, &lote.passada2, mecanismo, gesto);
+            if !lote_correto(resultado.pilha(), primeira_pagina, folhas_esperadas, total) {
+                return Err(format!(
+                    "lote a partir da página {primeira_pagina} com {folhas_esperadas} folha(s) saiu errado"
+                ));
+            }
+            primeira_pagina += folhas_esperadas * 2;
+        }
+        Ok(())
+    }
+
+    proptest::proptest! {
+        #![proptest_config(proptest::test_runner::Config {
+            cases: 4000,
+            failure_persistence: None,
+            ..proptest::test_runner::Config::default()
+        })]
+
+        #[test]
+        fn maco_final_fica_em_ordem_para_cada_perfil_com_mecanica_coerente(
+            indice_perfil in 0usize..8,
+            total in 1usize..=200,
+            folhas_por_lote in 1usize..=50,
+        ) {
+            let (perfil, mecanismo, gesto) = combinacoes_coerentes()[indice_perfil];
+            let resultado = maco_confere(
+                total,
+                folhas_por_lote,
+                OrdemPassadas::default(),
+                perfil,
+                mecanismo,
+                gesto,
+            );
+            let motivo = resultado.err().unwrap_or_default();
+            proptest::prop_assert!(
+                motivo.is_empty(),
+                "perfil {indice_perfil}, mecânica {mecanismo:?}, gesto {gesto:?}: {motivo}"
+            );
+        }
+    }
+
+    #[test]
+    fn ordem_impares_com_perfis_das_impressoras_virtuais_mantem_folhas_certas() {
+        let traseira = PerfilImpressora {
+            passada1_inversa: true,
+            passada2_inversa: true,
+            ..Default::default()
+        };
+        let gesto = Recolocacao {
+            virar_maco: true,
+            ..Default::default()
+        };
+        for (mecanismo, perfil) in [
+            (Mecanica::traseira(), traseira),
+            (Mecanica::gaveta(), PerfilImpressora::default()),
+        ] {
+            for total in 1..=40 {
+                for folhas in 1..=6 {
+                    let resultado = maco_confere(
+                        total,
+                        folhas,
+                        OrdemPassadas::ImparesPrimeiro,
+                        perfil,
+                        mecanismo,
+                        gesto,
+                    );
+                    assert!(
+                        resultado.is_ok(),
+                        "total {total}, lote {folhas}: {resultado:?}"
+                    );
+                }
+            }
+        }
     }
 }
 pub mod job;

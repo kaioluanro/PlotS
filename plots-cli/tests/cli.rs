@@ -414,7 +414,7 @@ fn gerar_pdf_nao_avisa_pagina_quadrada_nem_pagina_sem_verso() {
 fn comandos_ainda_nao_disponiveis_dizem_o_que_usar() {
     for comando in ["imprimir", "calibrar"] {
         let esperado = format!(
-            "o comando '{comando}' ainda não está disponível; use 'simular' ou 'gerar-pdf'"
+            "o comando '{comando}' ainda não está disponível; use 'simular', 'gerar-pdf' ou 'gerar-calibracao'"
         );
         assert_eq!(executar(&args(&[comando])).unwrap_err(), esperado);
         assert_eq!(
@@ -426,7 +426,8 @@ fn comandos_ainda_nao_disponiveis_dizem_o_que_usar() {
 
 #[test]
 fn comando_ausente_ou_desconhecido_lista_os_comandos_validos() {
-    let esperado = "comando ausente ou desconhecido; use 'simular' ou 'gerar-pdf'";
+    let esperado =
+        "comando ausente ou desconhecido; use 'simular', 'gerar-pdf' ou 'gerar-calibracao'";
     assert_eq!(executar(&args(&[])).unwrap_err(), esperado);
     assert_eq!(executar(&args(&["abrir"])).unwrap_err(), esperado);
     assert_eq!(executar(&args(&["arquivo.pdf"])).unwrap_err(), esperado);
@@ -528,4 +529,418 @@ fn executar_com_io_aceita_entrada_vazia_em_ajuda() {
     assert!(String::from_utf8(saida)
         .unwrap()
         .contains("plots gerar-pdf"));
+}
+
+fn caminho_texto(caminho: &Path) -> String {
+    caminho.to_string_lossy().into_owned()
+}
+
+fn caixa_de_pagina(doc: &lopdf::Document, pagina: lopdf::ObjectId) -> Vec<f32> {
+    doc.get_object(pagina)
+        .unwrap()
+        .as_dict()
+        .unwrap()
+        .get(b"MediaBox")
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|valor| valor.as_float().unwrap())
+        .collect()
+}
+
+#[test]
+fn gerar_calibracao_grava_quatro_paginas_no_papel_padrao() {
+    let pasta = Pasta::nova("calibracao-padrao");
+    let saida = executar(&args(&[
+        "gerar-calibracao",
+        "--saida",
+        &caminho_texto(pasta.caminho()),
+    ]))
+    .unwrap();
+    assert!(saida.contains("Nenhum arquivo foi enviado à impressora"));
+    let doc = lopdf::Document::load(pasta.caminho().join("calibracao.pdf")).unwrap();
+    let paginas: Vec<_> = doc.get_pages().into_values().collect();
+    assert_eq!(paginas.len(), 4);
+    for pagina in &paginas {
+        assert_eq!(caixa_de_pagina(&doc, *pagina), vec![0.0, 0.0, 595.0, 842.0]);
+    }
+    let conteudos: Vec<Vec<u8>> = paginas
+        .iter()
+        .map(|pagina| doc.get_page_content(*pagina))
+        .collect();
+    for i in 0..conteudos.len() {
+        for j in (i + 1)..conteudos.len() {
+            assert_ne!(conteudos[i], conteudos[j]);
+        }
+    }
+}
+
+#[test]
+fn gerar_calibracao_aceita_cada_papel_com_sua_caixa() {
+    for (papel, largura, altura) in [
+        ("a4", 595.0, 842.0),
+        ("a5", 420.0, 595.0),
+        ("carta", 612.0, 792.0),
+        ("oficio", 612.0, 936.0),
+        ("legal", 612.0, 1008.0),
+    ] {
+        let pasta = Pasta::nova(papel);
+        executar(&args(&[
+            "gerar-calibracao",
+            "--saida",
+            &caminho_texto(pasta.caminho()),
+            "--papel",
+            papel,
+        ]))
+        .unwrap();
+        let doc = lopdf::Document::load(pasta.caminho().join("calibracao.pdf")).unwrap();
+        let paginas: Vec<_> = doc.get_pages().into_values().collect();
+        assert_eq!(paginas.len(), 4, "papel {papel}");
+        for pagina in paginas {
+            assert_eq!(
+                caixa_de_pagina(&doc, pagina),
+                vec![0.0, 0.0, largura, altura],
+                "papel {papel}"
+            );
+        }
+    }
+}
+
+#[test]
+fn gerar_calibracao_nao_sobrescreve_arquivo_existente() {
+    let pasta = Pasta::nova("calibracao-existente");
+    let saida = caminho_texto(pasta.caminho());
+    executar(&args(&["gerar-calibracao", "--saida", &saida])).unwrap();
+    let arquivo = pasta.caminho().join("calibracao.pdf");
+    let conteudo = std::fs::read(&arquivo).unwrap();
+    let erro = executar(&args(&["gerar-calibracao", "--saida", &saida])).unwrap_err();
+    assert!(erro.contains("já existe"));
+    assert_eq!(std::fs::read(&arquivo).unwrap(), conteudo);
+}
+
+#[test]
+fn gerar_calibracao_rejeita_entradas_invalidas_sem_criar_arquivo() {
+    let pasta = Pasta::nova("calibracao-invalida");
+    let saida = caminho_texto(pasta.caminho());
+    let erro = executar(&args(&[
+        "gerar-calibracao",
+        "--saida",
+        &saida,
+        "--papel",
+        "tabloide",
+    ]))
+    .unwrap_err();
+    assert!(erro.contains("papel desconhecido"));
+    let erro = executar(&args(&[
+        "gerar-calibracao",
+        "--saida",
+        &saida,
+        "--saida",
+        &saida,
+    ]))
+    .unwrap_err();
+    assert!(erro.contains("repetida"));
+    let erro = executar(&args(&["gerar-calibracao"])).unwrap_err();
+    assert!(erro.contains("--saida"));
+    let inexistente = pasta.caminho().join("nao-existe");
+    let erro = executar(&args(&[
+        "gerar-calibracao",
+        "--saida",
+        &caminho_texto(&inexistente),
+    ]))
+    .unwrap_err();
+    assert!(erro.contains("diretório"));
+    assert_eq!(std::fs::read_dir(pasta.caminho()).unwrap().count(), 0);
+}
+
+#[test]
+fn ordem_impares_inverte_as_passadas_e_mantem_folhas_certas() {
+    for (impressora, frente) in [("traseira", "3, 1"), ("gaveta", "1, 3")] {
+        let saida = executar(&args(&[
+            "simular",
+            "--paginas",
+            "4",
+            "--lote",
+            "2",
+            "--impressora",
+            impressora,
+            "--ordem",
+            "impares",
+        ]))
+        .unwrap();
+        assert!(saida.contains("Ordem das passadas: ímpares primeiro"));
+        assert!(saida.contains(&format!("Passada 1: {frente}")));
+        assert!(saida.contains("1|2: certa"));
+        assert!(saida.contains("3|4: certa"));
+        assert!(saida.contains("2 de 2 folhas corretas"));
+    }
+}
+
+#[test]
+fn ordem_padrao_nao_mostra_aviso_de_ordem() {
+    let saida = executar(&args(&[
+        "simular",
+        "--paginas",
+        "4",
+        "--lote",
+        "2",
+        "--impressora",
+        "gaveta",
+        "--ordem",
+        "pares",
+    ]))
+    .unwrap();
+    assert!(!saida.contains("Ordem das passadas"));
+    assert!(saida.contains("Passada 1: 2, 4"));
+}
+
+#[test]
+fn ordem_invalida_ou_repetida_da_erro_claro_em_simular_e_gerar_pdf() {
+    let erro = executar(&args(&[
+        "simular",
+        "--paginas",
+        "2",
+        "--lote",
+        "1",
+        "--impressora",
+        "gaveta",
+        "--ordem",
+        "meio",
+    ]))
+    .unwrap_err();
+    assert!(erro.contains("--ordem deve ser pares ou impares"));
+    let erro = executar(&args(&[
+        "simular",
+        "--paginas",
+        "2",
+        "--lote",
+        "1",
+        "--impressora",
+        "gaveta",
+        "--ordem",
+        "pares",
+        "--ordem",
+        "impares",
+    ]))
+    .unwrap_err();
+    assert!(erro.contains("--ordem foi informado mais de uma vez"));
+
+    let pasta = Pasta::nova("ordem-invalida");
+    let entrada = pasta.caminho().join("entrada.pdf");
+    std::fs::write(&entrada, pdf_de_paginas(&[(595, 842), (595, 842)])).unwrap();
+    let mut invalida = argumentos_gerar(&entrada, pasta.caminho(), "10");
+    invalida.extend(["--ordem".into(), "meio".into()]);
+    assert!(executar(&invalida)
+        .unwrap_err()
+        .contains("--ordem deve ser pares ou impares"));
+    let mut repetida = argumentos_gerar(&entrada, pasta.caminho(), "10");
+    repetida.extend([
+        "--ordem".into(),
+        "pares".into(),
+        "--ordem".into(),
+        "pares".into(),
+    ]);
+    assert!(executar(&repetida)
+        .unwrap_err()
+        .contains("--ordem foi informado mais de uma vez"));
+    assert!(!pasta.caminho().join("lote-0001-passada-1.pdf").exists());
+}
+
+#[test]
+fn gerar_pdf_com_ordem_impares_grava_passadas_trocadas() {
+    let pasta = Pasta::nova("gerar-impares");
+    let entrada = pasta.caminho().join("entrada.pdf");
+    std::fs::write(
+        &entrada,
+        pdf_de_paginas(&[(595, 842), (595, 842), (595, 842), (595, 842)]),
+    )
+    .unwrap();
+    let mut argumentos = argumentos_gerar(&entrada, pasta.caminho(), "2");
+    argumentos.extend(["--ordem".into(), "impares".into()]);
+    let saida = executar(&argumentos).unwrap();
+    assert!(saida.contains("Ordem das passadas: ímpares primeiro"));
+    let primeira = lopdf::Document::load(pasta.caminho().join("lote-0001-passada-1.pdf")).unwrap();
+    let pagina = *primeira.get_pages().values().next().unwrap();
+    assert_eq!(
+        primeira
+            .get_object(pagina)
+            .unwrap()
+            .as_dict()
+            .unwrap()
+            .get(b"Marker")
+            .unwrap()
+            .as_i64()
+            .unwrap(),
+        1
+    );
+    let segunda = lopdf::Document::load(pasta.caminho().join("lote-0001-passada-2.pdf")).unwrap();
+    let pagina = *segunda.get_pages().values().next().unwrap();
+    assert_eq!(
+        segunda
+            .get_object(pagina)
+            .unwrap()
+            .as_dict()
+            .unwrap()
+            .get(b"Marker")
+            .unwrap()
+            .as_i64()
+            .unwrap(),
+        2
+    );
+}
+
+#[test]
+fn gesto_sem_virar_marca_folhas_erradas_e_sai_com_codigo_zero() {
+    let saida = executar_binario(&[
+        "simular",
+        "--paginas",
+        "4",
+        "--lote",
+        "2",
+        "--impressora",
+        "traseira",
+        "--simular-erro",
+        "sem-virar",
+    ]);
+    assert_eq!(saida.status.code(), Some(0));
+    let texto = String::from_utf8(saida.stdout).unwrap();
+    assert!(texto.contains("Gesto errado simulado: sem-virar"));
+    assert!(texto.contains("0 de 2 folhas corretas"));
+    assert_eq!(texto.matches(": errada").count(), 2);
+    assert_eq!(texto.matches(": certa").count(), 0);
+}
+
+#[test]
+fn gesto_girado_marca_verso_de_cabeca_para_baixo_nas_duas_impressoras() {
+    for impressora in ["traseira", "gaveta"] {
+        let saida = executar_binario(&[
+            "simular",
+            "--paginas",
+            "4",
+            "--lote",
+            "2",
+            "--impressora",
+            impressora,
+            "--simular-erro",
+            "girado",
+        ]);
+        assert_eq!(saida.status.code(), Some(0));
+        let texto = String::from_utf8(saida.stdout).unwrap();
+        assert!(texto.contains("Gesto errado simulado: girado"));
+        assert!(texto.contains("0 de 2 folhas corretas"));
+        assert_eq!(
+            texto.matches("o verso está de cabeça para baixo").count(),
+            2
+        );
+    }
+}
+
+#[test]
+fn gesto_com_folha_a_menos_mostra_erro_e_reimprime_o_lote() {
+    let saida = executar_binario(&[
+        "simular",
+        "--paginas",
+        "4",
+        "--lote",
+        "2",
+        "--impressora",
+        "gaveta",
+        "--simular-erro",
+        "folha-a-menos",
+    ]);
+    assert_eq!(saida.status.code(), Some(0));
+    let texto = String::from_utf8(saida.stdout).unwrap();
+    assert!(texto.contains("Gesto errado simulado: folha-a-menos"));
+    assert!(texto.contains("Erro no lote: quantidade de folhas: necessárias 2, disponíveis 1"));
+    assert!(texto.contains("Reimprimindo o lote desde a frente"));
+    assert_eq!(texto.matches("Passada 1:").count(), 2);
+    assert!(texto.contains("2 de 2 folhas corretas"));
+    assert!(texto.contains("1|2: certa"));
+    assert!(texto.contains("3|4: certa"));
+}
+
+#[test]
+fn simular_correto_diz_certa_por_folha_e_resultado_do_lote() {
+    let saida = executar_binario(&[
+        "simular",
+        "--paginas",
+        "5",
+        "--lote",
+        "2",
+        "--impressora",
+        "traseira",
+    ]);
+    assert_eq!(saida.status.code(), Some(0));
+    let texto = String::from_utf8(saida.stdout).unwrap();
+    assert!(texto.contains("1|2: certa"));
+    assert!(texto.contains("3|4: certa"));
+    assert!(texto.contains("5|branca: certa"));
+    assert!(texto.contains("Resultado do lote: 2 de 2 folhas corretas"));
+    assert!(texto.contains("Resultado do lote: 1 de 1 folhas corretas"));
+    assert!(!texto.contains("errada"));
+}
+
+#[test]
+fn simular_erro_rejeita_valor_invalido_ou_repetido() {
+    let erro = executar(&args(&[
+        "simular",
+        "--paginas",
+        "2",
+        "--lote",
+        "1",
+        "--impressora",
+        "gaveta",
+        "--simular-erro",
+        "torto",
+    ]))
+    .unwrap_err();
+    assert!(erro.contains("--simular-erro deve ser sem-virar, girado ou folha-a-menos"));
+    let erro = executar(&args(&[
+        "simular",
+        "--paginas",
+        "2",
+        "--lote",
+        "1",
+        "--impressora",
+        "gaveta",
+        "--simular-erro",
+        "girado",
+        "--simular-erro",
+        "girado",
+    ]))
+    .unwrap_err();
+    assert!(erro.contains("--simular-erro foi informado mais de uma vez"));
+}
+
+#[test]
+fn ajuda_mostra_opcoes_novas_e_o_comando_de_calibracao() {
+    let geral = executar(&args(&["--help"])).unwrap();
+    assert!(geral.contains("gerar-calibracao"));
+    assert!(geral.contains("--ordem pares|impares"));
+    assert!(geral.contains("--simular-erro sem-virar|girado|folha-a-menos"));
+    assert!(geral.contains("--papel a4|a5|carta|oficio|legal"));
+
+    let simular = executar(&args(&["simular", "--help"])).unwrap();
+    assert!(simular.contains("--ordem pares|impares"));
+    assert!(simular.contains("folha-a-menos"));
+
+    let gerar = executar(&args(&["gerar-pdf", "--help"])).unwrap();
+    assert!(gerar.contains("--ordem pares|impares"));
+
+    let calibracao = executar(&args(&["gerar-calibracao", "--help"])).unwrap();
+    assert!(calibracao.contains("plots gerar-calibracao"));
+    assert!(calibracao.contains("--papel a4|a5|carta|oficio|legal"));
+    assert!(!calibracao.contains("plots simular"));
+    assert!(!calibracao.contains("plots gerar-pdf"));
+}
+
+#[test]
+fn erro_de_gerar_calibracao_mostra_somente_o_proprio_uso() {
+    let saida = executar_binario(&["gerar-calibracao", "--papel", "tabloide"]);
+    assert_eq!(saida.status.code(), Some(2));
+    let erro = String::from_utf8(saida.stderr).unwrap();
+    assert!(erro.contains("plots gerar-calibracao"));
+    assert!(!erro.contains("plots simular"));
+    assert!(!erro.contains("plots gerar-pdf"));
 }

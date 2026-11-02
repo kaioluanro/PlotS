@@ -5,6 +5,9 @@ use std::collections::{HashMap, HashSet};
 use lopdf::{dictionary, Dictionary, Document, Object, ObjectId};
 use plots_core::{Pagina, LIMITE_PAGINAS};
 
+pub mod calibracao;
+pub use calibracao::{pdf_calibracao, PapelCalibracao, PAGINAS_CALIBRACAO};
+
 #[derive(Debug)]
 pub enum ErroPdf {
     Pdf(lopdf::Error),
