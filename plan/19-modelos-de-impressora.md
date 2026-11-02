@@ -1,6 +1,6 @@
 # Modelos de impressora
 
-**Estado:** Em andamento: comportamento definido; falta levar às impressoras virtuais.
+**Estado:** Em andamento: impressoras virtuais prontas (166adee); falta levar os modelos à calibração e à escolha de modo.
 
 ## Objetivo
 
@@ -28,7 +28,7 @@ Os testes físicos ficam para quando houver impressora. Até lá, duas impressor
 
 ## De onde vem o gesto da laser
 
-O manual da Brother diz, em tradução: imprimir só as pares e recolocar o papel impresso na bandeja, com a face em branco para cima e a página de cima primeiro. Isso confirma "imprime na face voltada para cima" e substitui a virada informada na Oficina do Maço, que não fechava: virar deixaria a face impressa para cima, e o verso cairia sobre ela.
+Conforme a p. 33 do manual da série HL-1210W, nesta laser o maço volta à bandeja sem ser virado. Por isso, ela imprime na face voltada para cima. Isso substitui a virada informada na Oficina do Maço, que não fechava: virar deixaria a face impressa para cima, e o verso cairia sobre ela.
 
 ## Exceção à especificação
 
@@ -37,11 +37,16 @@ O manual da Brother diz, em tradução: imprimir só as pares e recolocar o pape
 ## Plano de implementação
 
 - [x] Registrar o comportamento dos dois modelos
-- [ ] Levar os dois modelos ao simulador, em `Mecanica` e nos perfis embutidos, com a virada pela borda de cima e o gesto sem virar, e testes contra o simulador
-- [ ] Renomear as impressoras simuladas e ajustar `plots simular`, `plots imprimir --simular` e a barra lateral
+- [x] Levar os dois modelos ao simulador, em `Mecanica` e nos perfis embutidos, com a virada pela borda de cima e o gesto sem virar, e testes contra o simulador (166adee)
+- [x] Ajustar `plots simular` e `plots imprimir --simular`; os nomes `Simulada — Traseira` e `Simulada — Gaveta` ficam
 - [ ] Usar os dois modelos como ponto de partida ao calibrar uma fila real, e na escolha de modo da barra lateral
-- [ ] Rever a exceção no plano 11 e o modo que a barra lateral deduz de `passada1_inversa`
+- [ ] **Corrigir o modo que a barra lateral deduz de `passada1_inversa`** (`src-tauri/src/impressoras.rs`): agora a laser também inverte a frente, e uma fila calibrada como laser apareceria como "Traseira". O perfil salvo precisa guardar o modelo
+- [ ] Perfil salvo expressar a virada pela borda de cima: `GestoRecolocar` hoje só guarda virar ou não
 - [ ] Confirmar com um lote de 2 ou 3 folhas, quando houver impressora
+
+## Modelo físico
+
+Folha certa exige as duas faces em pé, no referencial da folha lida como página de livro. A virada pela borda de cima é virar mais girar 180° no plano. A cobertura exaustiva é de 16 verificadas e 16 puladas por perfil.
 
 ## Pronto quando
 

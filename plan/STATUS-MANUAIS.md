@@ -42,8 +42,9 @@ Requisitos: OK 37 · PARTIAL 34 · MISSING 20 · BUG 0 · N/A 2 (93). Detalhes e
 | windows-filas | `a9f9185` | concluído |
 | windows-envio | `126ac26` | concluído; conferido só na fila de PDF do Windows, sem impressora real |
 | lateral-impressoras | `f6e3433` | concluído; botão de imprimir ainda desabilitado |
+| modelos-virtuais | `166adee` | concluído; simuladas imitam os dois modelos, sem medição em papel |
 
-**Próximo:** impressoras virtuais dos dois modelos (`19-modelos-de-impressora`).
+**Próximo:** ligar o botão de imprimir ao envio, com cartões de recolocação; corrigir antes o modo da lateral (`19-modelos-de-impressora`, `11-lateral-impressoras`, `13-fluxo-e-recolocacao`).
 
 ## Bloqueado ou dependente do usuário
 
