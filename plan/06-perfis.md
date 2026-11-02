@@ -1,6 +1,6 @@
 # Perfis salvos
 
-**Estado:** Não iniciado · OK 0 · PARTIAL 0 · MISSING 2 · BUG 0 · N/A 0
+**Estado:** Em andamento · OK 0 · PARTIAL 2 · MISSING 0 · BUG 0 · N/A 0
 
 ## Objetivo
 
@@ -9,9 +9,10 @@ Guardar por fila de impressão o que foi calibrado, para não medir de novo.
 ## Plano de implementação
 
 - [x] Estrutura `PerfilImpressora` no núcleo
-- [ ] Ler e gravar `%APPDATA%/plots/perfis.toml` com `serde`, `toml` e `directories`
-- [ ] Chave pelo nome da fila, com apelido
-- [ ] Arquivo inválido gera erro claro, sem apagar o que existe; gravação atômica
+- [x] Ler e gravar `%APPDATA%/plots/perfis.toml` com `serde`, `toml` e `directories`, no crate `plots-perfis`
+- [x] Chave pelo nome da fila, com apelido
+- [x] Arquivo inválido gera erro claro, sem apagar o que existe; gravação atômica
+- [ ] Usar os perfis em `plots calibrar` e `plots imprimir`
 
 ## Pronto quando
 
@@ -25,8 +26,8 @@ Um perfil salvo é reaberto igual, e arquivo corrompido nunca derruba o programa
 
 | ID | Requisito | Situação |
 |---|---|---|
-| PS-A045 | Config com serde, toml e directories; perfis em `%APPDATA%/plots/perfis.toml` | MISSING |
-| PS-A063 | Perfil por fila: chave com o nome da fila e apelido amigável | MISSING |
+| PS-A045 | Config com serde, toml e directories; perfis em `%APPDATA%/plots/perfis.toml` | PARTIAL (72030fb) |
+| PS-A063 | Perfil por fila: chave com o nome da fila e apelido amigável | PARTIAL (72030fb) |
 
 ## Licenças de terceiros
 

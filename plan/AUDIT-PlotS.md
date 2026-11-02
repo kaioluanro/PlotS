@@ -2,7 +2,7 @@
 
 Data: 2026-11-02. A especificação foi dividida depois em `plan/`, então as linhas de `AGENTS.md` citadas abaixo são da versão anterior. Escopo: especificação em `AGENTS.md` (seções de Fases, Modo simulação, Perfis, Papel, Múltiplas impressoras, Windows e Interface). Nenhum código de produto foi alterado. Nenhum commit. `Cargo.toml`, `Cargo.lock`, `AGENTS.md`, `CLAUDE.md` e `estilo-ui-ux.md` mantêm os mesmos hashes (md5 conferido antes e depois). **Atenção:** o `.gitignore` foi reescrito às 13:56:41, durante a auditoria, por outro processo ou usuário (este agente não o editou). O conteúdo novo acrescenta `/.claude/`, `/.codex/`, `/estilo-ui-ux.md`, `/plan/`, `/AUDIT-*.md` e `/STATUS-MANUAIS.md`, e por isso o `git status` mostra só `AGENTS.md` e `CLAUDE.md`. Não foi revertido; decisão do usuário.
 
-Contagem: **OK 29 · PARTIAL 21 · MISSING 41 · BUG 0 · N/A 2** (93 requisitos)
+Contagem: **OK 29 · PARTIAL 23 · MISSING 39 · BUG 0 · N/A 2** (93 requisitos)
 
 Verificação executada:
 - `cargo test --workspace --locked`: 51 testes passam (9 de integração do CLI, 19 em plots-core, 12 em plots-pdf, 11 em plots-print). Tempo de 30 s.
@@ -69,7 +69,7 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A042 | Arquitetura | pdfium-render para rasterizar (impressoras que não aceitam PDF) | MISSING | Fase 3. Sem dependência. |
 | PS-A043 | Arquitetura | Linux e macOS com IPP/CUPS ou `lp` | MISSING | Fase futura. AGENTS decide que o CUPS fica para depois do backend Windows. |
 | PS-A044 | Arquitetura | tokio, um job por impressora em paralelo | MISSING | Fase 5. |
-| PS-A045 | Arquitetura | Config com serde, toml e directories; perfis em `%APPDATA%/plots/perfis.toml` | MISSING | Fase 3. Nenhuma dessas dependências existe. |
+| PS-A045 | Arquitetura | Config com serde, toml e directories; perfis em `%APPDATA%/plots/perfis.toml` | PARTIAL | Biblioteca `plots-perfis` (72030fb); falta usar no CLI e na interface. |
 | PS-A046 | Arquitetura | Erros com thiserror e logs com tracing | PARTIAL | Erros escritos à mão (`plots-core/src/lib.rs:107-128`, `plots-pdf/src/lib.rs:8-33`). Sem thiserror nem tracing. |
 | PS-A047 | Arquitetura | Frontend React + TypeScript, CSS Modules, lucide-react, Radix | MISSING | Fase 4. |
 | PS-A048 | Windows | Impressão só pelo PlotS, sem diálogo, envio direto ao spooler | MISSING | Sem backend Windows. |
@@ -87,7 +87,7 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A060 | Papel | Opção "Ajustar ao papel" (imprimir Carta em A4) | MISSING | Não existe no código. |
 | PS-A061 | Múltiplas | Marcar várias impressoras e enviar a mesma origem, cada uma com o perfil próprio | MISSING | CLI aceita uma impressora virtual por comando. |
 | PS-A062 | Múltiplas | Descoberta das filas do sistema (EnumPrintersW) | MISSING | Fase 3/5. |
-| PS-A063 | Múltiplas | Perfil por fila: chave com o nome da fila e apelido amigável | MISSING | Fase 5. |
+| PS-A063 | Múltiplas | Perfil por fila: chave com o nome da fila e apelido amigável | PARTIAL | Chave pelo nome exato da fila e apelido em `plots-perfis` (72030fb); falta a tela de apelido. |
 | PS-A064 | Múltiplas | Máquina de estados por job: Ocioso, FrenteEnviada, AguardandoRecolocacao, VersoEnviado, Concluído, Erro | PARTIAL | `plots-print/src/job.rs:28-35` usa `Pronto` no lugar de `Ocioso`. Demais estados existem. |
 | PS-A065 | Múltiplas | Modos espelho e divisão | PARTIAL | `plots-core/src/distribuicao.rs:52-80`, testes em lib 86-124. Não é usado por CLI nem UI. |
 | PS-A066 | Múltiplas | Consulta periódica do spooler; avisa papel acabado ou atolado | MISSING | Fase 5. |

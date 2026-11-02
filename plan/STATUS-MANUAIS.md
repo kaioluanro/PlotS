@@ -1,6 +1,6 @@
 # STATUS
 
-Requisitos: OK 29 · PARTIAL 21 · MISSING 41 · BUG 0 · N/A 2 (93). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
+Requisitos: OK 29 · PARTIAL 23 · MISSING 39 · BUG 0 · N/A 2 (93). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
 
 | Plano | OK | PARTIAL | MISSING | BUG | N/A | Estado |
 |---|---|---|---|---|---|---|
@@ -10,7 +10,7 @@ Requisitos: OK 29 · PARTIAL 21 · MISSING 41 · BUG 0 · N/A 2 (93). Detalhes e
 | [Modo simulação](03-simulacao.md) | 7 | 2 | 1 | 0 | 1 | Em andamento |
 | [Calibração](04-calibracao.md) | 2 | 2 | 1 | 0 | 0 | Em andamento |
 | [Tamanhos de papel](05-tamanhos-de-papel.md) | 5 | 1 | 2 | 0 | 0 | Em andamento |
-| [Perfis salvos](06-perfis.md) | 0 | 0 | 2 | 0 | 0 | Não iniciado |
+| [Perfis salvos](06-perfis.md) | 0 | 2 | 0 | 0 | 0 | Em andamento |
 | [CLI de impressão](07-cli-impressao.md) | 2 | 1 | 2 | 0 | 0 | Em andamento |
 | [Impressão no Windows](08-impressao-windows.md) | 0 | 1 | 7 | 0 | 0 | Em andamento |
 | [Janela, barra superior e abas](09-janela-e-abas.md) | 0 | 0 | 4 | 0 | 0 | Não iniciado |
@@ -34,7 +34,8 @@ Requisitos: OK 29 · PARTIAL 21 · MISSING 41 · BUG 0 · N/A 2 (93). Detalhes e
 | fase2-calibracao | `cf22592` | concluído |
 | fase2-folhas | `6baa24a` | concluído |
 | modelo-gaveta | `1301405` | concluído |
-| perfis | — | em revisão |
+| perfis | `72030fb` | concluído |
+| pdfs-reais | — | em depuração, prioridade: 10 de 12 PDFs reais recusados |
 | interface-base | — | em implementação |
 
 **Próximo:** `plots imprimir` com backend simulado e `plots calibrar` (`04-calibracao`, `07-cli-impressao`).
