@@ -11,7 +11,9 @@ Transformar o plano de cada lote em PDFs com a ordem e a rotação certas, sem p
 - [x] `plots-pdf` gera as passadas com `lopdf`, com rotação e página em branco
 - [x] `plots gerar-pdf`, sem sobrescrever e removendo só o que criou em caso de falha
 - [x] Recusa de PDF criptografado e de formulários que exigem regeneração
-- [ ] Validar ordem e rotação no Firefox (em andamento em `fase2-folhas`)
+- [ ] Validar ordem e rotação no Firefox (o modo headless não gerou imagem; aguarda escolha do usuário)
+- [ ] Tirar do PDF gerado recursos de páginas de fora do lote e o `/ID` do documento original, com teste
+- [ ] Limitar os bytes por fluxo de conteúdo para conter PDF malicioso
 - [ ] Exercitar com PDFs reais de formulários e anotações
 
 ## Pronto quando

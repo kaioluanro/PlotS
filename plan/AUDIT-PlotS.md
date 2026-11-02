@@ -2,7 +2,7 @@
 
 Data: 2026-11-02. A especificação foi dividida depois em `plan/`, então as linhas de `AGENTS.md` citadas abaixo são da versão anterior. Escopo: especificação em `AGENTS.md` (seções de Fases, Modo simulação, Perfis, Papel, Múltiplas impressoras, Windows e Interface). Nenhum código de produto foi alterado. Nenhum commit. `Cargo.toml`, `Cargo.lock`, `AGENTS.md`, `CLAUDE.md` e `estilo-ui-ux.md` mantêm os mesmos hashes (md5 conferido antes e depois). **Atenção:** o `.gitignore` foi reescrito às 13:56:41, durante a auditoria, por outro processo ou usuário (este agente não o editou). O conteúdo novo acrescenta `/.claude/`, `/.codex/`, `/estilo-ui-ux.md`, `/plan/`, `/AUDIT-*.md` e `/STATUS-MANUAIS.md`, e por isso o `git status` mostra só `AGENTS.md` e `CLAUDE.md`. Não foi revertido; decisão do usuário.
 
-Contagem: **OK 27 · PARTIAL 22 · MISSING 42 · BUG 0 · N/A 2** (93 requisitos)
+Contagem: **OK 29 · PARTIAL 21 · MISSING 41 · BUG 0 · N/A 2** (93 requisitos)
 
 Verificação executada:
 - `cargo test --workspace --locked`: 51 testes passam (9 de integração do CLI, 19 em plots-core, 12 em plots-pdf, 11 em plots-print). Tempo de 30 s.
@@ -61,8 +61,8 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A034 | Modo simulação | Vista por lote com passada 1, pilha, passada 2 e folhas finais marcadas certo/errado ("3 de 3 folhas corretas") | PARTIAL | CLI com certa/errada por folha e "N de M folhas corretas" (cf22592); falta a vista na interface. O CLI imprime as listas (`plots-cli/src/lib.rs:155-220`). Não há marcação certo/errado nem contagem. |
 | PS-A035 | Modo simulação | Cartão EM ANDAMENTO com "Simular verso" | MISSING | Fase 4. |
 | PS-A036 | Modo simulação | Exportar `passada1.pdf` e `passada2.pdf` para abrir no Firefox | PARTIAL | `gerar-pdf` gera os PDFs (`plots-cli/src/lib.rs:225-310`). Nomes diferentes. Abertura no Firefox não verificada. |
-| PS-A037 | Modo simulação | Exportar PDF de folhas finais (frente e verso lado a lado) | MISSING | Só há listagem em texto (`plots-cli/src/lib.rs:215-220`). |
-| PS-A038 | Modo simulação | Modelo com `proptest`: 8 perfis, 1 a 200 páginas, lotes de 1 a 50 folhas, maço final 1\|2, 3\|4 | PARTIAL | proptest cobre os 8 perfis (cf22592), mas a mecânica é escolhida no próprio teste. Cobertura por laços exaustivos (`plots-print/src/lib.rs:376-458`), sem `proptest` (nenhum `Cargo.toml` tem a dependência). Combinações mecânicas sem gesto coerente são puladas (lib.rs:417-421). |
+| PS-A037 | Modo simulação | Exportar PDF de folhas finais (frente e verso lado a lado) | OK (6baa24a) | `gerar-pdf --folhas-finais`, conferido com PyMuPDF; sem conferência no Firefox. |
+| PS-A038 | Modo simulação | Modelo com `proptest`: 8 perfis, 1 a 200 páginas, lotes de 1 a 50 folhas, maço final 1\|2, 3\|4 | OK (6baa24a) | proptest com tabela fixa de 8 perfis; só traseira e gaveta correspondem às impressoras simuladas, e o modelo da gaveta será revisto. |
 | PS-A039 | Arquitetura | App Tauri 2 com webview e pdf.js | MISSING | Fase 4. Nenhuma dependência de Tauri. |
 | PS-A040 | Arquitetura | Camada de backends: trait com duas implementações (Windows e Simulado) | PARTIAL | Trait em `job.rs:19-25`. Só existe `SimBackend`. |
 | PS-A041 | Arquitetura | lopdf para reordenar, extrair, inserir página em branco e `/Rotate` | OK | `plots-pdf/src/lib.rs:112-244`. Testes `reabre_ordem_heranca_rotacao_e_branco` (lib.rs:630) e outros. Verificado pelos PDFs gerados. |

@@ -1,13 +1,13 @@
 # STATUS
 
-Requisitos: OK 27 · PARTIAL 22 · MISSING 42 · BUG 0 · N/A 2 (93). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
+Requisitos: OK 29 · PARTIAL 21 · MISSING 41 · BUG 0 · N/A 2 (93). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
 
 | Plano | OK | PARTIAL | MISSING | BUG | N/A | Estado |
 |---|---|---|---|---|---|---|
 | [Visão geral, arquitetura e fases](00-visao-geral.md) | 0 | 3 | 0 | 0 | 1 | Em andamento |
 | [Núcleo de ordenação](01-nucleo-ordenacao.md) | 9 | 1 | 0 | 0 | 0 | Em andamento |
 | [Geração das passadas em PDF](02-geracao-pdf.md) | 4 | 3 | 0 | 0 | 0 | Em andamento |
-| [Modo simulação](03-simulacao.md) | 5 | 3 | 2 | 0 | 1 | Em andamento |
+| [Modo simulação](03-simulacao.md) | 7 | 2 | 1 | 0 | 1 | Em andamento |
 | [Calibração](04-calibracao.md) | 2 | 2 | 1 | 0 | 0 | Em andamento |
 | [Tamanhos de papel](05-tamanhos-de-papel.md) | 5 | 1 | 2 | 0 | 0 | Em andamento |
 | [Perfis salvos](06-perfis.md) | 0 | 0 | 2 | 0 | 0 | Não iniciado |
@@ -29,13 +29,16 @@ Requisitos: OK 27 · PARTIAL 22 · MISSING 42 · BUG 0 · N/A 2 (93). Detalhes e
 | Lote | Commit | Estado |
 |---|---|---|
 | Base do projeto | `bb69d1a` | concluído |
+| Regras e planos | cb5be25 | concluído |
 | cli-mensagens | `882ba68` | concluído |
 | fase2-calibracao | `cf22592` | concluído |
-| fase2-folhas | — | em implementação |
+| fase2-folhas | `6baa24a` | concluído |
 
-**Próximo:** `plots imprimir` com backend simulado e `plots calibrar` (planos `06-perfis`, `04-calibracao` e `07-cli-impressao`).
+**Próximo:** corrigir o modelo da gaveta (`03-simulacao`) e depois `plots imprimir` com backend simulado e `plots calibrar` (`06-perfis`, `04-calibracao`, `07-cli-impressao`).
 
 ## Bloqueado ou dependente do usuário
 
 - Impressora real: confirmação dos planos `04-calibracao`, `07-cli-impressao` e `08-impressao-windows`.
 - Imagem da tela de abertura: plano `10-splash`.
+- Validação das passadas no Firefox: plano `02-geracao-pdf`.
+- Rodar lotes em paralelo: aguarda confirmação.

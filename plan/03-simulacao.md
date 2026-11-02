@@ -1,6 +1,6 @@
 # Modo simulação
 
-**Estado:** Em andamento · OK 5 · PARTIAL 3 · MISSING 2 · BUG 0 · N/A 1
+**Estado:** Em andamento · OK 7 · PARTIAL 2 · MISSING 1 · BUG 0 · N/A 1
 
 ## Objetivo
 
@@ -12,8 +12,10 @@ Provar a lógica inteira sem impressora, inclusive os erros de recolocação.
 - [x] `plots simular` com `--guiado`, `--ordem` e `--simular-erro`
 - [x] Resultado certa/errada por folha e por lote
 - [x] Propriedade com `proptest` nos 8 perfis
-- [ ] PDF de folhas finais com `--folhas-finais` (em andamento em `fase2-folhas`)
-- [ ] Tabela fixa de mecânica por perfil e contagem do laço exaustivo (em andamento em `fase2-folhas`)
+- [x] PDF de folhas finais com `--folhas-finais`
+- [x] Tabela fixa de mecânica por perfil e contagem do laço exaustivo
+- [ ] Corrigir o modelo da gaveta: hoje a folha sai embaixo da pilha e a entrada puxa a de baixo, o que não corresponde à impressora descrita
+- [ ] Teste de folha final com face girada
 - [ ] Criar impressoras virtuais com qualquer combinação de parâmetros
 - [ ] Vista Simulação, chave por documento e selo na interface
 
@@ -36,8 +38,8 @@ Maço final 1|2, 3|4… sem folha de cabeça para baixo em todos os perfis, e fl
 | PS-A032 | Modelo físico: folha `{frente, verso, girada}`, pilha de saída, gesto como operação | OK |
 | PS-A033 | "Simular erro": recolocar sem virar, girado, ou com uma folha a menos | OK (cf22592) |
 | PS-A034 | Vista por lote com passada 1, pilha, passada 2 e folhas finais marcadas certo/errado ("3 de 3 folhas corretas") | PARTIAL |
-| PS-A037 | Exportar PDF de folhas finais (frente e verso lado a lado) | MISSING |
-| PS-A038 | Modelo com `proptest`: 8 perfis, 1 a 200 páginas, lotes de 1 a 50 folhas, maço final 1\|2, 3\|4 | PARTIAL |
+| PS-A037 | Exportar PDF de folhas finais (frente e verso lado a lado) | OK (6baa24a) |
+| PS-A038 | Modelo com `proptest`: 8 perfis, 1 a 200 páginas, lotes de 1 a 50 folhas, maço final 1\|2, 3\|4 | OK (6baa24a) |
 | PS-A073 | Backend Simulado com impressoras virtuais | OK |
 | PS-A093 | "Limite: a simulação prova a lógica; só a impressora real confirma o perfil" | N/A |
 
