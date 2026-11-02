@@ -35,8 +35,8 @@ Requisitos: OK 29 · PARTIAL 23 · MISSING 39 · BUG 0 · N/A 2 (93). Detalhes e
 | fase2-folhas | `6baa24a` | concluído |
 | modelo-gaveta | `1301405` | concluído |
 | perfis | `72030fb` | concluído |
-| pdfs-reais | — | em depuração, prioridade: 10 de 12 PDFs reais recusados |
-| interface-base | — | em implementação |
+| pdfs-reais | `25557c9` | concluído: 64 de 64 PDFs reais aceitos, conferidos no PyMuPDF |
+| interface-base | — | em correção |
 
 **Próximo:** `plots imprimir` com backend simulado e `plots calibrar` (`04-calibracao`, `07-cli-impressao`).
 

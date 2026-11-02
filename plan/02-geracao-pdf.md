@@ -12,9 +12,11 @@ Transformar o plano de cada lote em PDFs com a ordem e a rotação certas, sem p
 - [x] `plots gerar-pdf`, sem sobrescrever e removendo só o que criou em caso de falha
 - [x] Recusa de PDF criptografado e de formulários que exigem regeneração
 - [ ] Validar ordem e rotação no Firefox (o modo headless não gerou imagem; aguarda escolha do usuário)
-- [ ] Tirar do PDF gerado recursos de páginas de fora do lote e o `/ID` do documento original, com teste
+- [x] Aceitar PDFs comuns: assinatura aplicada vira carimbo com a mesma aparência, com aviso de que a cópia não contém a assinatura; 64 de 64 PDFs reais aceitos, com imagens iguais no PyMuPDF (25557c9)
+- [x] Tirar `/ID` e `SigFlags` do PDF gerado
+- [ ] Tirar do PDF gerado recursos de páginas de fora do lote, com teste
 - [ ] Limitar os bytes por fluxo de conteúdo para conter PDF malicioso
-- [ ] Exercitar com PDFs reais de formulários e anotações
+- [ ] Conferir PDFs reais em leitor real e em impressora; fios e estrutura marcada só têm fixture sintética
 
 ## Pronto quando
 
