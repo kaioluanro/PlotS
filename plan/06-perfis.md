@@ -12,7 +12,7 @@ Guardar por fila de impressão o que foi calibrado, para não medir de novo.
 - [x] Ler e gravar `%APPDATA%/plots/perfis.toml` com `serde`, `toml` e `directories`, no crate `plots-perfis`
 - [x] Chave pelo nome da fila, com apelido
 - [x] Arquivo inválido gera erro claro, sem apagar o que existe; gravação atômica
-- [ ] Usar os perfis em `plots calibrar` e `plots imprimir`
+- [x] Usar os perfis em `plots calibrar` e `plots imprimir --simular`
 
 ## Pronto quando
 

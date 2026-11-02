@@ -2,7 +2,7 @@
 
 Registro das dependências e dos ativos do PlotS. Atualize a cada lote que trouxer dependência ou ativo novo.
 
-**Pendência que bloqueia qualquer distribuição:** gerar `THIRD-PARTY-NOTICES` a partir dos arquivos de licença de cada pacote e incluí-lo no instalador. O build da interface remove os avisos de React, Radix e lucide do JavaScript, então o arquivo precisa existir à parte. Plano: `17-acabamento`.
+**Pendência que bloqueia qualquer distribuição:** gerar `THIRD-PARTY-NOTICES` a partir dos arquivos de licença de cada pacote e incluí-lo no instalador. Vale também para qualquer distribuição avulsa do `plots-cli`. O build da interface remove os avisos de React, Radix e lucide do JavaScript, então o arquivo precisa existir à parte. A licença da fonte Inter também vai nesse arquivo, porque a fonte fica embutida no app. Plano: `17-acabamento`.
 
 ## Decisões do usuário
 
@@ -30,7 +30,7 @@ Levantamento de 2026-11-02, a partir das licenças declaradas nos metadados; o t
 | Apache-2.0 AND MIT | 1 |
 | MPL-2.0 (`option-ext`) | 1 |
 
-**npm** (34 pacotes de produção): MIT em 30; ISC em `lucide-react`, cuja licença também cita ícones derivados do Feather, usados aqui (`minus`, `plus`, `square`, `x`), então o aviso leva as duas partes; 0BSD em `tslib`; `Apache-2.0 OR MIT` em `@tauri-apps/api` e `@tauri-apps/plugin-dialog`.
+**npm** (35 pacotes de produção): OFL-1.1 em `@fontsource/inter` (fonte, ver Ativos); MIT em 30; ISC em `lucide-react`, cuja licença também cita ícones derivados do Feather, usados aqui (`minus`, `plus`, `square`, `x`), então o aviso leva as duas partes; 0BSD em `tslib`; `Apache-2.0 OR MIT` em `@tauri-apps/api` e `@tauri-apps/plugin-dialog`.
 
 ## Só na compilação
 
@@ -51,5 +51,5 @@ Não entram no binário; repetir a checagem do grafo ao montar o instalador.
 
 | Ativo | Origem | Licença |
 |---|---|---|
-| Ícone e marca provisórios (`src-tauri/icons/`) | Desenho próprio, feito para o PlotS; autor, data e ferramenta a preencher com a correção em andamento | Do projeto |
-| Fonte Inter | A preencher com a correção em andamento | OFL-1.1, a confirmar |
+| Ícone e marca provisórios (`src-tauri/icons/icon.ico`, `src-tauri/icons/marca.svg`, marca em `ui/src/components/TitleBar.tsx`) | Desenho próprio, feito pelo agente Claude (Opus 5.5) para o projeto do usuário em 2026-11-02. `icon.ico` e `marca.svg` são gerados por `src-tauri/icons/gerar-icone.mjs`, só com a biblioteca padrão do Node; a marca da barra é desenhada no próprio componente. Sem base em marca de terceiros | Do projeto |
+| Fonte Inter, pesos 400, 500 e 600, subconjuntos latin e latin-ext (seis woff2 embutidos no bundle, não versionados) | `@fontsource/inter` 5.3.0, sem alteração. Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter). Sem Reserved Font Name declarado | SIL OFL 1.1. Ao distribuir: incluir o aviso de copyright e o texto integral da licença em `THIRD-PARTY-NOTICES`; não vender a fonte sozinha; a fonte permanece sob OFL, qualquer que seja a licença do PlotS |

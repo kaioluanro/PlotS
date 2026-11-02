@@ -1,6 +1,6 @@
 # CLI de impressão
 
-**Estado:** Em andamento · OK 2 · PARTIAL 1 · MISSING 2 · BUG 0 · N/A 0
+**Estado:** Em andamento · OK 2 · PARTIAL 2 · MISSING 1 · BUG 0 · N/A 0
 
 ## Objetivo
 
@@ -10,9 +10,9 @@ Resolver o problema principal pelo terminal, antes de qualquer interface.
 
 - [x] Mensagens e ajuda fiéis ao que existe
 - [x] Simulação correta nas duas impressoras virtuais
-- [ ] `plots imprimir doc.pdf --impressora X --lote 10`, primeiro com o backend simulado
+- [x] `plots imprimir doc.pdf --impressora X --lote 10 --simular`, com pausa para recolocar e avisos claros
 - [ ] Mesmo comando com o backend Windows
-- [ ] Revisar a frase da ajuda que diz que nada vai à impressora quando `imprimir` existir
+- [ ] Revisar `FRASE_NAO_ENVIA` e a recusa sem `--simular` quando o envio real existir
 - [ ] 3 lotes seguidos sem erro em impressora real
 
 ## Pronto quando
@@ -27,7 +27,7 @@ Simulação correta nas duas impressoras virtuais; com impressora real, 3 lotes 
 
 | ID | Requisito | Situação |
 |---|---|---|
-| PS-A074 | `plots imprimir doc.pdf --impressora X --lote 10` | MISSING |
+| PS-A074 | `plots imprimir doc.pdf --impressora X --lote 10` | PARTIAL (92772e5) |
 | PS-A077 | Critério: simulação correta nas duas impressoras virtuais | PARTIAL |
 | PS-A078 | Critério: 3 lotes seguidos sem erro numa impressora real | MISSING |
 | PS-A090 | Mensagens do CLI coerentes com as funções atuais | OK (882ba68) |

@@ -1,6 +1,6 @@
 # Calibração
 
-**Estado:** Em andamento · OK 2 · PARTIAL 2 · MISSING 1 · BUG 0 · N/A 0
+**Estado:** Em andamento · OK 2 · PARTIAL 3 · MISSING 0 · BUG 0 · N/A 0
 
 ## Objetivo
 
@@ -10,7 +10,8 @@ Medir uma vez como cada impressora se comporta e preencher o perfil a partir de 
 
 - [x] `ajustar_perfil_por_calibracao` no núcleo, testado contra o simulador
 - [x] `plots gerar-calibracao`, com número grande e seta
-- [ ] `plots calibrar X`: gerar, enviar, perguntar e gravar o perfil
+- [x] `plots calibrar X`: gerar o PDF, perguntar e gravar o perfil
+- [ ] Enviar a calibração à impressora pelo próprio PlotS
 - [ ] Detectar a opção de inverter ordem do driver e pedir para desligar
 - [ ] Confirmar o resultado em impressora real
 
@@ -29,7 +30,7 @@ As respostas preenchem `passada2_inversa` e `verso_girar_180`, e o perfil salvo 
 | PS-A005 | `passada2_inversa` e `verso_girar_180` ficam "a calibrar", sem presunção | PARTIAL |
 | PS-A070 | PDF de teste de calibração com números grandes e setas | OK (cf22592) |
 | PS-A071 | Calibração: 2 folhas com páginas 1 a 4, duas perguntas e ajuste do perfil | PARTIAL |
-| PS-A075 | `plots calibrar X` | MISSING |
+| PS-A075 | `plots calibrar X` | PARTIAL (92772e5) |
 | PS-A089 | Teste de calibração ajusta as respostas relativas ao perfil testado | OK |
 
 ## Especificação

@@ -11,7 +11,8 @@ Guiar o usuário do primeiro envio ao verso, com um cartão por impressora.
 - [x] Estados do job e pausa guiada no terminal
 - [ ] Cartão EM ANDAMENTO com estado, lote e botão do verso
 - [ ] Frase fixa do gesto e figura por impressora
-- [ ] Na gaveta, dizer ao usuário para virar o maço final antes de ler
+- [x] Na gaveta simulada, dizer ao usuário para virar o maço final antes de ler, no CLI
+- [ ] Levar a frase do gesto ao cartão da interface; em fila real, o lado vem da calibração
 - [ ] Botão do verso liberado só com a confirmação do spooler
 - [ ] "Simular verso" no modo simulação
 

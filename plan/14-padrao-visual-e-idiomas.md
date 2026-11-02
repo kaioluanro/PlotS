@@ -13,6 +13,11 @@ Aplicar `estilo-ui-ux.md` em toda a interface, em pt-BR e en.
 - [ ] Textos via `t()` em pt-BR e en
 - [ ] Foco visível, ESC em diálogos, estado com ponto e texto, contraste medido
 
+## Decisões
+
+- O tema segue o sistema, com escuro como reserva.
+- O × da aba tem 12 px em caixa de 24×24, como exceção à §8.5 de `estilo-ui-ux.md`. O ícone do estado vazio tem 18 px.
+
 ## Pronto quando
 
 A autoridade de interface aprova as telas nos dois temas.
