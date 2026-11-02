@@ -1,9 +1,10 @@
 //! Comando `imprimir`: grava as passadas e conduz a impressão simulada, lote a lote.
 
 use crate::calibrar::{caminho_perfis, carregar_perfis};
+use crate::enviar::{Pedido, MSG_SEM_SIMULAR};
 use crate::geracao::{self, Documento, Opcoes};
 use crate::{listar, relatar_folhas, ImpressoraVirtual};
-use plots_core::{plano_documento, Lote, OrdemPassadas, Pagina, PerfilImpressora};
+use plots_core::{plano_documento, Lote, OrdemPassadas, PerfilImpressora};
 use plots_print::job::{EstadoJob, Job, SimBackend};
 use plots_print::{conferir_folhas, Mecanica, Recolocacao, Simulador, Veredito};
 use std::io::{BufRead, Write};
@@ -12,8 +13,6 @@ use std::path::{Path, PathBuf};
 /// Documento de referência usado para escolher a mecânica simulada de um perfil salvo.
 const REFERENCIA_PAGINAS: usize = 8;
 const REFERENCIA_FOLHAS_POR_LOTE: usize = 2;
-
-const MSG_SEM_SIMULAR: &str = crate::MSG_ENVIO_INDISPONIVEL;
 
 /// Fila de destino: a mecânica usada na simulação e o perfil que ordena as passadas.
 struct Fila {
@@ -38,6 +37,7 @@ pub(crate) fn executar(
         .ok_or("informe o arquivo PDF")?;
     let (mut impressora, mut tamanho, mut diretorio, mut ordem, mut perfis) =
         (None, None, None, None, None);
+    let mut arquivo_saida: Option<PathBuf> = None;
     let (mut folhas_finais, mut simular) = (false, false);
     let mut i = 2;
     while i < args.len() {
@@ -70,17 +70,43 @@ pub(crate) fn executar(
             "--saida" if diretorio.is_none() => diretorio = Some(PathBuf::from(valor)),
             "--perfis" if perfis.is_none() => perfis = Some(PathBuf::from(valor)),
             "--ordem" if ordem.is_none() => ordem = Some(crate::analisar_ordem(valor)?),
+            "--arquivo-saida" if arquivo_saida.is_none() => {
+                arquivo_saida = Some(PathBuf::from(valor))
+            }
             _ => return Err(format!("opção desconhecida ou repetida: {chave}")),
         }
         i += 2;
     }
-    if !simular {
-        return Err(MSG_SEM_SIMULAR.into());
-    }
     let nome = impressora.ok_or("informe --impressora NOME")?;
     let tamanho = tamanho.ok_or("informe --lote K")?;
-    let diretorio = diretorio.ok_or("informe --saida DIRETORIO")?;
     let ordem = ordem.unwrap_or_default();
+    if !simular {
+        if ImpressoraVirtual::de_nome(&nome).is_some() {
+            return Err(MSG_SEM_SIMULAR.into());
+        }
+        if diretorio.is_some() {
+            return Err(
+                "--saida só vale com --simular; no envio real, --arquivo-saida PASTA grava as passadas em arquivo"
+                    .into(),
+            );
+        }
+        if folhas_finais {
+            return Err("--folhas-finais só vale com --simular".into());
+        }
+        let pedido = Pedido {
+            arquivo: arquivo.clone(),
+            nome,
+            tamanho,
+            ordem,
+            perfis,
+            arquivo_saida,
+        };
+        return crate::enviar::executar(pedido, entrada, saida);
+    }
+    if arquivo_saida.is_some() {
+        return Err("--arquivo-saida só vale sem --simular".into());
+    }
+    let diretorio = diretorio.ok_or("informe --saida DIRETORIO")?;
     if tamanho == 0 {
         return Err("--lote deve ser maior que zero".into());
     }
@@ -96,7 +122,7 @@ pub(crate) fn executar(
         folhas_finais,
     };
     let documento = Documento::ler(Path::new(arquivo))?;
-    let plano = geracao::planejar(&documento, &opcoes)?;
+    let plano = geracao::planejar(&documento, opcoes.tamanho, opcoes.ordem, opcoes.perfil)?;
     let arquivos = geracao::gerar_arquivos(&documento, &plano, &opcoes, &diretorio)?;
     geracao::gravar_sem_sobrescrever(&arquivos)?;
     writeln!(
@@ -123,21 +149,9 @@ pub(crate) fn executar(
         diretorio.display()
     )
     .map_err(|e| e.to_string())?;
-    let lotes: Vec<Lote> = plano
-        .lotes
-        .iter()
-        .map(|lote| Lote {
-            paginas: lote
-                .paginas
-                .iter()
-                .map(|numero| Pagina {
-                    numero: *numero,
-                    girar_180: false,
-                })
-                .collect(),
-            passada1: lote.passada1.clone(),
-            passada2: lote.passada2.clone(),
-        })
+    let lotes = geracao::lotes_do_plano(&plano)
+        .into_iter()
+        .map(|lote| lote.lote)
         .collect();
     conduzir_lotes(&fila, lotes, &diretorio, entrada, saida)?;
     if !fila.de_perfil_salvo && !fila.mecanica.saida_face_impressa_para_cima {
@@ -357,13 +371,15 @@ mod testes {
     use super::*;
 
     #[test]
-    fn frase_de_nao_envio_acompanha_o_envio_desligado() {
+    fn frase_sobre_o_envio_acompanha_o_envio_ligado() {
         assert!(
-            !crate::ENVIO_REAL_LIBERADO,
-            "envio real ligado: revise FRASE_NAO_ENVIA e a recusa sem --simular antes"
+            crate::ENVIO_REAL_LIBERADO,
+            "envio real desligado: revise FRASE_NAO_ENVIA e a recusa sem --simular antes"
         );
         assert!(crate::USO_GERAL.contains(crate::FRASE_NAO_ENVIA));
-        assert_eq!(MSG_SEM_SIMULAR, crate::MSG_ENVIO_INDISPONIVEL);
+        assert!(crate::FRASE_NAO_ENVIA.contains("sem --simular envia"));
+        assert!(crate::USO_IMPRIMIR.contains("--arquivo-saida PASTA"));
+        assert!(MSG_SEM_SIMULAR.contains("--simular"));
     }
 
     fn perfil(p1: bool, p2: bool, giro: bool) -> PerfilImpressora {

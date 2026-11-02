@@ -1,19 +1,43 @@
-//! Leitura das filas de impressão do Windows e do estado de cada uma.
+//! Filas de impressão do Windows: leitura do estado de cada uma e envio das passadas.
 //!
-//! Este crate só lê. Nenhuma página é enviada a fila alguma, física ou virtual,
-//! e nenhuma fila é alterada.
+//! A listagem só lê. O envio só acontece por `BackendWindows`, para a fila que o chamador
+//! indicar, e nada aqui altera a configuração de uma fila.
 //!
 //! O estado reportado vem do driver de cada fila: bits iguais podem ter sentidos
 //! diferentes em drivers diferentes, por isso os bits sem tradução são preservados.
 
+mod erro;
 mod estado;
+mod papel;
+mod passada;
+mod raster;
 mod texto;
+mod trabalho;
 
 #[cfg(windows)]
+mod backend;
+#[cfg(windows)]
 mod sistema;
+#[cfg(windows)]
+mod spooler;
 
+#[cfg(windows)]
+pub use backend::BackendWindows;
+pub use erro::{ErroEnvio, COMANDO_BAIXAR_BIBLIOTECA};
 pub use estado::{Condicao, Estado};
+pub use papel::{
+    ajuste_do_papel, conferir_devmode, medida_nominal, AjustePapel, CampoLido, LeituraDevmode,
+};
+pub use passada::{
+    abrir_origem, caminhos_da_biblioteca, escolher_biblioteca, nome_arquivo_saida, nome_documento,
+    papel_da_passada, porta_de_fax, porta_pede_arquivo, VARIAVEL_PASTA_BIBLIOTECA,
+};
+pub use raster::{
+    bytes_do_bitmap, conferir_papel, fator_de_unidade, marcar_ponto_discreto, planejar_pagina,
+    ponto_da_pagina_em_branco, Dispositivo, PlanoPagina, PontoDiscreto, LIMITE_BYTES_PAGINA,
+};
 pub use texto::texto_utf16_le;
+pub use trabalho::{traduzir_status, SituacaoTrabalho};
 
 /// Limite do buffer pedido ao spooler (8 MiB). Acima disso a listagem é recusada.
 pub const LIMITE_BUFFER_BYTES: u32 = 8 * 1024 * 1024;

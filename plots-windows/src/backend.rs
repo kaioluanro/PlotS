@@ -1,0 +1,326 @@
+//! Envio das passadas ao spooler do Windows.
+//!
+//! Tudo aqui bloqueia enquanto a biblioteca desenha e o driver recebe as páginas: quem tiver uma
+//! interface deve chamar a partir de outra thread.
+
+use crate::erro::ErroEnvio;
+use crate::papel::ajuste_do_papel;
+use crate::passada::{
+    caminhos_da_biblioteca, escolher_biblioteca, nome_arquivo_saida, nome_documento,
+    papel_da_passada, VARIAVEL_PASTA_BIBLIOTECA,
+};
+use crate::raster::{
+    conferir_papel, fator_de_unidade, marcar_ponto_discreto, planejar_pagina,
+    ponto_da_pagina_em_branco, Dispositivo, PlanoPagina,
+};
+use crate::spooler::{ContextoFila, DocumentoAberto, Impressora};
+use crate::trabalho::traduzir_status;
+use crate::Fila;
+use pdfium_render::prelude::{
+    PdfBitmapFormat, PdfColor, PdfDocument, PdfPageRenderRotation, PdfRenderConfig, Pdfium,
+    PdfiumError,
+};
+use plots_core::{DimensoesPagina, Pagina};
+use plots_pdf::PdfOrigem;
+use plots_print::job::{Backend, EstadoEnvio, Passada};
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
+/// A biblioteca só pode ser iniciada uma vez por processo.
+static BIBLIOTECA: OnceLock<Pdfium> = OnceLock::new();
+
+/// Carrega a biblioteca só pelo caminho explícito: a pasta indicada ou ao lado do executável.
+fn biblioteca() -> Result<&'static Pdfium, ErroEnvio> {
+    if let Some(pronta) = BIBLIOTECA.get() {
+        return Ok(pronta);
+    }
+    let indicada = std::env::var_os(VARIAVEL_PASTA_BIBLIOTECA);
+    let executavel = std::env::current_exe().ok();
+    let pasta_executavel = executavel.as_deref().and_then(Path::parent);
+    let caminhos = caminhos_da_biblioteca(indicada.as_deref(), pasta_executavel)?;
+    let caminho = escolher_biblioteca(caminhos, Path::is_file)?;
+    let ligacoes = Pdfium::bind_to_library(&caminho)
+        .map_err(|erro| ErroEnvio::BibliotecaInvalida(erro.to_string()))?;
+    Ok(BIBLIOTECA.get_or_init(|| Pdfium::new(ligacoes)))
+}
+
+fn erro_de_desenho(erro: PdfiumError) -> ErroEnvio {
+    ErroEnvio::Rasterizacao(erro.to_string())
+}
+
+/// Tudo que uma passada precisa no spooler. `nome_fila` é usado sem nenhuma troca: esta camada
+/// não tem fila preferida e envia só para a que recebeu.
+pub struct BackendWindows {
+    pdfium: &'static Pdfium,
+    nome_fila: String,
+    /// Porta da fila, que decide o nome do arquivo de saída.
+    porta: String,
+    impressora: Impressora,
+    origem: PdfOrigem,
+    dimensoes: Vec<DimensoesPagina>,
+    pasta_saida: Option<PathBuf>,
+    /// Lote em andamento, começando em 1 depois da primeira frente.
+    lote: usize,
+    /// Depois de um cancelamento, a próxima frente repete o mesmo lote.
+    repetir_lote: bool,
+    trabalho: Option<u32>,
+    arquivo: Option<PathBuf>,
+    ultimo_status: Option<u32>,
+    motivo: Option<String>,
+    /// O trabalho atual foi visto fora da fila.
+    saiu_da_fila: bool,
+}
+
+impl BackendWindows {
+    /// Prepara o envio para `fila`. Com `pasta_saida`, cada passada é gravada em um arquivo
+    /// dentro dela pela própria fila. Carrega a biblioteca e abre a fila já aqui, para os erros
+    /// aparecerem antes de qualquer pergunta. Nada é enviado.
+    pub fn novo(
+        fila: &Fila,
+        origem: PdfOrigem,
+        dimensoes: Vec<DimensoesPagina>,
+        pasta_saida: Option<&Path>,
+    ) -> Result<Self, ErroEnvio> {
+        let pasta_saida = pasta_saida
+            .map(|pasta| {
+                if !pasta.is_dir() {
+                    return Err(ErroEnvio::PastaDeSaidaInvalida(pasta.to_path_buf()));
+                }
+                // O caminho precisa ser absoluto: o spooler não conhece a pasta atual.
+                std::path::absolute(pasta)
+                    .map_err(|_| ErroEnvio::PastaDeSaidaInvalida(pasta.to_path_buf()))
+            })
+            .transpose()?;
+        let pdfium = biblioteca()?;
+        let impressora = Impressora::abrir(&fila.nome)?;
+        Ok(Self {
+            pdfium,
+            nome_fila: fila.nome.clone(),
+            porta: fila.porta.clone(),
+            impressora,
+            origem,
+            dimensoes,
+            pasta_saida,
+            lote: 0,
+            repetir_lote: false,
+            trabalho: None,
+            arquivo: None,
+            ultimo_status: None,
+            motivo: None,
+            saiu_da_fila: false,
+        })
+    }
+
+    /// Último estado bruto lido do spooler; `None` antes da primeira leitura ou depois que o
+    /// trabalho saiu da fila.
+    pub fn ultimo_status(&self) -> Option<u32> {
+        self.ultimo_status
+    }
+
+    /// O trabalho atual já não está na fila: não há mais o que apagar nem cancelar.
+    pub fn saiu_da_fila(&self) -> bool {
+        self.saiu_da_fila
+    }
+
+    /// Por que o trabalho atual falhou ou o que a impressora espera que alguém resolva.
+    pub fn motivo_atual(&self) -> Option<&str> {
+        self.motivo.as_deref()
+    }
+
+    fn proximo_arquivo(&self, passada: Passada) -> Result<Option<PathBuf>, ErroEnvio> {
+        let Some(pasta) = &self.pasta_saida else {
+            return Ok(None);
+        };
+        let arquivo = pasta.join(nome_arquivo_saida(self.lote, passada, &self.porta));
+        if arquivo.exists() {
+            return Err(ErroEnvio::ArquivoJaExiste(arquivo));
+        }
+        Ok(Some(arquivo))
+    }
+}
+
+/// Planeja todas as páginas antes de abrir o documento: um tamanho recusado, ou uma página em
+/// branco que não teria onde receber o ponto, não deixa trabalho pela metade na fila.
+fn planejar_paginas(
+    documento: &PdfDocument<'_>,
+    paginas: &[Pagina],
+    dimensoes: &[DimensoesPagina],
+    dispositivo: &Dispositivo,
+) -> Result<Vec<PlanoPagina>, ErroEnvio> {
+    documento
+        .pages()
+        .iter()
+        .zip(paginas)
+        .map(|(desenho, pagina)| {
+            let numero = pagina.numero.unwrap_or(dimensoes.len());
+            let medida = numero
+                .checked_sub(1)
+                .and_then(|indice| dimensoes.get(indice))
+                .ok_or(ErroEnvio::PaginaInexistente(numero))?;
+            let caixa = desenho
+                .boundaries()
+                .media()
+                .map_err(erro_de_desenho)?
+                .bounds;
+            let fator = fator_de_unidade(
+                *medida,
+                f64::from(caixa.width().value),
+                f64::from(caixa.height().value),
+            )?;
+            let plano = planejar_pagina(
+                f64::from(desenho.width().value) * fator,
+                f64::from(desenho.height().value) * fator,
+                dispositivo,
+            )?;
+            if pagina.numero.is_none() {
+                ponto_da_pagina_em_branco(&plano, dispositivo)?;
+            }
+            Ok(plano)
+        })
+        .collect()
+}
+
+/// Rotação do bitmap: a página já traz a própria, e a da passada. Aqui só entra o giro para a
+/// página deitada caber no papel em pé.
+fn rotacao_do_bitmap(plano: &PlanoPagina) -> PdfPageRenderRotation {
+    if plano.girar_90 {
+        PdfPageRenderRotation::Degrees270
+    } else {
+        PdfPageRenderRotation::None
+    }
+}
+
+/// Desenha as páginas uma de cada vez, sobre branco, em qualidade de impressão. Os pixels de
+/// uma página são liberados antes de a próxima começar.
+fn desenhar_paginas(
+    documento: &PdfDocument<'_>,
+    paginas: &[Pagina],
+    planos: &[PlanoPagina],
+    dispositivo: &Dispositivo,
+    aberto: &mut DocumentoAberto<'_>,
+) -> Result<(), ErroEnvio> {
+    for (indice, (pagina, plano)) in paginas.iter().zip(planos).enumerate() {
+        let pixels = rasterizar(documento, indice, *pagina, plano, dispositivo)?;
+        aberto.desenhar_pagina(plano, &pixels)?;
+    }
+    Ok(())
+}
+
+/// Desenha uma página. A página em branco recebe o ponto já no bitmap, dentro da área
+/// imprimível, para o driver não a descartar como vazia.
+fn rasterizar(
+    documento: &PdfDocument<'_>,
+    indice: usize,
+    origem: Pagina,
+    plano: &PlanoPagina,
+    dispositivo: &Dispositivo,
+) -> Result<Vec<u8>, ErroEnvio> {
+    let indice = i32::try_from(indice)
+        .map_err(|_| ErroEnvio::Rasterizacao("passada com páginas demais".to_string()))?;
+    let pagina = documento.pages().get(indice).map_err(erro_de_desenho)?;
+    let configuracao = PdfRenderConfig::new()
+        .set_fixed_size(plano.largura_px, plano.altura_px)
+        .rotate(rotacao_do_bitmap(plano), false)
+        .use_print_quality(true)
+        .set_format(PdfBitmapFormat::BGRA)
+        .clear_before_rendering(true)
+        .set_clear_color(PdfColor::WHITE);
+    let bitmap = pagina
+        .render_with_config(&configuracao)
+        .map_err(erro_de_desenho)?;
+    let mut pixels = bitmap.as_raw_bytes();
+    if origem.numero.is_none() {
+        marcar_ponto_discreto(&mut pixels, plano, dispositivo)?;
+    }
+    Ok(pixels)
+}
+
+impl Backend for BackendWindows {
+    type Erro = ErroEnvio;
+
+    fn enviar(&mut self, passada: Passada, paginas: &[Pagina]) -> Result<(), ErroEnvio> {
+        if passada == Passada::Frente && !self.repetir_lote {
+            self.lote = self.lote.saturating_add(1);
+        }
+        self.repetir_lote = false;
+        self.trabalho = None;
+        self.arquivo = None;
+        self.ultimo_status = None;
+        self.motivo = None;
+        self.saiu_da_fila = false;
+
+        let papel = papel_da_passada(paginas, &self.dimensoes)?;
+        let ajuste = ajuste_do_papel(&papel)?;
+        let arquivo = self.proximo_arquivo(passada)?;
+        // A barreira de PDF protegido já passou em `PdfOrigem::carregar`; a biblioteca só vê o
+        // PDF da passada, sem senha, com a ordem, as páginas em branco e os giros do plano.
+        let pdf = self
+            .origem
+            .gerar_passada(paginas, self.dimensoes.len())
+            .map_err(|erro| ErroEnvio::Pdf(erro.to_string()))?;
+        let documento = self
+            .pdfium
+            .load_pdf_from_byte_slice(&pdf, None)
+            .map_err(erro_de_desenho)?;
+        if usize::try_from(documento.pages().len()).ok() != Some(paginas.len()) {
+            return Err(ErroEnvio::Rasterizacao(
+                "a passada abriu com outra quantidade de páginas".to_string(),
+            ));
+        }
+
+        let devmode = self.impressora.devmode(ajuste)?;
+        let contexto = ContextoFila::criar(&self.nome_fila, &devmode)?;
+        if !contexto.aceita_bitmap() {
+            return Err(ErroEnvio::SemSuporteABitmap);
+        }
+        let dispositivo = contexto.dispositivo();
+        conferir_papel(&dispositivo, &papel)?;
+        let planos = planejar_paginas(&documento, paginas, &self.dimensoes, &dispositivo)?;
+
+        let nome = nome_documento(self.lote, passada);
+        let mut aberto = contexto.iniciar_documento(&nome, arquivo.as_deref())?;
+        desenhar_paginas(&documento, paginas, &planos, &dispositivo, &mut aberto)?;
+        let trabalho = aberto.terminar()?;
+        self.trabalho = Some(trabalho);
+        self.arquivo = arquivo;
+        Ok(())
+    }
+
+    fn consultar(&mut self) -> Result<EstadoEnvio, ErroEnvio> {
+        let trabalho = self.trabalho.ok_or(ErroEnvio::SemTrabalho)?;
+        let Some(leitura) = self.impressora.ler_trabalho(trabalho)? else {
+            // O trabalho sumiu da fila: o sistema não guarda como terminou. Este é um limite
+            // conhecido: conta como terminado, salvo se o arquivo pedido não apareceu.
+            self.ultimo_status = None;
+            self.saiu_da_fila = true;
+            if let Some(arquivo) = &self.arquivo {
+                if !arquivo.is_file() {
+                    return Err(ErroEnvio::ArquivoNaoGerado(arquivo.clone()));
+                }
+            }
+            return Ok(EstadoEnvio::Concluido);
+        };
+        self.ultimo_status = Some(leitura.status);
+        let situacao = traduzir_status(leitura.status);
+        self.motivo = situacao.motivo.map(|motivo| {
+            if leitura.texto.is_empty() {
+                motivo
+            } else {
+                format!("{motivo} ({})", leitura.texto)
+            }
+        });
+        Ok(situacao.estado)
+    }
+
+    fn cancelar(&mut self) -> Result<(), ErroEnvio> {
+        self.repetir_lote = true;
+        let Some(trabalho) = self.trabalho.take() else {
+            return Ok(());
+        };
+        self.impressora.cancelar(trabalho)
+    }
+}
+
+#[cfg(test)]
+#[path = "backend_testes.rs"]
+mod testes_com_a_biblioteca;

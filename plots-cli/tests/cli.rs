@@ -429,7 +429,7 @@ fn ajuda_aparece_como_primeiro_argumento_e_depois_do_subcomando() {
         let geral = executar(&args(&[ajuda])).unwrap();
         assert!(geral.contains("plots simular"));
         assert!(geral.contains("plots gerar-pdf"));
-        assert!(geral.contains("Nenhum comando envia arquivos à impressora"));
+        assert!(geral.contains("Só 'imprimir' sem --simular envia à impressora"));
 
         let simular = executar(&args(&["simular", ajuda])).unwrap();
         assert!(simular.contains("plots simular"));

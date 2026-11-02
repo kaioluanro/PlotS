@@ -268,7 +268,7 @@ fn calibrar_ajuda_mostra_o_uso_do_proprio_comando() {
 // ---- imprimir ----
 
 #[test]
-fn imprimir_sem_simular_recusa_e_nao_gera_arquivos() {
+fn impressora_simulada_sem_simular_recusa_e_nao_gera_arquivos() {
     let pasta = Pasta::nova("sem-simular");
     let entrada = pasta.caminho().join("entrada.pdf");
     std::fs::write(&entrada, pdf_a4(8)).unwrap();
@@ -277,9 +277,176 @@ fn imprimir_sem_simular_recusa_e_nao_gera_arquivos() {
     let erro = executar(&argumentos).unwrap_err();
     assert_eq!(
         erro,
-        "o envio à impressora ainda não está disponível; use --simular para conferir o fluxo sem imprimir"
+        "as impressoras simuladas só existem com --simular; para enviar de verdade, informe uma fila com perfil salvo"
     );
     assert_eq!(pasta.quantidade_de_entradas(), 1);
+}
+
+/// Argumentos do envio real: sem --simular e sem --saida.
+fn envio_real_args(arquivo: &Path, fila: &str, perfis: &Path) -> Vec<String> {
+    vec![
+        "imprimir".into(),
+        arquivo.to_string_lossy().into_owned(),
+        "--impressora".into(),
+        fila.into(),
+        "--lote".into(),
+        "2".into(),
+        "--perfis".into(),
+        perfis.to_string_lossy().into_owned(),
+    ]
+}
+
+/// Nome que nenhuma fila do sistema usa: os testes nunca alcançam o spooler.
+const FILA_INEXISTENTE: &str = "Fila de teste que não existe neste sistema";
+
+fn perfil_salvo_para(fila: &str, perfis: &Path) {
+    let mut conjunto = Perfis::default();
+    conjunto.inserir(fila, EntradaPerfil::default());
+    salvar(perfis, &conjunto).unwrap();
+}
+
+#[test]
+fn envio_real_sem_perfil_salvo_pede_a_calibracao() {
+    let pasta = Pasta::nova("real-sem-perfil");
+    let entrada = pasta.caminho().join("entrada.pdf");
+    std::fs::write(&entrada, pdf_a4(4)).unwrap();
+    let perfis = pasta.caminho().join("perfis.toml");
+    let (resultado, saida) = rodar(
+        &envio_real_args(&entrada, FILA_INEXISTENTE, &perfis),
+        "s
+",
+    );
+    let erro = resultado.unwrap_err();
+    assert!(erro.contains("não tem perfil salvo"), "{erro}");
+    assert!(erro.contains("plots calibrar"), "{erro}");
+    assert!(!saida.contains("Enviar a frente"), "{saida}");
+}
+
+#[test]
+fn envio_real_para_fila_que_nao_existe_recusa_sem_perguntar() {
+    let pasta = Pasta::nova("real-sem-fila");
+    let entrada = pasta.caminho().join("entrada.pdf");
+    std::fs::write(&entrada, pdf_a4(4)).unwrap();
+    let perfis = pasta.caminho().join("perfis.toml");
+    perfil_salvo_para(FILA_INEXISTENTE, &perfis);
+    let (resultado, saida) = rodar(
+        &envio_real_args(&entrada, FILA_INEXISTENTE, &perfis),
+        "s
+s
+",
+    );
+    let erro = resultado.unwrap_err();
+    assert!(erro.contains("plots filas"), "{erro}");
+    assert!(!saida.contains("Enviar a frente"), "{saida}");
+}
+
+#[test]
+fn envio_real_recusa_pdf_protegido_antes_de_olhar_a_fila() {
+    let mut doc = lopdf::Document::load_mem(&pdf_a4(2)).unwrap();
+    doc.trailer.set(
+        "ID",
+        vec![
+            lopdf::Object::string_literal("id-de-teste"),
+            lopdf::Object::string_literal("id-de-teste"),
+        ],
+    );
+    let versao = lopdf::EncryptionVersion::V1 {
+        document: &doc,
+        owner_password: "dono",
+        user_password: "segredo",
+        permissions: lopdf::Permissions::default(),
+    };
+    let estado = lopdf::EncryptionState::try_from(versao).unwrap();
+    doc.encrypt(&estado).unwrap();
+    let mut bytes = Vec::new();
+    doc.save_to(&mut bytes).unwrap();
+    let pasta = Pasta::nova("real-protegido");
+    let entrada = pasta.caminho().join("entrada.pdf");
+    std::fs::write(&entrada, bytes).unwrap();
+    let perfis = pasta.caminho().join("perfis.toml");
+    perfil_salvo_para(FILA_INEXISTENTE, &perfis);
+    let erro = executar(&envio_real_args(&entrada, FILA_INEXISTENTE, &perfis)).unwrap_err();
+    assert!(erro.contains("criptografado"), "{erro}");
+}
+
+#[test]
+fn envio_real_recusa_pdf_que_so_tem_senha_de_dono() {
+    let mut doc = lopdf::Document::load_mem(&pdf_a4(2)).unwrap();
+    doc.trailer.set(
+        "ID",
+        vec![
+            lopdf::Object::string_literal("id-de-teste"),
+            lopdf::Object::string_literal("id-de-teste"),
+        ],
+    );
+    let versao = lopdf::EncryptionVersion::V1 {
+        document: &doc,
+        owner_password: "dono",
+        user_password: "",
+        permissions: lopdf::Permissions::empty(),
+    };
+    let estado = lopdf::EncryptionState::try_from(versao).unwrap();
+    doc.encrypt(&estado).unwrap();
+    let mut bytes = Vec::new();
+    doc.save_to(&mut bytes).unwrap();
+    let pasta = Pasta::nova("real-senha-de-dono");
+    let entrada = pasta.caminho().join("entrada.pdf");
+    std::fs::write(&entrada, bytes).unwrap();
+    let perfis = pasta.caminho().join("perfis.toml");
+    perfil_salvo_para(FILA_INEXISTENTE, &perfis);
+    let erro = executar(&envio_real_args(&entrada, FILA_INEXISTENTE, &perfis)).unwrap_err();
+    assert!(erro.contains("criptografado"), "{erro}");
+}
+
+#[test]
+fn opcoes_de_um_modo_sao_recusadas_no_outro() {
+    let pasta = Pasta::nova("modos");
+    let entrada = pasta.caminho().join("entrada.pdf");
+    std::fs::write(&entrada, pdf_a4(4)).unwrap();
+    let perfis = pasta.caminho().join("perfis.toml");
+    perfil_salvo_para(FILA_INEXISTENTE, &perfis);
+
+    let mut simulado = com_simular(imprimir_args(
+        &entrada,
+        "traseira",
+        "2",
+        pasta.caminho(),
+        &perfis,
+    ));
+    simulado.push("--arquivo-saida".into());
+    simulado.push(pasta.caminho().to_string_lossy().into_owned());
+    let erro = executar(&simulado).unwrap_err();
+    assert!(erro.contains("--arquivo-saida"), "{erro}");
+
+    let com_saida = imprimir_args(&entrada, FILA_INEXISTENTE, "2", pasta.caminho(), &perfis);
+    let erro = executar(&com_saida).unwrap_err();
+    assert!(erro.contains("--saida"), "{erro}");
+
+    let mut com_folhas = envio_real_args(&entrada, FILA_INEXISTENTE, &perfis);
+    com_folhas.push("--folhas-finais".into());
+    let erro = executar(&com_folhas).unwrap_err();
+    assert!(erro.contains("--folhas-finais"), "{erro}");
+}
+
+#[test]
+fn ajuda_de_imprimir_descreve_o_envio_e_a_confirmacao() {
+    let ajuda = executar(&args(&["imprimir", "--help"])).unwrap();
+    assert!(ajuda.contains("--arquivo-saida PASTA"), "{ajuda}");
+    assert!(ajuda.contains("confirmação"), "{ajuda}");
+    assert!(
+        ajuda.contains(
+            "O verso só é oferecido depois de o trabalho da frente terminar ou sair da fila do spooler. Isso não garante que o papel já saiu: espere a última folha antes de recolocar o maço."
+        ),
+        "{ajuda}"
+    );
+    assert!(
+        ajuda.contains(
+            "--arquivo-saida PASTA grava cada passada em um arquivo novo dentro de PASTA, pela própria fila; foi conferido só na fila de PDF do Windows."
+        ),
+        "{ajuda}"
+    );
+    let geral = executar(&args(&["--help"])).unwrap();
+    assert!(!geral.contains("Nenhum comando envia"), "{geral}");
 }
 
 #[test]
@@ -685,7 +852,7 @@ fn calibrar_cancelamento_cita_o_pdf_e_diz_que_nada_foi_gravado() {
 #[test]
 fn ajuda_geral_lista_todos_os_comandos_e_quem_nao_envia() {
     let geral = executar(&args(&["--help"])).unwrap();
-    assert!(geral.contains("Nenhum comando envia arquivos à impressora"));
+    assert!(geral.contains("Só 'imprimir' sem --simular envia à impressora"));
     let mut comandos = Vec::new();
     for linha in geral.lines() {
         if let Some(resto) = linha.trim_start().strip_prefix("plots ") {

@@ -81,6 +81,19 @@ impl<B: Backend> Job<B> {
         self.estado = EstadoJob::Pronto;
         Ok(())
     }
+    /// Cancela o envio em andamento, ou o que falhou, e volta ao início do mesmo lote. Quem
+    /// decide cancelar é o chamador: nada aqui apaga um trabalho sozinho.
+    pub fn cancelar_envio(&mut self) -> Result<(), ErroJob<B::Erro>> {
+        if !matches!(
+            self.estado,
+            EstadoJob::FrenteEnviada | EstadoJob::VersoEnviado | EstadoJob::Erro
+        ) {
+            return Err(ErroJob::EstadoInvalido(self.estado));
+        }
+        self.backend.cancelar().map_err(ErroJob::Backend)?;
+        self.estado = EstadoJob::Pronto;
+        Ok(())
+    }
     pub fn enviar_frente(&mut self) -> Result<(), ErroJob<B::Erro>> {
         if self.estado != EstadoJob::Pronto {
             return Err(ErroJob::EstadoInvalido(self.estado));
@@ -109,6 +122,8 @@ impl<B: Backend> Job<B> {
         self.estado = EstadoJob::VersoEnviado;
         Ok(())
     }
+    /// Consulta o backend. Um erro de consulta não diz nada sobre o trabalho, então o estado
+    /// fica como estava e a consulta pode ser repetida.
     pub fn atualizar(&mut self) -> Result<EstadoJob, ErroJob<B::Erro>> {
         if !matches!(
             self.estado,
@@ -116,13 +131,7 @@ impl<B: Backend> Job<B> {
         ) {
             return Err(ErroJob::EstadoInvalido(self.estado));
         }
-        let estado = match self.backend.consultar() {
-            Ok(s) => s,
-            Err(e) => {
-                self.estado = EstadoJob::Erro;
-                return Err(ErroJob::Backend(e));
-            }
-        };
+        let estado = self.backend.consultar().map_err(ErroJob::Backend)?;
         match estado {
             EstadoEnvio::EmAndamento => (),
             EstadoEnvio::Falhou => {
@@ -274,6 +283,54 @@ mod tests {
         assert!(matches!(job.atualizar(), Err(ErroJob::EnvioFalhou)));
         assert_eq!(job.estado(), EstadoJob::Erro);
         assert!(job.enviar_verso().is_err());
+    }
+    /// Consulta que falha na primeira vez e depois confirma.
+    struct ConsultaInstavel {
+        consultas: usize,
+    }
+    impl Backend for ConsultaInstavel {
+        type Erro = ();
+        fn enviar(&mut self, _: Passada, _: &[Pagina]) -> Result<(), ()> {
+            Ok(())
+        }
+        fn consultar(&mut self) -> Result<EstadoEnvio, ()> {
+            self.consultas += 1;
+            if self.consultas == 1 {
+                Err(())
+            } else {
+                Ok(EstadoEnvio::Concluido)
+            }
+        }
+        fn cancelar(&mut self) -> Result<(), ()> {
+            Ok(())
+        }
+    }
+    #[test]
+    fn erro_ao_consultar_nao_muda_o_estado_e_a_consulta_pode_repetir() {
+        let mut job = Job::novo(ConsultaInstavel { consultas: 0 }, lotes()).unwrap();
+        job.enviar_frente().unwrap();
+        assert!(matches!(job.atualizar(), Err(ErroJob::Backend(()))));
+        assert_eq!(job.estado(), EstadoJob::FrenteEnviada);
+        assert!(job.enviar_verso().is_err());
+        assert_eq!(job.atualizar().unwrap(), EstadoJob::AguardandoRecolocacao);
+    }
+    #[test]
+    fn cancelar_envio_vale_com_trabalho_enviado_ou_com_erro_e_volta_ao_mesmo_lote() {
+        let mut job = Job::novo(Pendente { consultas: 0 }, lotes()).unwrap();
+        assert!(matches!(
+            job.cancelar_envio(),
+            Err(ErroJob::EstadoInvalido(EstadoJob::Pronto))
+        ));
+        job.enviar_frente().unwrap();
+        job.cancelar_envio().unwrap();
+        assert_eq!(job.estado(), EstadoJob::Pronto);
+        assert_eq!(job.lote_atual(), 0);
+        job.enviar_frente().unwrap();
+        job.atualizar().unwrap();
+        assert!(job.atualizar().is_err());
+        assert_eq!(job.estado(), EstadoJob::Erro);
+        job.cancelar_envio().unwrap();
+        assert_eq!(job.estado(), EstadoJob::Pronto);
     }
     #[test]
     fn erro_do_backend_impede_progressao() {

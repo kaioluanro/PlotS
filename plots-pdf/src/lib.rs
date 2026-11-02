@@ -35,7 +35,8 @@ impl From<lopdf::Error> for ErroPdf {
     }
 }
 
-/// Documento aberto sem senha. PDFs criptografados não são aceitos.
+/// Documento aberto sem senha. PDFs criptografados não são aceitos, nem os que só têm senha de
+/// dono: a biblioteca de leitura decifra esses sozinha, com a senha vazia, e apaga `/Encrypt`.
 pub struct PdfOrigem {
     documento: Document,
     paginas: Vec<ObjectId>,
@@ -44,7 +45,10 @@ pub struct PdfOrigem {
 impl PdfOrigem {
     pub fn carregar(bytes: &[u8]) -> Result<Self, ErroPdf> {
         let documento = Document::load_mem(bytes)?;
-        if documento.is_encrypted() || documento.trailer.has(b"Encrypt") {
+        if documento.is_encrypted()
+            || documento.was_encrypted()
+            || documento.trailer.has(b"Encrypt")
+        {
             return Err(ErroPdf::Criptografado);
         }
         let root = documento.trailer.get(b"Root")?.as_reference()?;
@@ -1141,6 +1145,32 @@ mod tests {
         let mut bytes = Vec::new();
         doc.save_to(&mut bytes).unwrap();
         assert!(PdfOrigem::carregar(&bytes).is_err());
+    }
+
+    #[test]
+    fn rejeita_pdf_com_senha_de_dono_e_senha_de_usuario_vazia() {
+        let mut doc = Document::load_mem(&fixture()).unwrap();
+        doc.trailer.set(
+            "ID",
+            vec![
+                Object::string_literal("test-file-id"),
+                Object::string_literal("test-file-id"),
+            ],
+        );
+        let version = lopdf::EncryptionVersion::V1 {
+            document: &doc,
+            owner_password: "owner",
+            user_password: "",
+            permissions: lopdf::Permissions::empty(),
+        };
+        let estado = lopdf::EncryptionState::try_from(version).unwrap();
+        doc.encrypt(&estado).unwrap();
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        assert!(matches!(
+            PdfOrigem::carregar(&bytes),
+            Err(ErroPdf::Criptografado)
+        ));
     }
 
     #[test]

@@ -2,8 +2,8 @@
 
 use crate::{GESTO_CORRETO, MSG_AVISO_IMPARES};
 use plots_core::{
-    pares_com_orientacao_mista, plano_lotes_por_papel, DimensoesPagina, LotePapel, OrdemPassadas,
-    PerfilImpressora,
+    pares_com_orientacao_mista, plano_lotes_por_papel, DimensoesPagina, Lote, LotePapel,
+    OrdemPassadas, Pagina, Papel, PerfilImpressora,
 };
 use plots_pdf::{FaceFinal, FolhaFinal, PdfOrigem};
 use plots_print::{Marca, Mecanica, Simulador};
@@ -38,6 +38,12 @@ impl Documento {
     pub(crate) fn paginas(&self) -> usize {
         self.pdf.total_paginas()
     }
+
+    /// Devolve o PDF já aberto e as dimensões das páginas, para o envio real.
+    #[cfg(windows)]
+    pub(crate) fn em_partes(self) -> (PdfOrigem, Vec<DimensoesPagina>) {
+        (self.pdf, self.dimensoes)
+    }
 }
 
 /// Parâmetros de planejamento e de geração de um documento.
@@ -56,20 +62,50 @@ pub(crate) struct Plano {
 }
 
 /// Valida o documento e planeja os lotes antes de qualquer escrita.
-pub(crate) fn planejar(documento: &Documento, opcoes: &Opcoes) -> Result<Plano, String> {
-    let lotes = plano_lotes_por_papel(
-        &documento.dimensoes,
-        opcoes.tamanho,
-        opcoes.ordem,
-        opcoes.perfil,
-    )
-    .map_err(|e| e.to_string())?;
+pub(crate) fn planejar(
+    documento: &Documento,
+    tamanho: usize,
+    ordem: OrdemPassadas,
+    perfil: PerfilImpressora,
+) -> Result<Plano, String> {
+    let lotes = plano_lotes_por_papel(&documento.dimensoes, tamanho, ordem, perfil)
+        .map_err(|e| e.to_string())?;
     let pares_mistos =
         pares_com_orientacao_mista(&documento.dimensoes).map_err(|e| e.to_string())?;
     Ok(Plano {
         lotes,
         pares_mistos,
     })
+}
+
+/// Um lote na forma que o controle de trabalhos usa, com o papel em que ele sai.
+#[derive(Clone)]
+pub(crate) struct LoteDoPlano {
+    pub papel: Papel,
+    pub lote: Lote,
+}
+
+/// Lotes do plano, cada um com o seu papel.
+pub(crate) fn lotes_do_plano(plano: &Plano) -> Vec<LoteDoPlano> {
+    plano
+        .lotes
+        .iter()
+        .map(|lote| LoteDoPlano {
+            papel: lote.papel,
+            lote: Lote {
+                paginas: lote
+                    .paginas
+                    .iter()
+                    .map(|numero| Pagina {
+                        numero: *numero,
+                        girar_180: false,
+                    })
+                    .collect(),
+                passada1: lote.passada1.clone(),
+                passada2: lote.passada2.clone(),
+            },
+        })
+        .collect()
 }
 
 /// Gera os PDFs de cada lote em memória, com os nomes que `gerar-pdf` usa.

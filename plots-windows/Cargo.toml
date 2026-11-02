@@ -3,5 +3,14 @@ name = "plots-windows"
 version = "0.1.0"
 edition = "2021"
 
+[dependencies]
+plots-core = { path = "../plots-core" }
+plots-pdf = { path = "../plots-pdf" }
+plots-print = { path = "../plots-print" }
+
 [target.'cfg(windows)'.dependencies]
-windows = { version = "=0.62.2", default-features = false, features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Printing", "Win32_Security"] }
+pdfium-render = { version = "=0.9.5", default-features = false, features = ["pdfium_8125", "thread_safe"] }
+windows = { version = "=0.62.2", default-features = false, features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Printing", "Win32_Security", "Win32_Storage_Xps"] }
+
+[dev-dependencies]
+lopdf = "0.46.0"

@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 const PERGUNTA_VERSO: &str = "O verso da folha 1 é o 2? (s/n): ";
 const PERGUNTA_INVERTIDA: &str = "O 2 está de cabeça para baixo? (s/n): ";
-const MSG_RESPOSTA_INVALIDA: &str = "Resposta inválida: responda s ou n.";
+pub(crate) const MSG_RESPOSTA_INVALIDA: &str = "Resposta inválida: responda s ou n.";
 /// Também usada no texto de uso: a ajuda de `calibrar` deve trazer esta mesma frase.
 pub(crate) const MSG_RESULTADO_SO_VALE_EM_LOTE_REAL: &str =
     "O resultado só vale depois de conferido em um lote impresso de verdade; a simulação não conta.";

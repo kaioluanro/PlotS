@@ -1,4 +1,5 @@
 mod calibrar;
+mod enviar;
 mod filas;
 mod geracao;
 mod imprimir;
@@ -14,13 +15,13 @@ use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
 /// Texto de uso geral, mostrado por `--help` e em erros sem subcomando conhecido.
-pub const USO_GERAL: &str = "Uso:\n  plots simular --paginas N --lote K --impressora traseira|gaveta [--ordem pares|impares] [--simular-erro sem-virar|girado|folha-a-menos] [--guiado]\n  plots gerar-pdf ARQUIVO --lote K --impressora traseira|gaveta [--ordem pares|impares] [--folhas-finais] --saida DIRETORIO\n  plots gerar-calibracao --saida DIRETORIO [--papel a4|a5|carta|oficio|legal]\n  plots calibrar NOME --saida DIRETORIO [--papel a4|a5|carta|oficio|legal] [--perfis ARQUIVO]\n  plots imprimir ARQUIVO --impressora NOME --lote K --saida DIRETORIO --simular [--ordem pares|impares] [--perfis ARQUIVO] [--folhas-finais]\n  plots filas [--perfis ARQUIVO]\nNenhum comando envia arquivos à impressora: 'simular', 'gerar-pdf', 'gerar-calibracao', 'calibrar' e 'filas' só simulam, gravam arquivos ou leem o estado das filas, e 'imprimir' só funciona com --simular, que também só simula.\n";
+pub const USO_GERAL: &str = "Uso:\n  plots simular --paginas N --lote K --impressora traseira|gaveta [--ordem pares|impares] [--simular-erro sem-virar|girado|folha-a-menos] [--guiado]\n  plots gerar-pdf ARQUIVO --lote K --impressora traseira|gaveta [--ordem pares|impares] [--folhas-finais] --saida DIRETORIO\n  plots gerar-calibracao --saida DIRETORIO [--papel a4|a5|carta|oficio|legal]\n  plots calibrar NOME --saida DIRETORIO [--papel a4|a5|carta|oficio|legal] [--perfis ARQUIVO]\n  plots imprimir ARQUIVO --impressora NOME --lote K [--arquivo-saida PASTA] [--ordem pares|impares] [--perfis ARQUIVO] [--simular --saida DIRETORIO [--folhas-finais]]\n  plots filas [--perfis ARQUIVO]\nSó 'imprimir' sem --simular envia à impressora, com uma confirmação antes de cada envio. 'simular', 'gerar-pdf', 'gerar-calibracao', 'calibrar' e 'filas' só simulam, gravam arquivos ou leem o estado das filas, e 'imprimir --simular' também só simula.\n";
 
 /// Texto de uso do subcomando `filas`.
 pub const USO_FILAS: &str = "Uso:\n  plots filas [--perfis ARQUIVO]\nLista as filas do Windows, com o estado de cada uma, o driver, a porta, se é a padrão e se tem perfil salvo. As impressoras simuladas aparecem em seção própria.\nEsta listagem só lê o estado: nada é enviado a nenhuma fila, física ou virtual.\n--perfis ARQUIVO indica o arquivo de perfis; sem ele, usa o arquivo de perfis do usuário.\n";
 
 /// Texto de uso do subcomando `imprimir`.
-pub const USO_IMPRIMIR: &str = "Uso:\n  plots imprimir ARQUIVO --impressora NOME --lote K --saida DIRETORIO --simular [--ordem pares|impares] [--perfis ARQUIVO] [--folhas-finais]\nSem --simular o comando recusa e nada é gerado, pois o envio à impressora ainda não existe. Com --simular, grava as passadas de cada lote como 'gerar-pdf' e conduz o fluxo pelo terminal, sem enviar nada à impressora.\nImpressoras: 'Simulada — Traseira' e 'Simulada — Gaveta' (ou traseira e gaveta). Outro NOME usa o perfil salvo por 'plots calibrar'; sem perfil, o comando pede a calibração.\n--perfis ARQUIVO indica o arquivo de perfis; sem ele, usa o arquivo de perfis do usuário.\n";
+pub const USO_IMPRIMIR: &str = "Uso:\n  plots imprimir ARQUIVO --impressora NOME --lote K [--arquivo-saida PASTA] [--ordem pares|impares] [--perfis ARQUIVO] [--simular --saida DIRETORIO [--folhas-finais]]\nSem --simular, envia à fila NOME do Windows, lote a lote. Exige o perfil salvo por 'plots calibrar' e uma confirmação antes de cada envio; fim da entrada cancela. O verso só é oferecido depois de o trabalho da frente terminar ou sair da fila do spooler. Isso não garante que o papel já saiu: espere a última folha antes de recolocar o maço.\n--arquivo-saida PASTA grava cada passada em um arquivo novo dentro de PASTA, pela própria fila; foi conferido só na fila de PDF do Windows.\nO envio usa pdfium.dll, ao lado do executável ou na pasta indicada por PLOTS_PDFIUM_DIR; 'node scripts/baixar-pdfium.mjs' a obtém.\nCom --simular, grava as passadas de cada lote em --saida DIRETORIO, como 'gerar-pdf', e conduz o fluxo pelo terminal, sem enviar nada à impressora. Impressoras: 'Simulada — Traseira' e 'Simulada — Gaveta' (ou traseira e gaveta). Outro NOME usa o perfil salvo por 'plots calibrar'; sem perfil, o comando pede a calibração.\n--perfis ARQUIVO indica o arquivo de perfis; sem ele, usa o arquivo de perfis do usuário.\n";
 
 /// Texto de uso do subcomando `calibrar`.
 pub const USO_CALIBRAR: &str = "Uso:\n  plots calibrar NOME --saida DIRETORIO [--papel a4|a5|carta|oficio|legal] [--perfis ARQUIVO]\nGrava calibracao.pdf em DIRETORIO, sem sobrescrever, e pergunta no terminal o que saiu. O PlotS não envia o arquivo à impressora: imprima as 4 páginas pelo programa que quiser.\nO perfil salvo para NOME é ajustado pelas respostas e gravado em ARQUIVO (ou no arquivo de perfis do usuário). O resultado só vale depois de conferido em um lote impresso de verdade; a simulação não conta.\n";
@@ -43,17 +44,17 @@ const MSG_ERRO_SIMULADO_INVALIDO: &str =
     "--simular-erro deve ser sem-virar, girado ou folha-a-menos";
 const MSG_ERRO_SIMULADO_REPETIDO: &str = "--simular-erro foi informado mais de uma vez";
 pub(crate) const MSG_AVISO_IMPARES: &str = "Ordem das passadas: ímpares primeiro.";
-/// Enquanto `false`, nenhum comando envia nada à impressora. Ligar o envio real exige
-/// revisar `FRASE_NAO_ENVIA` e a recusa sem `--simular`; o teste
-/// `frase_de_nao_envio_acompanha_o_envio_desligado` falha até isso ser feito.
+/// `imprimir` sem `--simular` envia de verdade. Desligar isso exige revisar `FRASE_NAO_ENVIA` e
+/// a recusa sem `--simular`; o teste `frase_sobre_o_envio_acompanha_o_envio_ligado` confere.
 #[cfg(test)]
-pub(crate) const ENVIO_REAL_LIBERADO: bool = false;
-/// Frase da ajuda geral sobre o que nenhum comando faz com a impressora.
+pub(crate) const ENVIO_REAL_LIBERADO: bool = true;
+/// Frase da ajuda geral sobre qual comando envia à impressora.
 #[cfg(test)]
-pub(crate) const FRASE_NAO_ENVIA: &str = "Nenhum comando envia arquivos à impressora: 'simular', 'gerar-pdf', 'gerar-calibracao', 'calibrar' e 'filas' só simulam, gravam arquivos ou leem o estado das filas, e 'imprimir' só funciona com --simular, que também só simula.";
-/// Recusa de `imprimir` sem `--simular`, enquanto o envio real não existe.
+pub(crate) const FRASE_NAO_ENVIA: &str = "Só 'imprimir' sem --simular envia à impressora, com uma confirmação antes de cada envio. 'simular', 'gerar-pdf', 'gerar-calibracao', 'calibrar' e 'filas' só simulam, gravam arquivos ou leem o estado das filas, e 'imprimir --simular' também só simula.";
+/// Recusa de `imprimir` sem `--simular` fora do Windows, onde o envio real não existe.
+#[cfg(not(windows))]
 pub(crate) const MSG_ENVIO_INDISPONIVEL: &str =
-    "o envio à impressora ainda não está disponível; use --simular para conferir o fluxo sem imprimir";
+    "o envio à impressora só está disponível no Windows; use --simular para conferir o fluxo sem imprimir";
 const MSG_FOLHAS_REPETIDA: &str = "--folhas-finais foi informado mais de uma vez";
 
 /// Recolocação correta: vira o maço e nada mais.
@@ -537,7 +538,7 @@ fn gerar_pdfs(args: &[String], saida: &mut impl Write) -> Result<(), String> {
         folhas_finais,
     };
     let documento = geracao::Documento::ler(Path::new(entrada))?;
-    let plano = geracao::planejar(&documento, &opcoes)?;
+    let plano = geracao::planejar(&documento, opcoes.tamanho, opcoes.ordem, opcoes.perfil)?;
     let arquivos = geracao::gerar_arquivos(&documento, &plano, &opcoes, &diretorio)?;
     geracao::gravar_sem_sobrescrever(&arquivos)?;
     geracao::escrever_avisos(&documento, &plano, ordem, saida)?;
