@@ -1,39 +1,47 @@
 # Modelos de impressora
 
-**Estado:** Em andamento: jato de tinta informado pelo usuário; laser aguarda uma confirmação.
+**Estado:** Em andamento: comportamento definido; falta levar às impressoras virtuais.
 
 ## Objetivo
 
 Oferecer duas configurações prontas, uma para cada tipo de máquina do usuário, sem exigir calibração do zero. O produto usa nomes genéricos, sem marca. Os modelos abaixo são só referência: as máquinas do usuário são parecidas com eles, não exatamente eles.
 
-## Dados informados pelo usuário (Oficina do Maço, 2026-11-02)
+## O usuário não tem as impressoras à mão
+
+Os testes físicos ficam para quando houver impressora. Até lá, duas impressoras virtuais imitam os modelos abaixo. Elas seguem a documentação e o que o usuário informou, sem medição em papel.
+
+## Os dois modelos
 
 | | Jato de tinta (traseira) | Laser (gaveta) |
 |---|---|---|
 | Referência | HP Smart Tank 581 | Brother HL-1200 |
+| Fonte | Usuário, na Oficina do Maço; manual da HP não lido | Manual da série (HL-1210W), p. 33, e usuário |
 | Sai com a face impressa para | cima | baixo |
 | A folha seguinte cai | em cima da anterior | em cima da anterior |
 | A entrada puxa | a folha de cima | a folha de cima |
-| Imprime na face voltada para | cima | **cima, a confirmar** |
-| Gesto | vira pela borda de cima, como bloco de notas | vira pela lateral, como página de livro |
-| Gira ou reordena o maço | não | não |
+| Imprime na face voltada para | cima | cima |
+| Gesto | vira pela borda de cima, como bloco de notas | **não vira**: recoloca como saiu |
+| Frente | da última para a primeira (6, 4, 2) | da última para a primeira (6, 4, 2) |
+| Verso | da última para a primeira (5, 3, 1), **girado 180°** | da primeira para a última (1, 3, 5), sem giro |
+| Face impressa na entrada | para baixo | para baixo |
+| Para ler o maço final | como saiu | vira o maço |
 
-## Resultado esperado
+## De onde vem o gesto da laser
 
-- **Jato de tinta:** frente da última para a primeira (6, 4, 2); verso da última para a primeira (5, 3, 1); **verso girado 180°**; maço na entrada com a face impressa para baixo.
-- **Laser:** com os dados acima, nenhuma ordem resolve. Virar deixa a face impressa para cima, e a máquina imprimiria por cima dela.
+O manual da Brother diz, em tradução: imprimir só as pares e recolocar o papel impresso na bandeja, com a face em branco para cima e a página de cima primeiro. Isso confirma "imprime na face voltada para cima" e substitui a virada informada na Oficina do Maço, que não fechava: virar deixaria a face impressa para cima, e o verso cairia sobre ela.
 
-## A confirmar na laser
+## Exceção à especificação
 
-Manuais de modelos Brother parecidos mandam recolocar com a face a imprimir para baixo, o que indica "imprime na face voltada para baixo". O manual do HL-1200 não foi lido. Com essa resposta, o resultado seria: frente da primeira para a última, verso da primeira para a última, sem giro, maço com a face impressa para cima. O teste do usuário decide: marcar um X a lápis na face de cima de uma folha, colocar na gaveta e imprimir uma página.
+`11-lateral-impressoras` diz que face para baixo não inverte a frente. Isso vale para uma impressão de uma face. No frente e verso desta laser, sem virar o maço, a frente precisa ser invertida para o maço final sair 1|2, 3|4, 5|6. Sem inverter, o maço sairia na ordem contrária quando virado para ler. Neste modelo, `passada1_inversa` é verdadeiro.
 
 ## Plano de implementação
 
-- [x] Registrar o comportamento informado
-- [ ] Confirmar a face impressa da laser
-- [ ] Levar os dois modelos ao simulador, em `Mecanica` e nos perfis embutidos, com a virada pela borda de cima no modelo físico, e testes contra o simulador
+- [x] Registrar o comportamento dos dois modelos
+- [ ] Levar os dois modelos ao simulador, em `Mecanica` e nos perfis embutidos, com a virada pela borda de cima e o gesto sem virar, e testes contra o simulador
+- [ ] Renomear as impressoras simuladas e ajustar `plots simular`, `plots imprimir --simular` e a barra lateral
 - [ ] Usar os dois modelos como ponto de partida ao calibrar uma fila real, e na escolha de modo da barra lateral
-- [ ] Confirmar com um lote de 2 ou 3 folhas em cada impressora real
+- [ ] Rever a exceção no plano 11 e o modo que a barra lateral deduz de `passada1_inversa`
+- [ ] Confirmar com um lote de 2 ou 3 folhas, quando houver impressora
 
 ## Pronto quando
 
