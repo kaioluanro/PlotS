@@ -14,7 +14,7 @@ Provar a lógica inteira sem impressora, inclusive os erros de recolocação.
 - [x] Propriedade com `proptest` nos 8 perfis
 - [x] PDF de folhas finais com `--folhas-finais`
 - [x] Tabela fixa de mecânica por perfil e contagem do laço exaustivo
-- [ ] Corrigir o modelo da gaveta: hoje a folha sai embaixo da pilha e a entrada puxa a de baixo, o que não corresponde à impressora descrita
+- [x] Corrigir o modelo da gaveta: saída no topo e entrada pela folha de cima
 - [ ] Teste de folha final com face girada
 - [ ] Criar impressoras virtuais com qualquer combinação de parâmetros
 - [ ] Vista Simulação, chave por documento e selo na interface

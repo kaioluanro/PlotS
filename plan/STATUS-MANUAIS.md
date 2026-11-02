@@ -33,12 +33,14 @@ Requisitos: OK 29 · PARTIAL 21 · MISSING 41 · BUG 0 · N/A 2 (93). Detalhes e
 | cli-mensagens | `882ba68` | concluído |
 | fase2-calibracao | `cf22592` | concluído |
 | fase2-folhas | `6baa24a` | concluído |
+| modelo-gaveta | `1301405` | concluído |
+| perfis | — | em revisão |
+| interface-base | — | em implementação |
 
-**Próximo:** corrigir o modelo da gaveta (`03-simulacao`) e depois `plots imprimir` com backend simulado e `plots calibrar` (`06-perfis`, `04-calibracao`, `07-cli-impressao`).
+**Próximo:** `plots imprimir` com backend simulado e `plots calibrar` (`04-calibracao`, `07-cli-impressao`).
 
 ## Bloqueado ou dependente do usuário
 
 - Impressora real: confirmação dos planos `04-calibracao`, `07-cli-impressao` e `08-impressao-windows`.
 - Imagem da tela de abertura: plano `10-splash`.
 - Validação das passadas no Firefox: plano `02-geracao-pdf`.
-- Rodar lotes em paralelo: aguarda confirmação.

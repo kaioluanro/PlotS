@@ -21,7 +21,7 @@ O projeto não pode acumular no HD arquivos que já não servem. A limpeza faz p
 
 - **Quando limpar**: ao terminar cada lote, antes de encerrar uma sessão e sempre que um agente concluir ou for interrompido. Confira com `du -sh target* .qa-* .deps-* .claude/worktrees 2>/dev/null`.
 - **Pode apagar sem perguntar** (só o que o trabalho no projeto gerou e dá para gerar de novo): pastas de compilação extras (`target-*/`, `target/` de agentes e de worktrees), worktrees de lotes já encerrados, manifestos e crates temporários, e PDFs, capturas e logs de verificação depois que o resultado foi registrado.
-- **Fica**: uma única pasta `target/` na raiz, enquanto o projeto estiver ativo; se passar de 2 GB, rode `cargo clean`.
+- **Compilação fora do E:**: o disco `E:` está quase cheio. Toda compilação usa `CARGO_TARGET_DIR` em `%LOCALAPPDATA%/plots-build/<lote>`, e essa pasta é apagada ao fim do lote. A raiz do projeto não mantém `target/`.
 - **Nunca apagar sem perguntar**: código, especificações, `AUDIT-*.md`, briefs, registros de sessão, arquivos do usuário, trabalho sem commit e qualquer coisa que não dê para gerar de novo. Na dúvida, pergunte.
 - **Antes de apagar**: confira o alvo e confirme que nenhum processo o está usando. Use caminhos exatos, nunca padrões amplos.
 - **Arquivos temporários novos**: use uma pasta já coberta pelo `.gitignore` e informe no relatório do lote o que foi removido e o que ficou.
