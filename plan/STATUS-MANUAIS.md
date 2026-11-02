@@ -44,7 +44,9 @@ Requisitos: OK 37 · PARTIAL 34 · MISSING 20 · BUG 0 · N/A 2 (93). Detalhes e
 | lateral-impressoras | `f6e3433` | concluído; botão de imprimir ainda desabilitado |
 | modelos-virtuais | `166adee` | concluído; simuladas imitam os dois modelos, sem medição em papel |
 
-**Próximo:** ligar o botão de imprimir ao envio, com cartões de recolocação; corrigir antes o modo da lateral (`19-modelos-de-impressora`, `11-lateral-impressoras`, `13-fluxo-e-recolocacao`).
+**Em andamento:** `seletor-modelos`: escolher jato de tinta ou laser para cada impressora.
+
+**Próximo:** ligar o botão de imprimir ao envio, com cartões de recolocação (`13-fluxo-e-recolocacao`).
 
 ## Bloqueado ou dependente do usuário
 

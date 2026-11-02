@@ -60,3 +60,7 @@ O modo escolhido define `passada1_inversa` no perfil: face para cima inverte, fa
 Abaixo da lista ficam o tamanho do lote e o botão "Imprimir frente", que mostra quantas impressoras vão receber. Durante o lote, a seção EM ANDAMENTO mostra um cartão por impressora com o estado, o lote atual e o botão "Imprimir verso".
 
 **Decidido:** a seleção de impressoras é de cada documento. Uma aba nova começa sem nenhuma marcada; trocar de aba troca a lista marcada na lateral.
+
+## Pequenos ajustes pendentes
+
+Trocar as marcas nos dados de teste de `ui/src/calibrar.test.ts` por nomes genéricos (em andamento em `seletor-modelos`).
