@@ -689,7 +689,7 @@ fn perfil_salvo_em(pasta: &Pasta, fila: &str, entrada: EntradaPerfil) -> PathBuf
 
 #[test]
 fn gesto_das_simuladas_indica_o_lado_que_o_simulador_confere() {
-    for (impressora, lado) in [("traseira", "baixo"), ("gaveta", "cima")] {
+    for (impressora, lado) in [("traseira", "baixo"), ("gaveta", "baixo")] {
         let pasta = Pasta::nova("gesto-lado");
         let perfis = pasta.caminho().join("perfis.toml");
         let (resultado, saida) = imprimir_simulado(&pasta, impressora, &perfis);
@@ -720,6 +720,34 @@ fn saida_da_simulacao_nao_afirma_envio_real_nem_confirmacao_do_spooler() {
     assert!(saida.contains(
         "Todos os lotes foram conferidos na simulação (2 no total). Isso não confere nenhuma impressora real."
     ));
+}
+
+#[test]
+fn jato_mostra_a_virada_pela_borda_de_cima_na_segunda_linha() {
+    let pasta = Pasta::nova("gesto-jato");
+    let perfis = pasta.caminho().join("perfis.toml");
+    let (resultado, saida) = imprimir_simulado(&pasta, "traseira", &perfis);
+    assert!(resultado.is_ok(), "{saida}");
+    assert!(
+        saida.contains(
+            "  Pegue o maço como saiu, não embaralhe, e coloque na entrada com a face impressa para baixo.\n  Vire o maço pela borda de cima, como um bloco de notas.\n"
+        ),
+        "{saida}"
+    );
+}
+
+#[test]
+fn laser_mostra_que_o_maco_nao_e_virado() {
+    let pasta = Pasta::nova("gesto-laser");
+    let perfis = pasta.caminho().join("perfis.toml");
+    let (resultado, saida) = imprimir_simulado(&pasta, "gaveta", &perfis);
+    assert!(resultado.is_ok(), "{saida}");
+    assert!(
+        saida.contains(
+            "  Pegue o maço como saiu, não embaralhe, e coloque na entrada com a face impressa para baixo.\n  Não vire o maço.\n"
+        ),
+        "{saida}"
+    );
 }
 
 #[test]

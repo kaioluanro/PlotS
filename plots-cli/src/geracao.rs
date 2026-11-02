@@ -1,12 +1,12 @@
 //! Geração das passadas em PDF, compartilhada por `gerar-pdf`, `imprimir` e a calibração.
 
-use crate::{GESTO_CORRETO, MSG_AVISO_IMPARES};
+use crate::MSG_AVISO_IMPARES;
 use plots_core::{
     pares_com_orientacao_mista, plano_lotes_por_papel, DimensoesPagina, Lote, LotePapel,
     OrdemPassadas, Pagina, Papel, PerfilImpressora,
 };
 use plots_pdf::{FaceFinal, FolhaFinal, PdfOrigem};
-use plots_print::{Marca, Mecanica, Simulador};
+use plots_print::{Marca, Mecanica, Recolocacao, Simulador};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -52,6 +52,7 @@ pub(crate) struct Opcoes {
     pub ordem: OrdemPassadas,
     pub perfil: PerfilImpressora,
     pub mecanica: Mecanica,
+    pub gesto: Recolocacao,
     pub folhas_finais: bool,
 }
 
@@ -133,7 +134,12 @@ pub(crate) fn gerar_arquivos(
             arquivos.push((caminho, conteudo));
         }
         if opcoes.folhas_finais {
-            let folhas = folhas_finais_do_lote(&lote.passada1, &lote.passada2, opcoes.mecanica)?;
+            let folhas = folhas_finais_do_lote(
+                &lote.passada1,
+                &lote.passada2,
+                opcoes.mecanica,
+                opcoes.gesto,
+            )?;
             let conteudo = documento
                 .pdf
                 .gerar_folhas_finais(&folhas, referencia)
@@ -210,16 +216,17 @@ pub(crate) fn escrever_avisos(
     Ok(())
 }
 
-/// Simula um lote com a recolocação correta e devolve as folhas finais, de cima para baixo.
+/// Simula um lote com a recolocação da impressora e devolve as folhas finais, de cima para baixo.
 fn folhas_finais_do_lote(
     frente: &[plots_core::Pagina],
     verso: &[plots_core::Pagina],
     mecanica: Mecanica,
+    gesto: Recolocacao,
 ) -> Result<Vec<FolhaFinal>, String> {
     let mut sim = Simulador::novo(mecanica);
     sim.imprimir_frente(frente)
         .map_err(|e| format!("erro na frente: {e}"))?;
-    sim.recolocar(GESTO_CORRETO)
+    sim.recolocar(gesto)
         .map_err(|e| format!("erro na recolocação: {e}"))?;
     sim.imprimir_verso(verso)
         .map_err(|e| format!("erro no verso: {e}"))?;

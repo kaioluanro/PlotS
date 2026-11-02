@@ -43,6 +43,7 @@ const MSG_ORDEM_REPETIDA: &str = "--ordem foi informado mais de uma vez";
 const MSG_ERRO_SIMULADO_INVALIDO: &str =
     "--simular-erro deve ser sem-virar, girado ou folha-a-menos";
 const MSG_ERRO_SIMULADO_REPETIDO: &str = "--simular-erro foi informado mais de uma vez";
+const MSG_SEM_VIRAR_LASER: &str = "--simular-erro sem-virar não se aplica à simulada de gaveta, que não vira o maço; use girado ou folha-a-menos";
 pub(crate) const MSG_AVISO_IMPARES: &str = "Ordem das passadas: ímpares primeiro.";
 /// `imprimir` sem `--simular` envia de verdade. Desligar isso exige revisar `FRASE_NAO_ENVIA` e
 /// a recusa sem `--simular`; o teste `frase_sobre_o_envio_acompanha_o_envio_ligado` confere.
@@ -56,14 +57,6 @@ pub(crate) const FRASE_NAO_ENVIA: &str = "Só 'imprimir' sem --simular envia à 
 pub(crate) const MSG_ENVIO_INDISPONIVEL: &str =
     "o envio à impressora só está disponível no Windows; use --simular para conferir o fluxo sem imprimir";
 const MSG_FOLHAS_REPETIDA: &str = "--folhas-finais foi informado mais de uma vez";
-
-/// Recolocação correta: vira o maço e nada mais.
-pub(crate) const GESTO_CORRETO: Recolocacao = Recolocacao {
-    virar_maco: true,
-    inverter_ordem: false,
-    girar_180: false,
-    retirar_folhas: 0,
-};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ImpressoraVirtual {
@@ -91,11 +84,26 @@ impl ImpressoraVirtual {
         }
     }
 
+    /// Perfil do modelo: o jato de tinta (traseira) tem o verso girado; a laser (gaveta)
+    /// tem a frente invertida e o verso direto.
     pub(crate) fn perfil(self) -> PerfilImpressora {
+        let gesto = self.gesto();
         PerfilImpressora {
-            passada1_inversa: self == Self::Traseira,
+            passada1_inversa: true,
             passada2_inversa: self == Self::Traseira,
-            ..PerfilImpressora::default()
+            verso_girar_180: self == Self::Traseira,
+            gesto_recolocar: plots_core::GestoRecolocar {
+                virar_maco: gesto.virar_maco,
+                ..plots_core::GestoRecolocar::default()
+            },
+        }
+    }
+
+    /// Gesto de recolocação do modelo: o jato vira o maço pela borda de cima; a laser não vira.
+    pub(crate) fn gesto(self) -> Recolocacao {
+        match self {
+            Self::Traseira => Recolocacao::virada_pela_borda_de_cima(),
+            Self::Gaveta => Recolocacao::default(),
         }
     }
 
@@ -140,29 +148,39 @@ impl ErroSimulado {
         }
     }
 
-    fn descricao(self) -> &'static str {
-        match self {
-            Self::SemVirar => "o maço não foi virado",
-            Self::Girado => "o maço foi girado 180°",
-            Self::FolhaAMenos => "uma folha saiu do maço",
+    fn descricao(self, impressora: ImpressoraVirtual) -> &'static str {
+        match (self, impressora) {
+            (Self::SemVirar, _) => "o maço não foi virado",
+            (Self::Girado, ImpressoraVirtual::Traseira) => {
+                "o maço foi virado pela lateral, e não pela borda de cima"
+            }
+            (Self::Girado, ImpressoraVirtual::Gaveta) => "o maço foi girado 180°",
+            (Self::FolhaAMenos, _) => "uma folha saiu do maço",
         }
     }
 
-    fn recolocacao(self) -> Recolocacao {
-        match self {
-            Self::SemVirar => Recolocacao {
-                virar_maco: false,
+    /// Indica se o erro faz sentido para a impressora: na laser não há virada a omitir.
+    fn aplica_a(self, impressora: ImpressoraVirtual) -> bool {
+        !(self == Self::SemVirar && impressora == ImpressoraVirtual::Gaveta)
+    }
+
+    /// Recolocação errada para a impressora: a sem virar omite a virada do jato; a girada
+    /// vira o jato pela lateral, sem a volta da borda de cima, e gira o maço da laser sem
+    /// virar; a folha a menos usa o gesto correto e perde uma folha.
+    fn recolocacao(self, impressora: ImpressoraVirtual) -> Recolocacao {
+        match (self, impressora) {
+            (Self::SemVirar, _) => Recolocacao::default(),
+            (Self::Girado, ImpressoraVirtual::Traseira) => Recolocacao {
+                virar_maco: true,
                 ..Recolocacao::default()
             },
-            Self::Girado => Recolocacao {
-                virar_maco: true,
+            (Self::Girado, ImpressoraVirtual::Gaveta) => Recolocacao {
                 girar_180: true,
                 ..Recolocacao::default()
             },
-            Self::FolhaAMenos => Recolocacao {
-                virar_maco: true,
+            (Self::FolhaAMenos, _) => Recolocacao {
                 retirar_folhas: 1,
-                ..Recolocacao::default()
+                ..impressora.gesto()
             },
         }
     }
@@ -314,6 +332,9 @@ pub fn executar_com_io(
     let paginas = paginas.ok_or("informe --paginas N")?;
     let tamanho_lote = lote.ok_or("informe --lote K")?;
     let impressora = impressora.ok_or("informe --impressora traseira|gaveta")?;
+    if erro_simulado.is_some_and(|erro| !erro.aplica_a(impressora)) {
+        return Err(MSG_SEM_VIRAR_LASER.into());
+    }
     if paginas == 0 {
         return Err("--paginas deve ser maior que zero".into());
     }
@@ -341,7 +362,7 @@ pub fn executar_com_io(
             saida,
             "Gesto errado simulado: {} ({}).",
             erro.nome(),
-            erro.descricao()
+            erro.descricao(impressora)
         )
         .map_err(|e| e.to_string())?;
     }
@@ -357,7 +378,10 @@ pub fn executar_com_io(
         .map_err(|e| e.to_string())?;
         let mut com_erro = erro_simulado;
         loop {
-            let gesto = com_erro.map_or(GESTO_CORRETO, ErroSimulado::recolocacao);
+            let gesto = match com_erro {
+                Some(erro) => erro.recolocacao(impressora),
+                None => impressora.gesto(),
+            };
             writeln!(saida, "  Passada 1: {}", listar(&plano.passada1))
                 .map_err(|e| e.to_string())?;
             job.enviar_frente()
@@ -535,6 +559,7 @@ fn gerar_pdfs(args: &[String], saida: &mut impl Write) -> Result<(), String> {
         ordem,
         perfil: impressora.perfil(),
         mecanica: impressora.mecanica(),
+        gesto: impressora.gesto(),
         folhas_finais,
     };
     let documento = geracao::Documento::ler(Path::new(entrada))?;

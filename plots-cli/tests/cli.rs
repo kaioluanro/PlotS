@@ -56,7 +56,7 @@ fn executar_binario(argumentos: &[&str]) -> std::process::Output {
 
 #[test]
 fn simula_duas_impressoras_virtuais_e_exibe_ordem_e_folhas() {
-    for (printer, front_order) in [("traseira", "4, 2"), ("gaveta", "2, 4")] {
+    for (printer, front_order) in [("traseira", "4, 2"), ("gaveta", "4, 2")] {
         let output = executar(&args(&[
             "simular",
             "--paginas",
@@ -683,7 +683,7 @@ fn gerar_calibracao_rejeita_entradas_invalidas_sem_criar_arquivo() {
 
 #[test]
 fn ordem_impares_inverte_as_passadas_e_mantem_folhas_certas() {
-    for (impressora, frente) in [("traseira", "3, 1"), ("gaveta", "1, 3")] {
+    for (impressora, frente) in [("traseira", "3, 1"), ("gaveta", "3, 1")] {
         let saida = executar(&args(&[
             "simular",
             "--paginas",
@@ -719,7 +719,7 @@ fn ordem_padrao_nao_mostra_aviso_de_ordem() {
     ]))
     .unwrap();
     assert!(!saida.contains("Ordem das passadas"));
-    assert!(saida.contains("Passada 1: 2, 4"));
+    assert!(saida.contains("Passada 1: 4, 2"));
 }
 
 #[test]
@@ -799,7 +799,8 @@ fn gerar_pdf_com_ordem_impares_grava_passadas_trocadas() {
             .unwrap()
             .as_i64()
             .unwrap(),
-        1
+        // A laser inverte a frente: com ordem de ímpares, a primeira passada começa pela 3.
+        3
     );
     let segunda = lopdf::Document::load(pasta.caminho().join("lote-0001-passada-2.pdf")).unwrap();
     let pagina = *segunda.get_pages().values().next().unwrap();
@@ -839,8 +840,13 @@ fn gesto_sem_virar_marca_folhas_erradas_e_sai_com_codigo_zero() {
 }
 
 #[test]
-fn gesto_girado_marca_verso_de_cabeca_para_baixo_nas_duas_impressoras() {
-    for impressora in ["traseira", "gaveta"] {
+fn gesto_girado_marca_o_defeito_do_modelo_nas_duas_impressoras() {
+    // Girado: no jato é virado pela lateral, sem a volta da borda de cima; na laser o
+    // maço só gira. Nos dois casos o verso sai de cabeça para baixo.
+    for (impressora, defeito) in [
+        ("traseira", "o verso está de cabeça para baixo"),
+        ("gaveta", "o verso está de cabeça para baixo"),
+    ] {
         let saida = executar_binario(&[
             "simular",
             "--paginas",
@@ -854,13 +860,128 @@ fn gesto_girado_marca_verso_de_cabeca_para_baixo_nas_duas_impressoras() {
         ]);
         assert_eq!(saida.status.code(), Some(0));
         let texto = String::from_utf8(saida.stdout).unwrap();
-        assert!(texto.contains("Gesto errado simulado: girado"));
-        assert!(texto.contains("0 de 2 folhas corretas"));
-        assert_eq!(
-            texto.matches("o verso está de cabeça para baixo").count(),
-            2
+        assert!(texto.contains("Gesto errado simulado: girado"), "{texto}");
+        assert!(texto.contains("0 de 2 folhas corretas"), "{texto}");
+        assert_eq!(texto.matches(defeito).count(), 2, "{impressora}\n{texto}");
+    }
+}
+
+fn simular_texto(impressora: &str, paginas: &str, extras: &[&str]) -> (i32, String) {
+    let mut argumentos = vec![
+        "simular",
+        "--paginas",
+        paginas,
+        "--lote",
+        "3",
+        "--impressora",
+        impressora,
+    ];
+    argumentos.extend_from_slice(extras);
+    let saida = executar_binario(&argumentos);
+    let codigo = saida.status.code().unwrap_or(-1);
+    (codigo, String::from_utf8(saida.stdout).unwrap())
+}
+
+#[test]
+fn seis_paginas_nas_duas_simuladas_seguem_a_sequencia_do_modelo() {
+    let (codigo, jato) = simular_texto("traseira", "6", &[]);
+    assert_eq!(codigo, 0, "{jato}");
+    assert!(jato.contains("Passada 1: 6, 4, 2"), "{jato}");
+    assert!(jato.contains("Passada 2: 5, 3, 1"), "{jato}");
+    assert!(
+        jato.contains("Resultado do lote: 3 de 3 folhas corretas"),
+        "{jato}"
+    );
+
+    let (codigo, laser) = simular_texto("gaveta", "6", &[]);
+    assert_eq!(codigo, 0, "{laser}");
+    assert!(laser.contains("Passada 1: 6, 4, 2"), "{laser}");
+    assert!(laser.contains("Passada 2: 1, 3, 5"), "{laser}");
+    assert!(
+        laser.contains("Resultado do lote: 3 de 3 folhas corretas"),
+        "{laser}"
+    );
+}
+
+#[test]
+fn total_impar_nas_duas_simuladas_segue_a_sequencia_do_modelo() {
+    let (codigo, jato) = simular_texto("traseira", "5", &[]);
+    assert_eq!(codigo, 0, "{jato}");
+    assert!(jato.contains("Passada 1: branca, 4, 2"), "{jato}");
+    assert!(jato.contains("Passada 2: 5, 3, 1"), "{jato}");
+    assert!(
+        jato.contains("Resultado do lote: 3 de 3 folhas corretas"),
+        "{jato}"
+    );
+
+    let (codigo, laser) = simular_texto("gaveta", "5", &[]);
+    assert_eq!(codigo, 0, "{laser}");
+    assert!(laser.contains("Passada 1: branca, 4, 2"), "{laser}");
+    assert!(laser.contains("Passada 2: 1, 3, 5"), "{laser}");
+    assert!(
+        laser.contains("Resultado do lote: 3 de 3 folhas corretas"),
+        "{laser}"
+    );
+}
+
+#[test]
+fn ordem_impares_seis_paginas_confere_as_folhas_nas_duas_simuladas() {
+    for impressora in ["traseira", "gaveta"] {
+        let (codigo, texto) = simular_texto(impressora, "6", &["--ordem", "impares"]);
+        assert_eq!(codigo, 0, "{impressora}\n{texto}");
+        assert!(
+            texto.contains("Resultado do lote: 3 de 3 folhas corretas"),
+            "{impressora}\n{texto}"
         );
     }
+}
+
+#[test]
+fn laser_recusa_o_erro_sem_virar_porque_nao_vira_o_maco() {
+    let saida = executar_binario(&[
+        "simular",
+        "--paginas",
+        "4",
+        "--lote",
+        "2",
+        "--impressora",
+        "gaveta",
+        "--simular-erro",
+        "sem-virar",
+    ]);
+    assert_ne!(saida.status.code(), Some(0));
+    let erro = String::from_utf8(saida.stderr).unwrap();
+    assert!(
+        erro.contains("não se aplica à simulada de gaveta"),
+        "{erro}"
+    );
+}
+
+#[test]
+fn jato_com_girado_virado_pela_lateral_marca_verso_de_cabeca_para_baixo() {
+    let saida = executar_binario(&[
+        "simular",
+        "--paginas",
+        "4",
+        "--lote",
+        "2",
+        "--impressora",
+        "traseira",
+        "--simular-erro",
+        "girado",
+    ]);
+    assert_eq!(saida.status.code(), Some(0));
+    let texto = String::from_utf8(saida.stdout).unwrap();
+    assert!(
+        texto.contains("o maço foi virado pela lateral, e não pela borda de cima"),
+        "{texto}"
+    );
+    assert!(texto.contains("0 de 2 folhas corretas"), "{texto}");
+    assert_eq!(
+        texto.matches("o verso está de cabeça para baixo").count(),
+        2,
+        "{texto}"
+    );
 }
 
 #[test]

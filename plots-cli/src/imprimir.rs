@@ -19,6 +19,8 @@ struct Fila {
     nome: String,
     perfil: PerfilImpressora,
     mecanica: Mecanica,
+    /// Gesto de recolocação da fila: o do modelo, ou o registrado no perfil salvo.
+    gesto: Recolocacao,
     /// `true` quando a mecânica foi escolhida para ser coerente com um perfil salvo.
     de_perfil_salvo: bool,
     /// Texto do gesto guardado no perfil salvo, mostrado na linha seguinte à frase.
@@ -119,6 +121,7 @@ pub(crate) fn executar(
         ordem,
         perfil: fila.perfil,
         mecanica: fila.mecanica,
+        gesto: fila.gesto,
         folhas_finais,
     };
     let documento = Documento::ler(Path::new(arquivo))?;
@@ -194,7 +197,7 @@ fn conduzir_lotes(
             "  Frente simulada: envio e confirmação do spooler foram só simulados; nada foi à impressora."
         )
         .map_err(|e| e.to_string())?;
-        let gesto = gesto_do_perfil(&fila.perfil);
+        let gesto = fila.gesto;
         if fila.de_perfil_salvo {
             writeln!(
                 saida,
@@ -207,6 +210,7 @@ fn conduzir_lotes(
         } else {
             writeln!(saida, "  {}", gesto_de_recolocacao(fila.mecanica, gesto))
                 .map_err(|e| e.to_string())?;
+            writeln!(saida, "  {}", texto_do_gesto(gesto)).map_err(|e| e.to_string())?;
         }
         write!(
             saida,
@@ -270,7 +274,18 @@ fn face_impressa_para_cima_na_entrada(mecanica: Mecanica, gesto: Recolocacao) ->
     mecanica.saida_face_impressa_para_cima != gesto.virar_maco
 }
 
-/// Gesto de recolocação registrado no perfil da fila.
+/// Segunda linha da recolocação das simuladas, dita pelo gesto do modelo. Os gestos dos
+/// modelos só viram, viram e giram, ou não tocam o maço.
+fn texto_do_gesto(gesto: Recolocacao) -> &'static str {
+    match (gesto.virar_maco, gesto.girar_180) {
+        (true, true) => "Vire o maço pela borda de cima, como um bloco de notas.",
+        (true, false) => "Vire o maço pela lateral, como a página de um livro.",
+        (false, false) => "Não vire o maço.",
+        (false, true) => "Gire o maço 180°, sem virá-lo.",
+    }
+}
+
+/// Gesto de recolocação registrado no perfil salvo.
 fn gesto_do_perfil(perfil: &PerfilImpressora) -> Recolocacao {
     Recolocacao {
         virar_maco: perfil.gesto_recolocar.virar_maco,
@@ -289,6 +304,7 @@ fn resolver_fila(
             nome: virtual_.nome().to_string(),
             perfil: virtual_.perfil(),
             mecanica: virtual_.mecanica(),
+            gesto: virtual_.gesto(),
             de_perfil_salvo: false,
             gesto_texto: None,
         });
@@ -309,6 +325,7 @@ fn resolver_fila(
         nome: nome.to_string(),
         perfil: entrada.perfil,
         mecanica,
+        gesto: gesto_do_perfil(&entrada.perfil),
         de_perfil_salvo: true,
         gesto_texto: entrada.gesto_texto.clone(),
     })
@@ -321,6 +338,7 @@ pub(crate) fn mecanica_coerente(
     perfil: &PerfilImpressora,
     ordem: OrdemPassadas,
 ) -> Option<Mecanica> {
+    let gesto = gesto_do_perfil(perfil);
     let combinadas = (0u8..32).map(|mascara| Mecanica {
         saida_face_impressa_para_cima: mascara & 1 != 0,
         saida_no_topo: mascara & 2 != 0,
@@ -336,11 +354,16 @@ pub(crate) fn mecanica_coerente(
     bases
         .into_iter()
         .chain(combinadas)
-        .find(|mecanica| sequencia_confere(perfil, ordem, mecanica))
+        .find(|mecanica| sequencia_confere(perfil, ordem, mecanica, gesto))
 }
 
-/// Simula um documento de referência com a mecânica e confere todas as folhas.
-fn sequencia_confere(perfil: &PerfilImpressora, ordem: OrdemPassadas, mecanica: &Mecanica) -> bool {
+/// Simula um documento de referência com a mecânica e o gesto, e confere todas as folhas.
+fn sequencia_confere(
+    perfil: &PerfilImpressora,
+    ordem: OrdemPassadas,
+    mecanica: &Mecanica,
+    gesto: Recolocacao,
+) -> bool {
     let lotes = match plano_documento(
         REFERENCIA_PAGINAS,
         REFERENCIA_FOLHAS_POR_LOTE,
@@ -350,7 +373,6 @@ fn sequencia_confere(perfil: &PerfilImpressora, ordem: OrdemPassadas, mecanica: 
         Ok(lotes) if !lotes.is_empty() => lotes,
         _ => return false,
     };
-    let gesto = gesto_do_perfil(perfil);
     lotes.iter().all(|lote| {
         let mut sim = Simulador::novo(*mecanica);
         if sim.imprimir_frente(&lote.passada1).is_err()
@@ -403,14 +425,49 @@ mod testes {
 
     #[test]
     fn perfis_embutidos_escolhem_a_propria_mecanica_simulada() {
-        let traseira = ImpressoraVirtual::Traseira.perfil();
-        let gaveta = ImpressoraVirtual::Gaveta.perfil();
         let ordem = OrdemPassadas::ParesPrimeiro;
+        for virtual_ in [ImpressoraVirtual::Traseira, ImpressoraVirtual::Gaveta] {
+            assert!(
+                sequencia_confere(
+                    &virtual_.perfil(),
+                    ordem,
+                    &virtual_.mecanica(),
+                    virtual_.gesto()
+                ),
+                "{virtual_:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn texto_do_gesto_segue_o_gesto_do_modelo() {
         assert_eq!(
-            mecanica_coerente(&traseira, ordem),
-            Some(Mecanica::traseira())
+            texto_do_gesto(ImpressoraVirtual::Traseira.gesto()),
+            "Vire o maço pela borda de cima, como um bloco de notas."
         );
-        assert_eq!(mecanica_coerente(&gaveta, ordem), Some(Mecanica::gaveta()));
+        assert_eq!(
+            texto_do_gesto(ImpressoraVirtual::Gaveta.gesto()),
+            "Não vire o maço."
+        );
+        assert_eq!(
+            texto_do_gesto(Recolocacao {
+                virar_maco: true,
+                ..Recolocacao::default()
+            }),
+            "Vire o maço pela lateral, como a página de um livro."
+        );
+    }
+
+    #[test]
+    fn perfis_embutidos_seguem_os_dois_modelos() {
+        let jato = ImpressoraVirtual::Traseira.perfil();
+        assert!(jato.passada1_inversa, "{jato:?}");
+        assert!(jato.passada2_inversa, "{jato:?}");
+        assert!(jato.verso_girar_180, "{jato:?}");
+        let laser = ImpressoraVirtual::Gaveta.perfil();
+        assert!(laser.passada1_inversa, "{laser:?}");
+        assert!(!laser.passada2_inversa, "{laser:?}");
+        assert!(!laser.verso_girar_180, "{laser:?}");
     }
 
     #[test]
@@ -432,12 +489,17 @@ mod testes {
 
     #[test]
     fn frase_do_gesto_bate_com_a_face_que_entra_no_simulador() {
-        for mecanica in [Mecanica::traseira(), Mecanica::gaveta()] {
-            for virar_maco in [false, true] {
-                let gesto = Recolocacao {
-                    virar_maco,
-                    ..Recolocacao::default()
-                };
+        let gestos = [
+            Recolocacao::default(),
+            Recolocacao {
+                virar_maco: true,
+                ..Recolocacao::default()
+            },
+            Recolocacao::virada_pela_borda_de_cima(),
+        ];
+        for virtual_ in [ImpressoraVirtual::Traseira, ImpressoraVirtual::Gaveta] {
+            let mecanica = virtual_.mecanica();
+            for gesto in gestos {
                 let lotes = plano_documento(
                     2,
                     1,
@@ -454,7 +516,7 @@ mod testes {
                 let frase = gesto_de_recolocacao(mecanica, gesto);
                 assert!(
                     frase.contains(&format!("face impressa para {lado}.")),
-                    "{mecanica:?} virar={virar_maco}: {frase}"
+                    "{virtual_:?} {gesto:?}: {frase}"
                 );
             }
         }

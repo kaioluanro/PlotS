@@ -39,6 +39,8 @@ pub struct Mecanica {
 }
 
 impl Mecanica {
+    /// Jato de tinta: a folha sai com a face impressa para cima, cai em cima da
+    /// pilha, e a entrada puxa a folha de cima, que recebe tinta na face de cima.
     pub const fn traseira() -> Self {
         Self {
             saida_face_impressa_para_cima: true,
@@ -49,18 +51,15 @@ impl Mecanica {
         }
     }
 
-    /// Laser com entrada pela gaveta de baixo e saída no topo, face impressa para
-    /// baixo: cada folha cai em cima da anterior e a gaveta puxa a folha de cima.
-    ///
-    /// Qual face recebe tinta depende da máquina e é assunto da calibração. Aqui a
-    /// gaveta imprime a face que fica para baixo; é por isso que o maço volta
-    /// virado. Se a máquina real imprimir a face que fica para cima, o maço não
-    /// deve ser virado, e a ordem do verso muda (passada 2 inversa).
+    /// Laser: a folha sai com a face impressa para baixo, cai em cima da pilha, e a
+    /// gaveta puxa a folha de cima. A gaveta imprime a face que fica para cima, por
+    /// isso o maço não é virado na recolocação. O maço final sai com a primeira
+    /// folha por baixo e é lido virando-o.
     pub const fn gaveta() -> Self {
         Self {
             saida_face_impressa_para_cima: false,
             saida_no_topo: true,
-            imprime_face_para_cima: false,
+            imprime_face_para_cima: true,
             entrada_pelo_topo: true,
             giro_segunda_passada: false,
         }
@@ -76,6 +75,21 @@ pub struct Recolocacao {
     pub girar_180: bool,
     /// Quantidade de folhas retiradas do topo, para simular uma perda.
     pub retirar_folhas: usize,
+}
+
+impl Recolocacao {
+    /// Virada pela borda de cima, como um bloco de notas. O maço vira como em
+    /// `virar_maco`, e cada folha também gira 180° no próprio plano: a borda que
+    /// estava embaixo passa para o lado de quem lê. Por isso a folha fica de cabeça
+    /// para baixo em relação à frente, a não ser que o verso seja impresso girado.
+    pub const fn virada_pela_borda_de_cima() -> Self {
+        Self {
+            virar_maco: true,
+            inverter_ordem: false,
+            girar_180: true,
+            retirar_folhas: 0,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -295,6 +309,8 @@ pub enum Defeito {
     Sobreposta,
     /// O verso tem orientação diferente da frente.
     VersoDeCabecaParaBaixo,
+    /// As duas faces estão giradas: a folha inteira está de cabeça para baixo.
+    FolhaDeCabecaParaBaixo,
 }
 
 impl Defeito {
@@ -303,6 +319,7 @@ impl Defeito {
             Self::ParNaoEsperado => "as páginas não formam o par esperado",
             Self::Sobreposta => "uma face recebeu duas impressões",
             Self::VersoDeCabecaParaBaixo => "o verso está de cabeça para baixo",
+            Self::FolhaDeCabecaParaBaixo => "a folha está de cabeça para baixo",
         }
     }
 }
@@ -327,8 +344,9 @@ fn ordenar_par(par: (Option<usize>, Option<usize>)) -> (Option<usize>, Option<us
 ///
 /// `pares_esperados` lista o par de páginas de cada folha do lote, sem repetição.
 /// Uma folha está certa quando as duas faces formam um par ainda não usado por
-/// outra folha, nenhuma face recebeu segunda impressão e as duas faces têm a
-/// mesma orientação. Uma folha sem as duas faces impressas não forma par.
+/// outra folha, nenhuma face recebeu segunda impressão, as duas faces têm a
+/// mesma orientação e nenhuma está girada. Uma folha sem as duas faces impressas
+/// não forma par.
 pub fn conferir_folhas(
     pilha: &[Folha],
     pares_esperados: &[(Option<usize>, Option<usize>)],
@@ -343,7 +361,9 @@ pub fn conferir_folhas(
             let mut defeitos = Vec::new();
             let par = match (folha.face_a, folha.face_b) {
                 (Some(a), Some(b)) => {
-                    if a.girada != b.girada {
+                    if a.girada && b.girada {
+                        defeitos.push(Defeito::FolhaDeCabecaParaBaixo);
+                    } else if a.girada != b.girada {
                         defeitos.push(Defeito::VersoDeCabecaParaBaixo);
                     }
                     Some(ordenar_par((a.pagina, b.pagina)))
@@ -396,11 +416,17 @@ mod tests {
     fn calibracao_corrige_pareamento_e_orientacao_nas_duas_mecanicas() {
         // Alimentação determinística e giro uniforme para todas as folhas;
         // sem sobreimpressão, perda ou mudança de gesto entre os dois testes.
-        let gesto = Recolocacao {
-            virar_maco: true,
-            ..Default::default()
-        };
-        for mecanismo_base in [Mecanica::traseira(), Mecanica::gaveta()] {
+        // Cada máquina usa o gesto que lhe cabe: a laser não vira o maço.
+        for (mecanismo_base, gesto) in [
+            (
+                Mecanica::traseira(),
+                Recolocacao {
+                    virar_maco: true,
+                    ..Default::default()
+                },
+            ),
+            (Mecanica::gaveta(), Recolocacao::default()),
+        ] {
             for giro_maquina in [false, true] {
                 let mecanismo = Mecanica {
                     giro_segunda_passada: giro_maquina,
@@ -444,22 +470,11 @@ mod tests {
     #[test]
     fn duas_maquinas_com_perfis_coerentes_preservam_pares() {
         for total in [1, 3, 6] {
-            for (mecanismo, inversa) in [(Mecanica::traseira(), true), (Mecanica::gaveta(), false)]
-            {
-                let perfil = PerfilImpressora {
-                    passada1_inversa: inversa,
-                    passada2_inversa: inversa,
-                    ..Default::default()
-                };
-                let sim = executar(
-                    total,
-                    mecanismo,
-                    perfil,
-                    Recolocacao {
-                        virar_maco: true,
-                        ..Default::default()
-                    },
-                );
+            for (mecanismo, perfil, gesto) in [
+                (Mecanica::traseira(), perfil_jato(), virada_de_cima()),
+                (Mecanica::gaveta(), perfil_laser(), Recolocacao::default()),
+            ] {
+                let sim = executar(total, mecanismo, perfil, gesto);
                 let pares: Vec<_> = sim
                     .folhas_para_leitura()
                     .iter()
@@ -564,9 +579,11 @@ mod tests {
                 32,
                 "perfil {mascara_perfil}: toda mecânica deve ser verificada ou pulada"
             );
+            // A conferência compara as faces entre si: a rotação do gesto passa a ser um
+            // ajuste que compensa o verso, e metade das mecânicas ganha um gesto que aprume o lote.
             assert_eq!(
                 (v, p),
-                (8, 24),
+                (16, 16),
                 "perfil {mascara_perfil}: cobertura mudou (verificadas, puladas)"
             );
         }
@@ -622,9 +639,12 @@ mod tests {
                     None
                 }
             });
+            // As duas faces precisam estar sem giro. Uma virada pela borda de cima deixa a
+            // folha girada em relação ao maço; o verso girado compensa, e a conferência
+            // vale para a relação entre as faces, não para a posição do maço.
             let orientacao_correta = marca_frente_final
                 .zip(marca_verso)
-                .is_some_and(|(a, b)| !(a.girada ^ folha.girada) && !(b.girada ^ folha.girada));
+                .is_some_and(|(a, b)| !a.girada && !b.girada);
             faces_corretas && orientacao_correta && folha.sobreimpressao.is_none()
         })
     }
@@ -669,8 +689,8 @@ mod tests {
         // Pilha montada à mão, de baixo para cima: a folha 2 e depois a folha 4.
         sim.pilha = vec![folha(2), folha(4)];
         sim.estado = Estado::AguardandoRecolocacao;
-        // Sem virar o maço, a face impressa continua para baixo e a gaveta
-        // imprime justamente nela: a sobreimpressão revela qual folha foi puxada.
+        // Sem virar o maço, a face impressa continua para baixo; a gaveta imprime
+        // a face de cima, que está vazia, e nenhuma folha recebe sobreimpressão.
         sim.recolocar(Recolocacao::default()).unwrap();
         sim.imprimir_verso(&paginas_de(&[1, 3])).unwrap();
         let por_folha: Vec<_> = sim
@@ -679,27 +699,28 @@ mod tests {
             .map(|f| {
                 (
                     f.face_a.and_then(|m| m.pagina),
-                    f.sobreimpressao.and_then(|(_, m)| m.pagina),
+                    f.face_b.and_then(|m| m.pagina),
                 )
             })
             .collect();
         // A folha de cima (4) é puxada primeiro e recebe a página 1.
         assert!(por_folha.contains(&(Some(4), Some(1))), "{por_folha:?}");
         assert!(por_folha.contains(&(Some(2), Some(3))), "{por_folha:?}");
+        assert!(sim.pilha().iter().all(|f| f.sobreimpressao.is_none()));
     }
 
     #[test]
     fn gaveta_ciclo_completo_sai_com_a_ultima_folha_em_cima_e_le_se_virado() {
         for total in [4usize, 5] {
             for ordem in [OrdemPassadas::ParesPrimeiro, OrdemPassadas::ImparesPrimeiro] {
-                let lote = plano_documento(total, 10, ordem, PerfilImpressora::default())
+                let lote = plano_documento(total, 10, ordem, perfil_laser())
                     .unwrap()
                     .remove(0);
                 let sim = executar_lote(
                     &lote.passada1,
                     &lote.passada2,
                     Mecanica::gaveta(),
-                    GESTO_DA_TABELA,
+                    Recolocacao::default(),
                 );
                 // Na saída, a primeira folha impressa está embaixo.
                 let saida = sim.pilha();
@@ -921,33 +942,53 @@ mod tests {
         );
     }
 
-    /// Gesto de todas as linhas da tabela: virar o maço e nada mais.
-    const GESTO_DA_TABELA: Recolocacao = Recolocacao {
+    /// Gesto da virada pela lateral: vira o maço e nada mais.
+    const GESTO_LATERAL: Recolocacao = Recolocacao {
         virar_maco: true,
         inverter_ordem: false,
         girar_180: false,
         retirar_folhas: 0,
     };
 
+    /// Gesto sem nenhuma operação: o maço não é tocado na recolocação.
+    const GESTO_NENHUM: Recolocacao = Recolocacao {
+        virar_maco: false,
+        inverter_ordem: false,
+        girar_180: false,
+        retirar_folhas: 0,
+    };
+
+    /// Máquina hipotética que imprime a face de baixo e sai pelo topo, com a face
+    /// impressa para baixo. Mantém os valores das linhas hipotéticas da tabela.
+    const fn maquina_que_imprime_a_face_de_baixo() -> Mecanica {
+        Mecanica {
+            imprime_face_para_cima: false,
+            ..Mecanica::gaveta()
+        }
+    }
+
     /// Perfis de (passada1_inversa, passada2_inversa, verso_girar_180), cada um com a máquina
-    /// que o produz pelo gesto de virar o maço, lendo o maço final como em
-    /// `folhas_para_leitura`. Regra física das linhas: a primeira passada inverte quando a
-    /// entrada pelo topo e a face impressa para cima coincidem (face para cima com entrada
-    /// pelo topo, ou face para baixo com entrada por baixo); a segunda inverte quando a
-    /// saída no topo e a face impressa para cima coincidem; e o verso só gira quando a máquina
-    /// gira a segunda passada sozinha. A gaveta e a traseira são as duas impressoras virtuais
-    /// do CLI; as demais linhas são máquinas hipotéticas que seguem a mesma regra e não foram
-    /// medidas.
-    const TABELA_DE_MECANICAS: [((bool, bool, bool), Mecanica); 8] = [
-        // Gaveta: puxa a folha de cima, imprime a face de baixo e sai no topo, face para baixo.
-        ((false, false, false), Mecanica::gaveta()),
-        // Gaveta que devolve cada folha por baixo do maço: a segunda passada inverte.
+    /// e o gesto de recolocação que o produzem, lendo o maço final como em
+    /// `folhas_para_leitura`. As linhas hipotéticas, que não foram medidas, seguem a regra
+    /// física das passadas: a primeira inverte quando a entrada pelo topo e a face impressa
+    /// para cima coincidem; a segunda inverte quando a saída no topo e a face impressa para
+    /// cima coincidem; e o verso só gira quando a máquina gira a segunda passada sozinha.
+    /// As duas últimas linhas são o jato de tinta e a laser, com os gestos dos modelos.
+    const TABELA_DE_MECANICAS: [((bool, bool, bool), Mecanica, Recolocacao); 10] = [
+        // Imprime a face de baixo e sai no topo, face para baixo.
+        (
+            (false, false, false),
+            maquina_que_imprime_a_face_de_baixo(),
+            GESTO_LATERAL,
+        ),
+        // Igual, mas devolve cada folha por baixo do maço: a segunda passada inverte.
         (
             (false, true, false),
             Mecanica {
                 saida_no_topo: false,
-                ..Mecanica::gaveta()
+                ..maquina_que_imprime_a_face_de_baixo()
             },
+            GESTO_LATERAL,
         ),
         // Traseira que devolve cada folha por baixo do maço: a segunda passada não inverte.
         (
@@ -956,16 +997,18 @@ mod tests {
                 saida_no_topo: false,
                 ..Mecanica::traseira()
             },
+            GESTO_LATERAL,
         ),
         // Traseira: entra pelo topo, imprime com a face para cima e sai por cima do maço.
-        ((true, true, false), Mecanica::traseira()),
-        // Gaveta que gira a segunda passada: o verso é girado 180° para compensar.
+        ((true, true, false), Mecanica::traseira(), GESTO_LATERAL),
+        // Gira a segunda passada: o verso é girado 180° para compensar.
         (
             (false, false, true),
             Mecanica {
                 giro_segunda_passada: true,
-                ..Mecanica::gaveta()
+                ..maquina_que_imprime_a_face_de_baixo()
             },
+            GESTO_LATERAL,
         ),
         // Traseira que devolve por baixo e gira a segunda passada: o verso é compensado.
         (
@@ -975,15 +1018,17 @@ mod tests {
                 giro_segunda_passada: true,
                 ..Mecanica::traseira()
             },
+            GESTO_LATERAL,
         ),
-        // Gaveta que devolve por baixo e gira a segunda passada: o verso é compensado.
+        // Devolve por baixo e gira a segunda passada: o verso é compensado.
         (
             (false, true, true),
             Mecanica {
                 saida_no_topo: false,
                 giro_segunda_passada: true,
-                ..Mecanica::gaveta()
+                ..maquina_que_imprime_a_face_de_baixo()
             },
+            GESTO_LATERAL,
         ),
         // Traseira que gira a segunda passada: o verso é compensado.
         (
@@ -992,7 +1037,16 @@ mod tests {
                 giro_segunda_passada: true,
                 ..Mecanica::traseira()
             },
+            GESTO_LATERAL,
         ),
+        // Jato de tinta: perfil e gesto do modelo.
+        (
+            (true, true, true),
+            Mecanica::traseira(),
+            Recolocacao::virada_pela_borda_de_cima(),
+        ),
+        // Laser: perfil e gesto do modelo.
+        ((true, false, false), Mecanica::gaveta(), GESTO_NENHUM),
     ];
 
     fn perfil_de(
@@ -1049,13 +1103,12 @@ mod tests {
 
         #[test]
         fn maco_final_fica_em_ordem_para_cada_perfil_com_mecanica_coerente(
-            indice_perfil in 0usize..8,
+            indice_perfil in 0usize..TABELA_DE_MECANICAS.len(),
             total in 1usize..=200,
             folhas_por_lote in 1usize..=50,
         ) {
-            let ((p1, p2, girar), mecanismo) = TABELA_DE_MECANICAS[indice_perfil];
+            let ((p1, p2, girar), mecanismo, gesto) = TABELA_DE_MECANICAS[indice_perfil];
             let perfil = perfil_de(p1, p2, girar);
-            let gesto = GESTO_DA_TABELA;
             let resultado = maco_confere(
                 total,
                 folhas_por_lote,
@@ -1073,45 +1126,44 @@ mod tests {
     }
 
     #[test]
-    fn tabela_cobre_os_oito_perfis_e_inclui_as_impressoras_virtuais() {
+    fn tabela_cobre_os_oito_perfis_e_inclui_os_dois_modelos() {
         for mascara in 0u8..8 {
             let perfil = (mascara & 1 != 0, mascara & 2 != 0, mascara & 4 != 0);
             let linhas = TABELA_DE_MECANICAS
                 .iter()
-                .filter(|(p, _)| *p == perfil)
+                .filter(|(p, _, _)| *p == perfil)
                 .count();
-            assert_eq!(linhas, 1, "perfil {mascara}");
+            assert!(linhas >= 1, "perfil {mascara}");
         }
-        assert!(TABELA_DE_MECANICAS.contains(&((true, true, false), Mecanica::traseira())));
-        assert!(TABELA_DE_MECANICAS.contains(&((false, false, false), Mecanica::gaveta())));
+        assert!(TABELA_DE_MECANICAS.contains(&(
+            (true, true, true),
+            Mecanica::traseira(),
+            Recolocacao::virada_pela_borda_de_cima()
+        )));
+        assert!(TABELA_DE_MECANICAS.contains(&(
+            (true, false, false),
+            Mecanica::gaveta(),
+            GESTO_NENHUM
+        )));
     }
 
     #[test]
-    fn lote_piloto_de_cada_linha_da_tabela_aprumado_com_o_gesto_de_virar() {
-        for ((p1, p2, girar), mecanismo) in TABELA_DE_MECANICAS {
-            let sim = executar(4, mecanismo, perfil_de(p1, p2, girar), GESTO_DA_TABELA);
+    fn lote_piloto_de_cada_linha_da_tabela_aprumado_com_o_gesto_da_linha() {
+        for ((p1, p2, girar), mecanismo, gesto) in TABELA_DE_MECANICAS {
+            let sim = executar(4, mecanismo, perfil_de(p1, p2, girar), gesto);
             assert!(
                 lote_correto(&sim.folhas_para_leitura(), 1, 2, 4),
-                "perfil {:?}, mecânica {mecanismo:?}",
+                "perfil {:?}, mecânica {mecanismo:?}, gesto {gesto:?}",
                 (p1, p2, girar)
             );
         }
     }
 
     #[test]
-    fn ordem_impares_com_perfis_das_impressoras_virtuais_mantem_folhas_certas() {
-        let traseira = PerfilImpressora {
-            passada1_inversa: true,
-            passada2_inversa: true,
-            ..Default::default()
-        };
-        let gesto = Recolocacao {
-            virar_maco: true,
-            ..Default::default()
-        };
-        for (mecanismo, perfil) in [
-            (Mecanica::traseira(), traseira),
-            (Mecanica::gaveta(), PerfilImpressora::default()),
+    fn ordem_impares_com_os_dois_modelos_mantem_folhas_certas() {
+        for (mecanismo, perfil, gesto) in [
+            (Mecanica::traseira(), perfil_jato(), virada_de_cima()),
+            (Mecanica::gaveta(), perfil_laser(), GESTO_NENHUM),
         ] {
             for total in 1..=40 {
                 for folhas in 1..=6 {
@@ -1130,6 +1182,135 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// Perfil da laser: frente inversa, verso direto e sem giro.
+    fn perfil_laser() -> PerfilImpressora {
+        perfil_de(true, false, false)
+    }
+
+    /// Perfil do jato de tinta: frente e verso inversos, com o verso girado.
+    fn perfil_jato() -> PerfilImpressora {
+        perfil_de(true, true, true)
+    }
+
+    /// Virada pela borda de cima: virar o maço e girar cada folha em 180°.
+    fn virada_de_cima() -> Recolocacao {
+        Recolocacao {
+            virar_maco: true,
+            girar_180: true,
+            ..Default::default()
+        }
+    }
+
+    fn numeros(paginas: &[Pagina]) -> Vec<Option<usize>> {
+        paginas.iter().map(|p| p.numero).collect()
+    }
+
+    #[test]
+    fn laser_imprime_a_face_que_fica_para_cima() {
+        let mut sim = Simulador::novo(Mecanica::gaveta());
+        sim.imprimir_frente(&paginas_de(&[2])).unwrap();
+        sim.recolocar(Recolocacao::default()).unwrap();
+        sim.imprimir_verso(&paginas_de(&[1])).unwrap();
+        let folha = sim.pilha()[0].clone();
+        assert_eq!(folha.face_a.and_then(|m| m.pagina), Some(2));
+        assert_eq!(folha.face_b.and_then(|m| m.pagina), Some(1));
+        assert_eq!(folha.sobreimpressao, None);
+    }
+
+    #[test]
+    fn laser_seis_paginas_frente_6_4_2_verso_1_3_5_sem_virar() {
+        let lote = plano_documento(6, 3, OrdemPassadas::ParesPrimeiro, perfil_laser())
+            .unwrap()
+            .remove(0);
+        assert_eq!(numeros(&lote.passada1), vec![Some(6), Some(4), Some(2)]);
+        assert_eq!(numeros(&lote.passada2), vec![Some(1), Some(3), Some(5)]);
+        let sim = executar(
+            6,
+            Mecanica::gaveta(),
+            perfil_laser(),
+            Recolocacao::default(),
+        );
+        assert!(sim.pilha().iter().all(|f| f.sobreimpressao.is_none()));
+        assert!(lote_correto(&sim.folhas_para_leitura(), 1, 3, 6));
+    }
+
+    #[test]
+    fn jato_seis_paginas_frente_6_4_2_verso_5_3_1_girado_com_virada_de_cima() {
+        let lote = plano_documento(6, 3, OrdemPassadas::ParesPrimeiro, perfil_jato())
+            .unwrap()
+            .remove(0);
+        assert_eq!(numeros(&lote.passada1), vec![Some(6), Some(4), Some(2)]);
+        assert_eq!(numeros(&lote.passada2), vec![Some(5), Some(3), Some(1)]);
+        assert!(lote.passada2.iter().all(|p| p.girar_180));
+        let sim = executar(6, Mecanica::traseira(), perfil_jato(), virada_de_cima());
+        let pilha = sim.folhas_para_leitura();
+        let pares = [(Some(1), Some(2)), (Some(3), Some(4)), (Some(5), Some(6))];
+        let veredictos = conferir_folhas(&pilha, &pares);
+        assert!(
+            veredictos.iter().all(|v| *v == Veredito::Certa),
+            "{veredictos:?}"
+        );
+        assert!(lote_correto(&pilha, 1, 3, 6));
+    }
+
+    #[test]
+    fn conferir_folhas_marca_folha_com_as_duas_faces_giradas() {
+        let marca = |pagina| {
+            Some(Marca {
+                pagina: Some(pagina),
+                girada: true,
+            })
+        };
+        let pilha = [Folha {
+            face_a: marca(2),
+            face_b: marca(1),
+            face_a_para_cima: true,
+            girada: false,
+            sobreimpressao: None,
+        }];
+        assert_eq!(
+            conferir_folhas(&pilha, &[(Some(1), Some(2))]),
+            vec![Veredito::Errada(vec![Defeito::FolhaDeCabecaParaBaixo])]
+        );
+    }
+
+    #[test]
+    fn folha_com_as_duas_faces_giradas_nao_confere_no_oraculo() {
+        let marca = |pagina| {
+            Some(Marca {
+                pagina: Some(pagina),
+                girada: true,
+            })
+        };
+        let pilha = [Folha {
+            face_a: marca(2),
+            face_b: marca(1),
+            face_a_para_cima: true,
+            girada: true,
+            sobreimpressao: None,
+        }];
+        assert!(!lote_correto(&pilha, 1, 1, 2));
+    }
+
+    #[test]
+    fn virada_de_cima_sem_girar_o_verso_deixa_a_folha_de_cabeca_para_baixo() {
+        let sim = executar(
+            6,
+            Mecanica::traseira(),
+            perfil_de(true, true, false),
+            virada_de_cima(),
+        );
+        let pares = [(Some(1), Some(2)), (Some(3), Some(4)), (Some(5), Some(6))];
+        let veredictos = conferir_folhas(&sim.folhas_para_leitura(), &pares);
+        assert!(
+            veredictos.iter().all(|v| matches!(
+                v,
+                Veredito::Errada(defeitos) if defeitos.contains(&Defeito::VersoDeCabecaParaBaixo)
+            )),
+            "{veredictos:?}"
+        );
     }
 }
 pub mod job;
