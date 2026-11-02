@@ -1,11 +1,25 @@
 use plots_core::{
-    plano_documento, plano_lotes_por_papel, OrdemPassadas, PerfilImpressora, LIMITE_PAGINAS,
+    pares_com_orientacao_mista, plano_documento, plano_lotes_por_papel, OrdemPassadas,
+    PerfilImpressora, LIMITE_PAGINAS,
 };
 use plots_print::{
     job::{EstadoJob, Job, SimBackend},
     Mecanica, Recolocacao,
 };
 use std::io::{BufRead, Write};
+
+/// Texto de uso geral, mostrado por `--help` e em erros sem subcomando conhecido.
+pub const USO_GERAL: &str = "Uso:\n  plots simular --paginas N --lote K --impressora traseira|gaveta [--guiado]\n  plots gerar-pdf ARQUIVO --lote K --impressora traseira|gaveta --saida DIRETORIO\nNenhum comando envia arquivos à impressora: 'simular' só simula e 'gerar-pdf' só grava arquivos.\n";
+
+/// Texto de uso do subcomando `simular`.
+pub const USO_SIMULAR: &str = "Uso:\n  plots simular --paginas N --lote K --impressora traseira|gaveta [--guiado]\nA simulação não envia nada à impressora.\n";
+
+/// Texto de uso do subcomando `gerar-pdf`.
+pub const USO_GERAR_PDF: &str = "Uso:\n  plots gerar-pdf ARQUIVO --lote K --impressora traseira|gaveta --saida DIRETORIO\nOs PDFs gerados não são enviados à impressora.\n";
+
+const MSG_COMANDO_DESCONHECIDO: &str =
+    "comando ausente ou desconhecido; use 'simular' ou 'gerar-pdf'";
+const MSG_SIMULAR_PDF: &str = "'simular' não lê PDF: informe --paginas N, ou use 'gerar-pdf' para gerar as passadas de um arquivo";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ImpressoraVirtual {
@@ -47,6 +61,15 @@ impl ImpressoraVirtual {
     }
 }
 
+/// Escolhe o texto de uso para mostrar junto de um erro, conforme o subcomando pedido.
+pub fn uso_para(args: &[String]) -> &'static str {
+    match args.first().map(String::as_str) {
+        Some("simular") => USO_SIMULAR,
+        Some("gerar-pdf") => USO_GERAR_PDF,
+        _ => USO_GERAL,
+    }
+}
+
 /// Executa a simulação e devolve um relatório legível, ou uma mensagem de erro de uso.
 pub fn executar(args: &[String]) -> Result<String, String> {
     let mut output = Vec::new();
@@ -54,34 +77,41 @@ pub fn executar(args: &[String]) -> Result<String, String> {
     String::from_utf8(output).map_err(|e| e.to_string())
 }
 
-/// Executa a simulação com entrada e sa?da fornecidas pelo chamador.
+fn eh_pedido_de_ajuda(valor: &str) -> bool {
+    valor == "--help" || valor == "-h"
+}
+
+fn escrever(saida: &mut impl Write, texto: &str) -> Result<(), String> {
+    write!(saida, "{texto}").map_err(|e| e.to_string())
+}
+
+/// Executa a simulação com entrada e saída fornecidas pelo chamador.
 pub fn executar_com_io(
     args: &[String],
     entrada: &mut impl BufRead,
     saida: &mut impl Write,
 ) -> Result<(), String> {
-    if args
-        .first()
-        .is_some_and(|arg| arg == "--help" || arg == "-h")
-    {
-        return write!(saida, "Uso:\n  plots simular --paginas N --lote K --impressora traseira|gaveta [--guiado]\n  plots gerar-pdf ARQUIVO --lote K --impressora traseira|gaveta --saida DIRETORIO\nOs PDFs gerados não são enviados à impressora.\n").map_err(|e| e.to_string());
+    let primeiro = args.first().map(String::as_str);
+    let segundo = args.get(1).map(String::as_str);
+    if primeiro.is_some_and(eh_pedido_de_ajuda) {
+        return escrever(saida, USO_GERAL);
     }
-    if args.first().map(String::as_str) == Some("gerar-pdf") {
-        return gerar_pdfs(args, saida);
-    }
-    if args.first().map(String::as_str) != Some("simular") {
-        if args
-            .iter()
-            .any(|arg| arg.to_ascii_lowercase().ends_with(".pdf"))
-        {
-            return Err(
-                "PDF não é aceito: esta versão do CLI só executa simulações numéricas.".into(),
-            );
+    if segundo.is_some_and(eh_pedido_de_ajuda) {
+        match primeiro {
+            Some("simular") => return escrever(saida, USO_SIMULAR),
+            Some("gerar-pdf") => return escrever(saida, USO_GERAR_PDF),
+            _ => {}
         }
-        return Err(
-            "comando ausente ou desconhecido; use 'simular' (o CLI é explicitamente simulado)"
-                .into(),
-        );
+    }
+    match primeiro {
+        Some("simular") => {}
+        Some("gerar-pdf") => return gerar_pdfs(args, saida),
+        Some(comando @ ("imprimir" | "calibrar")) => {
+            return Err(format!(
+                "o comando '{comando}' ainda não está disponível; use 'simular' ou 'gerar-pdf'"
+            ));
+        }
+        _ => return Err(MSG_COMANDO_DESCONHECIDO.into()),
     }
     let mut paginas = None;
     let mut lote = None;
@@ -91,9 +121,7 @@ pub fn executar_com_io(
     while i < args.len() {
         let chave = &args[i];
         if chave.to_ascii_lowercase().ends_with(".pdf") || chave == "--pdf" {
-            return Err(
-                "PDF não é aceito: esta versão do CLI só executa simulações numéricas.".into(),
-            );
+            return Err(MSG_SIMULAR_PDF.into());
         }
         if chave == "--guiado" {
             guiado = true;
@@ -266,6 +294,7 @@ fn gerar_pdfs(args: &[String], saida: &mut impl Write) -> Result<(), String> {
         impressora.perfil(),
     )
     .map_err(|e| e.to_string())?;
+    let pares_mistos = pares_com_orientacao_mista(&dimensoes).map_err(|e| e.to_string())?;
     let mut arquivos = Vec::new();
     for (i, lote) in lotes.iter().enumerate() {
         let referencia = lote
@@ -299,6 +328,13 @@ fn gerar_pdfs(args: &[String], saida: &mut impl Write) -> Result<(), String> {
             }
             return Err(format!("não foi possível criar {}: {e}", caminho.display()));
         }
+    }
+    for (frente, verso) in &pares_mistos {
+        writeln!(
+            saida,
+            "Aviso: a folha das páginas {frente} e {verso} mistura retrato e paisagem; confira o resultado antes de imprimir."
+        )
+        .map_err(|e| e.to_string())?;
     }
     writeln!(
         saida,

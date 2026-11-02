@@ -327,6 +327,52 @@ pub fn reconhecer_papel(dimensoes: DimensoesPagina) -> Result<Papel, ErroPapel> 
     })
 }
 
+/// Orientação observada de uma página. Páginas quadradas, dentro da tolerância
+/// do módulo, não têm orientação.
+fn orientacao_observada(dimensoes: DimensoesPagina) -> Option<OrientacaoPapel> {
+    if (dimensoes.largura_mm - dimensoes.altura_mm).abs() <= TOLERANCIA_PAPEL_MM {
+        None
+    } else if dimensoes.altura_mm > dimensoes.largura_mm {
+        Some(OrientacaoPapel::Retrato)
+    } else {
+        Some(OrientacaoPapel::Paisagem)
+    }
+}
+
+/// Devolve os pares (frente, verso), em números de página começando em 1, cujas
+/// faces têm orientações diferentes, como retrato e paisagem. Páginas quadradas
+/// e a página final sem verso não entram. Os tamanhos não são comparados aqui;
+/// essa verificação continua em `plano_lotes_por_papel`.
+pub fn pares_com_orientacao_mista(
+    paginas: &[DimensoesPagina],
+) -> Result<Vec<(usize, usize)>, ErroPapel> {
+    if paginas.len() > LIMITE_PAGINAS {
+        return Err(ErroPapel::LimitePaginasExcedido);
+    }
+    let mut orientacoes: Vec<Option<OrientacaoPapel>> = Vec::new();
+    orientacoes
+        .try_reserve(paginas.len())
+        .map_err(|_| ErroPapel::ReservaFalhou)?;
+    for (i, dims) in paginas.iter().copied().enumerate() {
+        reconhecer_papel(dims).map_err(|_| ErroPapel::DimensaoInvalida { pagina: i + 1 })?;
+        orientacoes.push(orientacao_observada(dims));
+    }
+    let mut pares = Vec::new();
+    pares
+        .try_reserve(paginas.len() / 2)
+        .map_err(|_| ErroPapel::ReservaFalhou)?;
+    for i in (0..orientacoes.len()).step_by(2) {
+        let frente = orientacoes.get(i).copied().flatten();
+        let verso = orientacoes.get(i + 1).copied().flatten();
+        if let (Some(f), Some(v)) = (frente, verso) {
+            if f != v {
+                pares.push((i + 1, i + 2));
+            }
+        }
+    }
+    Ok(pares)
+}
+
 /// Um conjunto de folhas consecutivas do mesmo papel, limitado ao tamanho
 /// solicitado. `paginas` contém índices de página originais (base 1); `None`
 /// representa a face em branco final de um documento ímpar.
@@ -740,5 +786,69 @@ mod tests {
         let lotes = lotes_por_papel(&no_limite, LIMITE_PAGINAS / 2).unwrap();
         assert_eq!(lotes.len(), 1);
         assert_eq!(lotes[0].paginas.len(), LIMITE_PAGINAS);
+    }
+
+    #[test]
+    fn pares_com_orientacao_mista_apontam_so_as_folhas_com_retrato_e_paisagem() {
+        let paginas = [
+            DimensoesPagina::new(210.0, 297.0),
+            DimensoesPagina::new(210.0, 297.0),
+            DimensoesPagina::new(297.0, 210.0),
+            DimensoesPagina::new(210.0, 297.0),
+            DimensoesPagina::new(297.0, 210.0),
+            DimensoesPagina::new(297.0, 210.0),
+        ];
+        assert_eq!(pares_com_orientacao_mista(&paginas).unwrap(), vec![(3, 4)]);
+        let invertida = [
+            DimensoesPagina::new(842.0, 595.0),
+            DimensoesPagina::new(595.0, 842.0),
+        ];
+        assert_eq!(
+            pares_com_orientacao_mista(&invertida).unwrap(),
+            vec![(1, 2)]
+        );
+    }
+
+    #[test]
+    fn pares_com_orientacao_mista_ignora_quadradas_e_pagina_sem_verso() {
+        let quadradas = [
+            DimensoesPagina::new(300.0, 300.0),
+            DimensoesPagina::new(300.0, 301.0),
+            DimensoesPagina::new(301.0, 300.0),
+            DimensoesPagina::new(210.0, 297.0),
+            DimensoesPagina::new(297.0, 210.0),
+            DimensoesPagina::new(210.0, 297.0),
+        ];
+        assert_eq!(
+            pares_com_orientacao_mista(&quadradas).unwrap(),
+            vec![(5, 6)]
+        );
+        let quadrada_com_paisagem = [
+            DimensoesPagina::new(300.0, 300.0),
+            DimensoesPagina::new(297.0, 210.0),
+        ];
+        assert!(pares_com_orientacao_mista(&quadrada_com_paisagem)
+            .unwrap()
+            .is_empty());
+        let sem_verso = [DimensoesPagina::new(210.0, 297.0)];
+        assert!(pares_com_orientacao_mista(&sem_verso).unwrap().is_empty());
+    }
+
+    #[test]
+    fn pares_com_orientacao_mista_aceita_vazio_e_rejeita_dimensao_invalida() {
+        assert!(pares_com_orientacao_mista(&[]).unwrap().is_empty());
+        let invalida = [
+            DimensoesPagina::new(210.0, 297.0),
+            DimensoesPagina::new(f64::NAN, 297.0),
+        ];
+        assert_eq!(
+            pares_com_orientacao_mista(&invalida),
+            Err(ErroPapel::DimensaoInvalida { pagina: 2 })
+        );
+        let limite = vec![DimensoesPagina::new(210.0, 297.0); LIMITE_PAGINAS + 1];
+        assert_eq!(
+            pares_com_orientacao_mista(&limite),
+            Err(ErroPapel::LimitePaginasExcedido)
+        );
     }
 }

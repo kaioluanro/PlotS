@@ -20,7 +20,7 @@ pub trait Backend {
     type Erro;
     fn enviar(&mut self, passada: Passada, paginas: &[Pagina]) -> Result<(), Self::Erro>;
     fn consultar(&mut self) -> Result<EstadoEnvio, Self::Erro>;
-    /// Retorna apenas quando o envio anterior n?o pode continuar imprimindo.
+    /// Retorna apenas quando o envio anterior não pode continuar imprimindo.
     fn cancelar(&mut self) -> Result<(), Self::Erro>;
 }
 
@@ -145,7 +145,6 @@ impl<B: Backend> Job<B> {
     }
 }
 
-/// Backend em memória: as operações físicas são imediatas, mas o controlador
 impl Job<SimBackend> {
     pub fn recolocar(&mut self, gesto: Recolocacao) -> Result<(), ErroJob<ErroSimulacao>> {
         if self.estado != EstadoJob::AguardandoRecolocacao {
@@ -155,6 +154,7 @@ impl Job<SimBackend> {
     }
 }
 
+/// Backend em memória: as operações físicas são imediatas, mas o controlador
 /// ainda exige uma consulta antes de liberar a próxima etapa.
 pub struct SimBackend {
     simulador: Simulador,
