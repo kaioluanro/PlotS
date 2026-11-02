@@ -1,0 +1,11 @@
+[package]
+name = "plots-perfis"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+directories = "=6.0.0"
+plots-core = { path = "../plots-core" }
+serde = { version = "=1.0.229", features = ["derive"] }
+thiserror = "=2.0.21"
+toml = "=1.1.6"

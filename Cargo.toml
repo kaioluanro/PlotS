@@ -1,5 +1,5 @@
 ﻿[workspace]
-members = ["plots-core", "plots-print", "plots-cli", "plots-pdf"]
+members = ["plots-core", "plots-print", "plots-cli", "plots-pdf", "plots-perfis"]
 resolver = "2"
 
 
