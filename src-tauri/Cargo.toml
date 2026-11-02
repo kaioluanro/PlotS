@@ -7,6 +7,10 @@ edition = "2021"
 tauri-build = { version = "=2.7.4", features = [] }
 
 [dependencies]
+plots-core = { path = "../plots-core" }
+plots-pdf = { path = "../plots-pdf" }
+plots-perfis = { path = "../plots-perfis" }
+plots-windows = { path = "../plots-windows" }
 serde = { version = "=1.0.229", features = ["derive"] }
 tauri = { version = "=2.12.5", features = [] }
 tauri-plugin-dialog = "=2.8.4"

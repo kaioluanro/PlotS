@@ -12,6 +12,8 @@ interface Props {
   documento: Documento | null;
   idAbaAtiva: number | null;
   erro: string | null;
+  /** Motivo de o PDF desta aba ter sido recusado; a aba fica aberta para mostrar o motivo. */
+  recusa: string | null;
   arrastando: boolean;
   aoDispensarErro: () => void;
   aoAbrir: () => void;
@@ -21,6 +23,7 @@ export function DocumentArea({
   documento,
   idAbaAtiva,
   erro,
+  recusa,
   arrastando,
   aoDispensarErro,
   aoAbrir,
@@ -49,7 +52,11 @@ export function DocumentArea({
         </div>
       )}
       <div className={styles.centro}>
-        {documento ? (
+        {documento && recusa !== null ? (
+          <div role="alert">
+            <EmptyState icone={<CircleAlert size={18} />} titulo={documento.nome} texto={recusa} />
+          </div>
+        ) : documento ? (
           <EmptyState
             icone={<FileText size={18} />}
             titulo={documento.nome}

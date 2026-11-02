@@ -8,9 +8,12 @@ import {
   assinar,
   avisarPedidoDeFechamentoRecebido,
   caminhosIniciais,
+  contarPaginas,
   escolherArquivo,
   limitarLote,
+  listarImpressoras,
 } from "./backend";
+import { CalibrarDialog } from "./components/CalibrarDialog";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { DocumentArea, ID_AREA_DOCUMENTO } from "./components/DocumentArea";
 import { ID_LATERAL, Sidebar } from "./components/Sidebar";
@@ -18,6 +21,7 @@ import { focarAbaAtiva, TitleBar } from "./components/TitleBar";
 import { conteudoDaConfirmacao } from "./confirmacao";
 import { mensagemDeErro } from "./erros";
 import { t } from "./i18n";
+import { liberaMenuDeContexto, type ListaImpressoras } from "./impressoras";
 import { abrirLote, type LoteCaminhos } from "./lote";
 import {
   decidirFechamentoJanela,
@@ -36,8 +40,16 @@ export function App() {
   const focarDepoisDeFechar = useRef(false);
 
   const confirmacao = conteudoDaConfirmacao(estado);
-  const confirmando = confirmacao !== null;
+  const [filaACalibrar, setFilaACalibrar] = useState<string | null>(null);
+  const [lista, setLista] = useState<ListaImpressoras>({ impressoras: [], avisos: [] });
+  const [lendoLista, setLendoLista] = useState(true);
+  const ultimaLeitura = useRef(0);
+  const contagensPedidas = useRef(new Set<number>());
+  const filaDeContagens = useRef<Promise<void>>(Promise.resolve());
+  // Qualquer dialogo aberto impede que atalhos e arrastos ajam por tras dele.
+  const confirmando = confirmacao !== null || filaACalibrar !== null;
   const abaAtiva = estado.abas.find((aba) => aba.id === estado.ativa) ?? null;
+  const idAtiva = estado.ativa;
 
   // Os eventos do sistema ficam assinados uma vez so e precisam ler o estado mais recente.
   const estadoAtual = useRef(estado);
@@ -69,6 +81,50 @@ export function App() {
     focarDepoisDeFechar.current = true;
     despachar({ tipo: "pedir_fechamento", id });
   }, []);
+
+  const atualizarLista = useCallback(() => {
+    // So a leitura mais recente vale: um clique repetido nao deixa a resposta antiga por cima.
+    ultimaLeitura.current += 1;
+    const leitura = ultimaLeitura.current;
+    setLendoLista(true);
+    listarImpressoras()
+      .then((nova) => {
+        if (leitura === ultimaLeitura.current) setLista(nova);
+      })
+      .catch(() => {
+        if (leitura === ultimaLeitura.current) {
+          setLista((atual) => ({
+            impressoras: atual.impressoras,
+            avisos: [{ codigo: "comunicacao" }],
+          }));
+        }
+      })
+      .finally(() => {
+        if (leitura === ultimaLeitura.current) setLendoLista(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    atualizarLista();
+  }, [atualizarLista]);
+
+  // Uma contagem por vez: varios PDFs grandes abertos juntos nao disputam a memoria.
+  const abas = estado.abas;
+  useEffect(() => {
+    for (const aba of abas) {
+      if (aba.paginas.estado !== "contando" || contagensPedidas.current.has(aba.id)) continue;
+      contagensPedidas.current.add(aba.id);
+      const { id } = aba;
+      const { caminho } = aba.documento;
+      filaDeContagens.current = filaDeContagens.current.then(() =>
+        contarPaginas(caminho)
+          .then((total) => despachar({ tipo: "paginas_contadas", id, total }))
+          .catch((falha: unknown) =>
+            despachar({ tipo: "paginas_recusadas", id, motivo: mensagemDeErro(falha) }),
+          ),
+      );
+    }
+  }, [abas]);
 
   useEffect(() => {
     if (inicioFeito.current) return;
@@ -150,7 +206,9 @@ export function App() {
   }, [abrirPeloSeletor, confirmando, estado.ativa, pedirFechamento]);
 
   useEffect(() => {
-    const semMenu = (evento: Event) => evento.preventDefault();
+    const semMenu = (evento: Event) => {
+      if (!liberaMenuDeContexto(evento.target)) evento.preventDefault();
+    };
     window.addEventListener("contextmenu", semMenu);
     return () => window.removeEventListener("contextmenu", semMenu);
   }, []);
@@ -163,18 +221,49 @@ export function App() {
     }
   }, [confirmando, quantidadeDeAbas]);
 
+  const soltarContagens = useRef<() => void>(() => {});
   // Compilado apenas no modo e2e: o bundle normal nao contem esta porta de entrada.
   useEffect(() => {
     if (import.meta.env.MODE !== "e2e") return;
-    const alvo = window as unknown as { __plotsE2e?: { marcarImpressao(emAndamento: boolean): void } };
+    const alvo = window as unknown as {
+      __plotsE2e?: {
+        marcarImpressao(emAndamento: boolean): void;
+        definirLista(nova: ListaImpressoras): void;
+        abrir(caminho: string): void;
+        definirLendo(lendo: boolean): void;
+        reterContagens(): void;
+        soltarContagens(): void;
+      };
+    };
     alvo.__plotsE2e = {
+      definirLista: setLista,
+      abrir(caminho) {
+        void abrirCaminhos({ caminhos: [caminho], cortado: false });
+      },
+      definirLendo: setLendoLista,
+      reterContagens() {
+        filaDeContagens.current = filaDeContagens.current.then(
+          () => new Promise<void>((soltar) => (soltarContagens.current = soltar)),
+        );
+      },
+      soltarContagens() {
+        soltarContagens.current();
+      },
       marcarImpressao(emAndamento) {
         if (estado.ativa !== null) {
           despachar({ tipo: "marcar_impressao", id: estado.ativa, emAndamento });
         }
       },
     };
-  }, [estado.ativa]);
+  }, [estado.ativa, abrirCaminhos]);
+
+  const aoAlternarImpressora = (impressora: string) => {
+    if (idAtiva !== null) despachar({ tipo: "alternar_impressora", id: idAtiva, impressora });
+  };
+
+  const aoDefinirLote = (tamanho: number) => {
+    if (idAtiva !== null) despachar({ tipo: "definir_lote", id: idAtiva, tamanho });
+  };
 
   const aoConfirmar = () => {
     if (!estado.confirmandoJanela) {
@@ -201,16 +290,29 @@ export function App() {
         idPainel={ID_AREA_DOCUMENTO}
       />
       <div className={styles.corpo}>
-        {lateralAberta && <Sidebar />}
+        {lateralAberta && (
+          <Sidebar
+            aba={abaAtiva}
+            impressoras={lista.impressoras}
+            avisos={lista.avisos}
+            lendo={lendoLista}
+            aoAtualizar={atualizarLista}
+            aoAlternar={aoAlternarImpressora}
+            aoDefinirLote={aoDefinirLote}
+            aoCalibrar={setFilaACalibrar}
+          />
+        )}
         <DocumentArea
           documento={abaAtiva?.documento ?? null}
           idAbaAtiva={estado.ativa}
           erro={erro}
+          recusa={abaAtiva?.paginas.estado === "recusado" ? abaAtiva.paginas.motivo : null}
           arrastando={arrastando}
           aoDispensarErro={() => setErro(null)}
           aoAbrir={() => void abrirPeloSeletor()}
         />
       </div>
+      <CalibrarDialog fila={filaACalibrar} aoFechar={() => setFilaACalibrar(null)} />
       <ConfirmDialog
         conteudo={confirmacao}
         aoCancelar={() => despachar({ tipo: "cancelar_fechamento" })}

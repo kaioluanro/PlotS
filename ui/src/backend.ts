@@ -1,11 +1,22 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { t } from "./i18n";
+import type { ListaImpressoras } from "./impressoras";
 import type { LoteCaminhos } from "./lote";
 import type { Documento } from "./tabs";
 
 export function abrirDocumento(caminho: string): Promise<Documento> {
   return invoke<Documento>("abrir_documento", { caminho });
+}
+
+/** Total de paginas do PDF; a recusa traz o mesmo formato de erro de `abrirDocumento`. */
+export function contarPaginas(caminho: string): Promise<number> {
+  return invoke<number>("contar_paginas", { caminho });
+}
+
+/** So le as filas e os perfis; nada e enviado nem alterado. */
+export function listarImpressoras(): Promise<ListaImpressoras> {
+  return invoke<ListaImpressoras>("listar_impressoras");
 }
 
 export function caminhosIniciais(): Promise<LoteCaminhos> {

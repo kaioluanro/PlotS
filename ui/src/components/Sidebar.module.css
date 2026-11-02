@@ -10,9 +10,11 @@
 
 .cabecalho {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
+  gap: 6px;
   min-height: 34px;
-  padding: 0 12px;
+  padding: 0 4px 0 12px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -25,9 +27,469 @@
   text-transform: uppercase;
 }
 
-.corpo {
-  display: flex;
-  justify-content: center;
-  padding: 24px 12px 12px;
+.contador {
+  min-width: 18px;
+  padding: 0 4px;
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 14px;
+  text-align: center;
+  background: var(--bg-sunken);
+  border-radius: 999px;
+}
+
+.atualizar {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  padding: 0;
+  color: var(--fg-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--anim-fast) ease,
+    color var(--anim-fast) ease;
+}
+
+.atualizar:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.girando {
+  animation: girar 900ms linear infinite;
+}
+
+@keyframes girar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.explicacao {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 6px 12px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* So a lista rola: o rodape e o botao continuam visiveis em qualquer altura. */
+.rolagem {
+  flex: 1 1 0;
+  min-height: 0;
+  padding: 4px;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--fg-muted) 40%, transparent) transparent;
+}
+
+.ocultoVisual {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.lendo {
+  padding: 4px 8px;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.vazia {
+  margin: 0;
+  padding: 6px 8px;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.caminhoAviso {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 14px;
+  overflow-wrap: anywhere;
+}
+
+.aviso {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 4px;
+  padding: 6px 8px;
+  color: var(--fg);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  background: var(--bg-sunken);
+  border: 1px solid var(--status-offline);
+  border-radius: var(--radius-sm);
+}
+
+.iconeAviso {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--status-offline-text);
+}
+
+.lista {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.linha {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 29px;
+  padding: 4px 8px 4px 4px;
+  border-radius: var(--radius-sm);
+  transition: background-color var(--anim-fast) ease;
+}
+
+.linha:not(.inerte):hover {
+  background: var(--panel-hover);
+}
+
+.marcada {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+.alvo {
+  position: relative;
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+}
+
+.inerte .alvo,
+.inerte .nome,
+.inerte .estado {
+  cursor: not-allowed;
+}
+
+.caixa {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  background: transparent;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  cursor: inherit;
+  appearance: none;
+}
+
+.linha:not(.inerte):hover .caixa {
+  border-color: var(--border-control-hover);
+}
+
+.caixa:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.caixa:disabled {
+  opacity: 0.5;
+}
+
+.glifo {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  color: var(--accent-on);
+  pointer-events: none;
+}
+
+.textos {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.fileira {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Ate duas linhas: quem escolhe a impressora precisa distinguir nomes que so mudam no fim. */
+.nome {
+  display: -webkit-box;
+  flex: 1 1 0;
+  min-width: 0;
+  padding-top: 3px;
+  overflow: hidden;
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.estado {
+  display: flex;
+  flex: 1 1 0;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  color: var(--fg-faint);
+  font-size: 10px;
+  line-height: 14px;
+  cursor: pointer;
+}
+
+.textoEstado {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+/* Sobre superficie de hover ou selecao, o texto fraco nao tem contraste suficiente. */
+.linha:not(.inerte):hover .estado,
+.linha:not(.inerte):hover .modoFace,
+.marcada .estado,
+.marcada .modoFace {
+  color: var(--fg-muted);
+}
+
+/* No claro o metadado do estado fica sempre no texto principal. */
+:global([data-theme='light']) .linha .estado,
+:global([data-theme='light']) .linha:not(.inerte):hover .estado,
+:global([data-theme='light']) .marcada .estado {
+  color: var(--fg);
+}
+
+/* O que pede atencao se destaca pelo peso, nunca pela cor do texto. */
+.linha .estadoDestaque,
+.linha:not(.inerte):hover .estadoDestaque,
+.marcada .estadoDestaque {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.ponto {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-top: 3px;
+  border-radius: 50%;
+}
+
+.pontoPronta,
+.pontoAtiva {
+  background: var(--status-working);
+}
+
+.pontoAtencao {
+  background: var(--status-waiting);
+}
+
+.pontoProblema {
+  background: var(--status-offline);
+}
+
+.modoNome {
+  flex-shrink: 0;
+  padding-top: 3px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.modoDesconhecido {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  padding-top: 3px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.modoFace {
+  flex-shrink: 0;
+  color: var(--fg-faint);
+  font-size: 10px;
+  line-height: 14px;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.calibrar {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.rodape {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.lote {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.loteLinha {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rotuloLote {
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.campoLote {
+  flex-shrink: 0;
+  width: 56px;
+  height: 32px;
+  padding: 0 8px;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-md);
+}
+
+.campoLote:hover:not(:disabled) {
+  border-color: var(--border-control-hover);
+}
+
+.campoLote:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.campoInvalido,
+.campoInvalido:hover:not(:disabled) {
+  border-color: var(--status-offline);
+}
+
+.erroLote,
+.recusado {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--status-offline-text);
+  font-size: 11px;
+}
+
+.resumo {
+  margin: 0;
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.contando {
+  margin: 0;
+  color: var(--fg-faint);
+  font-size: 11px;
+}
+
+.imprimir {
+  width: 100%;
+}
+
+.dica {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 10px;
+  line-height: 14px;
+}
+
+@media (forced-colors: active) {
+  .marcada {
+    outline: 1px solid CanvasText;
+    outline-offset: -1px;
+  }
+
+  .caixa {
+    border-color: CanvasText;
+  }
+
+  .caixa:disabled {
+    border-color: GrayText;
+    opacity: 1;
+  }
+
+  .caixa:checked {
+    background: Highlight;
+    border-color: Highlight;
+    forced-color-adjust: none;
+  }
+
+  .glifo {
+    color: HighlightText;
+    forced-color-adjust: none;
+  }
+
+  .ponto {
+    background: CanvasText;
+    forced-color-adjust: none;
+  }
+
+  .aviso {
+    border-color: CanvasText;
+  }
+
+  .campoLote:disabled {
+    color: GrayText;
+    border-color: GrayText;
+    opacity: 1;
+  }
+
+  .campoInvalido,
+  .campoInvalido:hover:not(:disabled) {
+    border-color: Highlight;
+  }
 }

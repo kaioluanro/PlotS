@@ -1,6 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useRef } from "react";
 import type { ConteudoConfirmacao } from "../confirmacao";
+import { rolarPeloTeclado } from "../dialogo";
 import { t } from "../i18n";
 import botoes from "./Botao.module.css";
 import styles from "./ConfirmDialog.module.css";
@@ -19,6 +20,8 @@ export function ConfirmDialog({ conteudo, aoCancelar, aoConfirmar }: Props) {
   if (conteudo !== null) ultimo.current = conteudo;
   const visivel = ultimo.current;
   const confirmado = useRef(false);
+  const origem = useRef<HTMLElement | null>(null);
+  const corpo = useRef<HTMLDivElement>(null);
 
   return (
     <Dialog.Root
@@ -31,20 +34,27 @@ export function ConfirmDialog({ conteudo, aoCancelar, aoConfirmar }: Props) {
         <Dialog.Overlay className={styles.veu} />
         <Dialog.Content
           className={styles.conteudo}
+          onKeyDown={(evento) => {
+            if (rolarPeloTeclado(evento.key, corpo.current)) evento.preventDefault();
+          }}
+          onOpenAutoFocus={() => {
+            origem.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          }}
           onCloseAutoFocus={(evento) => {
-            // A aba que tinha o foco pode ter sumido; so nesse caso o foco vai para a aba ativa.
-            if (confirmado.current) {
-              confirmado.current = false;
-              evento.preventDefault();
-              focarAbaAtiva();
-            }
+            // Sem um gatilho do proprio dialogo, o foco cairia na pagina ao fechar.
+            evento.preventDefault();
+            const voltar = !confirmado.current && origem.current;
+            confirmado.current = false;
+            // A origem pode ter sumido ou nem ser um controle, como em um pedido vindo do sistema.
+            if (voltar && voltar.isConnected && voltar !== document.body) voltar.focus();
+            else focarAbaAtiva();
           }}
         >
           {visivel && (
             <>
               <Dialog.Title className={styles.titulo}>{t(visivel.titulo)}</Dialog.Title>
               <Dialog.Description asChild>
-                <div className={styles.corpo}>
+                <div ref={corpo} className={styles.corpo}>
                   <p className={styles.texto}>{t(visivel.texto, visivel.parametros)}</p>
                   <p className={styles.texto}>{t(visivel.consequencia)}</p>
                 </div>

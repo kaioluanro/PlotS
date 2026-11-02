@@ -39,14 +39,3 @@
 .acao {
   margin-top: 8px;
 }
-
-.discreto .icone {
-  color: var(--fg-faint);
-  border-color: var(--border-strong);
-}
-
-.discreto .titulo {
-  color: var(--fg-muted);
-  font-size: 12px;
-  font-weight: 500;
-}

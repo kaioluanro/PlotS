@@ -2,11 +2,13 @@
 
 mod documento;
 mod fechamento;
+mod impressoras;
 mod janela;
 mod lote;
 
 use documento::{Documento, ErroDocumento};
 use fechamento::{DecisaoDoPrazo, EsperaDeResposta};
+use impressoras::ListaImpressoras;
 use lote::LoteCaminhos;
 use std::io::Write;
 use std::process::ExitCode;
@@ -19,6 +21,23 @@ use tauri::{Manager, Runtime, State, Window, WindowEvent};
 #[tauri::command(async)]
 fn abrir_documento(caminho: String) -> Result<Documento, ErroDocumento> {
     documento::abrir(&caminho)
+}
+
+/// Le o PDF inteiro. A leitura roda em uma thread propria, e o que a interromper vira recusa.
+#[tauri::command]
+async fn contar_paginas(caminho: String) -> Result<usize, ErroDocumento> {
+    let falha = documento::falha_inesperada(&caminho);
+    tauri::async_runtime::spawn_blocking(move || documento::contar_paginas(&caminho))
+        .await
+        .unwrap_or(Err(falha))
+}
+
+/// So le as filas e os perfis. O spooler pode demorar a responder, por isso a thread propria.
+#[tauri::command]
+async fn listar_impressoras() -> ListaImpressoras {
+    tauri::async_runtime::spawn_blocking(impressoras::ler_do_sistema)
+        .await
+        .unwrap_or_else(|_| impressoras::sem_leitura())
 }
 
 /// Caminhos recebidos na linha de comando, como acontece no "Abrir com" do sistema.
@@ -101,7 +120,9 @@ fn main() -> ExitCode {
         .invoke_handler(tauri::generate_handler![
             abrir_documento,
             caminhos_iniciais,
+            contar_paginas,
             limitar_lote,
+            listar_impressoras,
             pedido_de_fechamento_recebido
         ])
         .run(tauri::generate_context!());

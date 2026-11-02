@@ -5,6 +5,9 @@ const CHAVES_POR_CODIGO: ReadonlyMap<string, Chave> = new Map<string, Chave>([
   ["nao_e_arquivo", "erro.nao_e_arquivo"],
   ["nao_e_pdf", "erro.nao_e_pdf"],
   ["inacessivel", "erro.inacessivel"],
+  ["pdf_invalido", "erro.pdf_invalido"],
+  ["criptografado", "erro.criptografado"],
+  ["grande", "erro.grande"],
 ]);
 
 /** Traduz a recusa vinda do backend; qualquer outra falha vira uma mensagem generica. */

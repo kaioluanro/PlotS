@@ -1,12 +1,25 @@
+import { limitarAoIntervaloDoLote, LOTE_PADRAO } from "./impressoras";
+
 export interface Documento {
   caminho: string;
   nome: string;
 }
 
+/** Total de paginas da aba, ou o motivo de o PDF ter sido recusado, ja traduzido. */
+export type PaginasDaAba =
+  | { estado: "contando" }
+  | { estado: "conhecido"; total: number }
+  | { estado: "recusado"; motivo: string };
+
 export interface Aba {
   id: number;
   documento: Documento;
   impressaoEmAndamento: boolean;
+  /** Identificadores das impressoras marcadas neste documento. */
+  impressorasMarcadas: readonly string[];
+  /** Folhas por lote, sempre dentro do intervalo aceito. */
+  tamanhoLote: number;
+  paginas: PaginasDaAba;
 }
 
 export interface EstadoAbas {
@@ -27,7 +40,11 @@ export type AcaoAbas =
   | { tipo: "pedir_fechamento_janela" }
   | { tipo: "confirmar_fechamento" }
   | { tipo: "cancelar_fechamento" }
-  | { tipo: "marcar_impressao"; id: number; emAndamento: boolean };
+  | { tipo: "marcar_impressao"; id: number; emAndamento: boolean }
+  | { tipo: "alternar_impressora"; id: number; impressora: string }
+  | { tipo: "definir_lote"; id: number; tamanho: number }
+  | { tipo: "paginas_contadas"; id: number; total: number }
+  | { tipo: "paginas_recusadas"; id: number; motivo: string };
 
 export const estadoInicial: EstadoAbas = {
   abas: [],
@@ -91,11 +108,24 @@ function marcarImpressao(estado: EstadoAbas, id: number, emAndamento: boolean): 
   };
 }
 
+/** Muda uma aba so. Aba que ja fechou fica como esta: a resposta pode chegar depois do fechamento. */
+function mudarAba(estado: EstadoAbas, id: number, mudar: (aba: Aba) => Aba): EstadoAbas {
+  if (!estado.abas.some((aba) => aba.id === id)) return estado;
+  return { ...estado, abas: estado.abas.map((aba) => (aba.id === id ? mudar(aba) : aba)) };
+}
+
 export function reduzirAbas(estado: EstadoAbas, acao: AcaoAbas): EstadoAbas {
   switch (acao.tipo) {
     case "abrir": {
       const id = estado.proximoId;
-      const aba: Aba = { id, documento: acao.documento, impressaoEmAndamento: false };
+      const aba: Aba = {
+        id,
+        documento: acao.documento,
+        impressaoEmAndamento: false,
+        impressorasMarcadas: [],
+        tamanhoLote: LOTE_PADRAO,
+        paginas: { estado: "contando" },
+      };
       return { ...estado, abas: [...estado.abas, aba], ativa: id, proximoId: id + 1 };
     }
     case "ativar":
@@ -125,5 +155,27 @@ export function reduzirAbas(estado: EstadoAbas, acao: AcaoAbas): EstadoAbas {
       return { ...estado, aguardandoConfirmacao: null, confirmandoJanela: false };
     case "marcar_impressao":
       return marcarImpressao(estado, acao.id, acao.emAndamento);
+    case "alternar_impressora":
+      return mudarAba(estado, acao.id, (aba) => ({
+        ...aba,
+        impressorasMarcadas: aba.impressorasMarcadas.includes(acao.impressora)
+          ? aba.impressorasMarcadas.filter((impressora) => impressora !== acao.impressora)
+          : [...aba.impressorasMarcadas, acao.impressora],
+      }));
+    case "definir_lote": {
+      if (!Number.isInteger(acao.tamanho)) return estado;
+      const tamanhoLote = limitarAoIntervaloDoLote(acao.tamanho);
+      return mudarAba(estado, acao.id, (aba) => ({ ...aba, tamanhoLote }));
+    }
+    case "paginas_contadas":
+      return mudarAba(estado, acao.id, (aba) => ({
+        ...aba,
+        paginas: { estado: "conhecido", total: acao.total },
+      }));
+    case "paginas_recusadas":
+      return mudarAba(estado, acao.id, (aba) => ({
+        ...aba,
+        paginas: { estado: "recusado", motivo: acao.motivo },
+      }));
   }
 }

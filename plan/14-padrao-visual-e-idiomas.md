@@ -19,6 +19,8 @@ Aplicar `estilo-ui-ux.md` em toda a interface, em pt-BR e en.
 
 - O tema segue o sistema, com escuro como reserva.
 - O × da aba tem 12 px em caixa de 24×24, como exceção à §8.5 de `estilo-ui-ux.md`. O ícone do estado vazio tem 18 px.
+- O nome da impressora vai até 2 linhas, com `line-clamp: 2`, `overflow-wrap: anywhere` e `title`, como exceção à §6.5 e à §8.4 de `estilo-ui-ux.md`: errar a impressora desperdiça papel, e nomes de fila costumam diferir só no fim. O estado também vai até 2 linhas, com `title`.
+- "Calibrar…" usa padding `2px 8px` em 11 px, como exceção ao `4px 10px` do botão pequeno da norma: o botão fica na primeira linha, ao lado do nome, em uma lateral de 240 px.
 
 ## Pronto quando
 
@@ -48,7 +50,7 @@ A interface segue o `estilo-ui-ux.md`: tema escuro por padrão, acento monocrom�
 | Abas de documento | `min-height` 26 px, raio 6, padding `0 8px`, 11 px/500; ativa com barra 2×16 px; "×" em caixa 24×24, revelado no hover e no foco | ativa `--panel-hover`, inativa `--fg-muted` |
 | Botão "+" | Fantasma 28×28, ícone Lucide `plus` 14 px | `--fg-muted` → `--fg` |
 | Barra lateral | Mesmo fundo do visualizador, separada por 1 px; padding 12 px; cabeçalho 34 px com IMPRESSORAS em caixa alta 10–11 px; contador mono em pílula | `--bg`, `--border`, `--fg-faint` |
-| Linha de impressora | `min-height` 29 px; checkbox 16 px com área de clique 24×24; nome 12 px com reticências; seletor com `flex-shrink: 0` | `--border-control`, marcado `--accent` + glifo `--accent-on` |
+| Linha de impressora | `min-height` 29 px, `padding-left` 4 px; checkbox 16 px com área de clique 24×24; duas fileiras independentes, `nome \| modo` e `estado \| face`, com gap de 6 px; nome 12 px com até 2 linhas e `title`; estado 10 px com até 2 linhas e `title`; modo e "Calibrar…" na primeira fileira, com `flex-shrink: 0` | `--border-control`, marcado `--accent` + glifo `--accent-on` |
 | Seletor de modo | 24 px dentro da linha, 11 px, seta 10×6; opções "Traseira ↑ face para cima", "Gaveta ↓ face para baixo", "Calibrar…" | `--bg-sunken`, `--border-control` |
 | Lote | Campo 32 px com número mono 13 px; resumo mono 11 px ("24 pág · 2 lotes") | `--font-mono`, `--fg-faint` |
 | Imprimir frente | Único botão primário da janela; padding `8px 14px`; 13 px/500 | `--accent`, `--accent-on` |

@@ -1,7 +1,9 @@
 //! Validacao do caminho de um documento antes de ele virar uma aba.
 
+use plots_pdf::{ErroPdf, PdfOrigem};
 use serde::Serialize;
-use std::io::ErrorKind;
+use std::fs::File;
+use std::io::{ErrorKind, Read};
 use std::path::Path;
 
 /// Documento aceito para abrir em uma aba.
@@ -19,6 +21,9 @@ pub enum CodigoErro {
     NaoEArquivo,
     NaoEPdf,
     Inacessivel,
+    PdfInvalido,
+    Criptografado,
+    Grande,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -26,6 +31,9 @@ pub struct ErroDocumento {
     pub codigo: CodigoErro,
     pub nome: String,
 }
+
+/// Maior PDF aceito para leitura (1 GiB). Um arquivo maior e recusado antes de ocupar a memoria.
+pub const LIMITE_BYTES_PDF: u64 = 1024 * 1024 * 1024;
 
 /// Aceita o caminho quando ele existe, e um arquivo e tem extensao `.pdf`, em qualquer caixa.
 pub fn abrir(caminho: &str) -> Result<Documento, ErroDocumento> {
@@ -56,6 +64,63 @@ pub fn abrir(caminho: &str) -> Result<Documento, ErroDocumento> {
         caminho: caminho.to_owned(),
         nome: nome.clone(),
     })
+}
+
+/// Total de paginas, depois de o arquivo passar pela mesma barreira que a impressao usa.
+pub fn contar_paginas(caminho: &str) -> Result<usize, ErroDocumento> {
+    contar_com_limite(caminho, LIMITE_BYTES_PDF)
+}
+
+fn contar_com_limite(caminho: &str, limite: u64) -> Result<usize, ErroDocumento> {
+    let documento = abrir(caminho)?;
+    let erro = |codigo| ErroDocumento {
+        codigo,
+        nome: documento.nome.clone(),
+    };
+    let bytes = ler_com_limite(Path::new(caminho), limite).map_err(erro)?;
+    let origem = PdfOrigem::carregar(&bytes).map_err(|falha| {
+        erro(match falha {
+            ErroPdf::Criptografado => CodigoErro::Criptografado,
+            _ => CodigoErro::PdfInvalido,
+        })
+    })?;
+    Ok(origem.total_paginas())
+}
+
+/// Le o arquivo sem passar do limite, mesmo que ele cresca depois de medido. Faltar memoria para o
+/// conteudo vira recusa em vez de encerrar o programa.
+fn ler_com_limite(alvo: &Path, limite: u64) -> Result<Vec<u8>, CodigoErro> {
+    let de_leitura = |falha: std::io::Error| match falha.kind() {
+        ErrorKind::NotFound => CodigoErro::NaoEncontrado,
+        _ => CodigoErro::Inacessivel,
+    };
+    let arquivo = File::open(alvo).map_err(de_leitura)?;
+    let tamanho = arquivo.metadata().map_err(de_leitura)?.len();
+    if tamanho > limite {
+        return Err(CodigoErro::Grande);
+    }
+    let capacidade = usize::try_from(tamanho).map_err(|_| CodigoErro::Grande)?;
+    let mut bytes = Vec::new();
+    bytes
+        .try_reserve_exact(capacidade)
+        .map_err(|_| CodigoErro::Grande)?;
+    arquivo
+        .take(limite.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(de_leitura)?;
+    let lidos = u64::try_from(bytes.len()).map_err(|_| CodigoErro::Grande)?;
+    if lidos > limite {
+        return Err(CodigoErro::Grande);
+    }
+    Ok(bytes)
+}
+
+/// Recusa para quando a propria contagem nao chega ao fim.
+pub fn falha_inesperada(caminho: &str) -> ErroDocumento {
+    ErroDocumento {
+        codigo: CodigoErro::PdfInvalido,
+        nome: nome_de_exibicao(caminho),
+    }
 }
 
 /// Ultimo componente do caminho; sem ele (raiz de disco, texto vazio) devolve o caminho inteiro.
@@ -186,6 +251,145 @@ mod testes {
         assert_eq!(
             abrir("a\0b.pdf").map_err(|erro| erro.codigo),
             Err(CodigoErro::Inacessivel)
+        );
+    }
+
+    /// PDF escrito byte a byte, com a tabela de referencias certa. `extra` entra como objetos
+    /// adicionais antes da tabela e `trailer` dentro do dicionario final.
+    fn pdf(paginas: usize, extra: &[&str], trailer: &str) -> Vec<u8> {
+        let filhos: Vec<String> = (0..paginas).map(|n| format!("{} 0 R", n + 3)).collect();
+        let mut objetos = vec![
+            "<< /Type /Catalog /Pages 2 0 R >>".to_owned(),
+            format!(
+                "<< /Type /Pages /Count {paginas} /Kids [{}] >>",
+                filhos.join(" ")
+            ),
+        ];
+        for _ in 0..paginas {
+            objetos.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>".to_owned());
+        }
+        objetos.extend(extra.iter().map(|objeto| (*objeto).to_owned()));
+
+        let mut bytes = b"%PDF-1.5\n".to_vec();
+        let mut posicoes = Vec::new();
+        for (indice, objeto) in objetos.iter().enumerate() {
+            posicoes.push(bytes.len());
+            bytes.extend_from_slice(format!("{} 0 obj\n{objeto}\nendobj\n", indice + 1).as_bytes());
+        }
+        let tabela = bytes.len();
+        let total = objetos.len() + 1;
+        bytes.extend_from_slice(format!("xref\n0 {total}\n0000000000 65535 f \n").as_bytes());
+        for posicao in posicoes {
+            bytes.extend_from_slice(format!("{posicao:010} 00000 n \n").as_bytes());
+        }
+        bytes.extend_from_slice(
+            format!(
+                "trailer\n<< /Size {total} /Root 1 0 R {trailer} >>\nstartxref\n{tabela}\n%%EOF\n"
+            )
+            .as_bytes(),
+        );
+        bytes
+    }
+
+    fn gravar(pasta: &PastaTemporaria, nome: &str, bytes: &[u8]) -> String {
+        let caminho = pasta.0.join(nome);
+        fs::write(&caminho, bytes).expect("gravar pdf");
+        caminho.to_string_lossy().into_owned()
+    }
+
+    fn codigo_ao_contar(caminho: &str) -> Option<CodigoErro> {
+        contar_paginas(caminho).err().map(|erro| erro.codigo)
+    }
+
+    #[test]
+    fn conta_as_paginas_de_um_pdf_valido() {
+        let pasta = PastaTemporaria::nova();
+        for total in [1, 2, 24] {
+            let caminho = gravar(&pasta, &format!("{total}.pdf"), &pdf(total, &[], ""));
+            assert_eq!(contar_paginas(&caminho), Ok(total));
+        }
+    }
+
+    #[test]
+    fn recusa_pdf_invalido_e_informa_o_nome() {
+        let pasta = PastaTemporaria::nova();
+        let caminho = pasta.arquivo("quebrado.pdf");
+        assert_eq!(
+            contar_paginas(&caminho),
+            Err(ErroDocumento {
+                codigo: CodigoErro::PdfInvalido,
+                nome: "quebrado.pdf".to_owned(),
+            })
+        );
+        let lixo = gravar(&pasta, "lixo.pdf", &[0xFF; 4096]);
+        assert_eq!(codigo_ao_contar(&lixo), Some(CodigoErro::PdfInvalido));
+        let vazio = gravar(&pasta, "vazio.pdf", b"");
+        assert_eq!(codigo_ao_contar(&vazio), Some(CodigoErro::PdfInvalido));
+    }
+
+    #[test]
+    fn recusa_pdf_sem_paginas() {
+        let pasta = PastaTemporaria::nova();
+        let caminho = gravar(&pasta, "sem-paginas.pdf", &pdf(0, &[], ""));
+        assert_eq!(codigo_ao_contar(&caminho), Some(CodigoErro::PdfInvalido));
+    }
+
+    #[test]
+    fn recusa_pdf_criptografado() {
+        let pasta = PastaTemporaria::nova();
+        let hexa = "A".repeat(64);
+        let cifra = format!("<< /Filter /Standard /V 1 /R 2 /O <{hexa}> /U <{hexa}> /P -4 >>");
+        let caminho = gravar(
+            &pasta,
+            "cifrado.pdf",
+            &pdf(2, &[&cifra], "/Encrypt 5 0 R /ID [<00> <00>]"),
+        );
+        assert_eq!(codigo_ao_contar(&caminho), Some(CodigoErro::Criptografado));
+    }
+
+    #[test]
+    fn os_erros_do_caminho_valem_tambem_ao_contar() {
+        let pasta = PastaTemporaria::nova();
+        let sumiu = pasta.0.join("sumiu.pdf");
+        assert_eq!(
+            codigo_ao_contar(&sumiu.to_string_lossy()),
+            Some(CodigoErro::NaoEncontrado)
+        );
+        let texto = pasta.arquivo("notas.txt");
+        assert_eq!(codigo_ao_contar(&texto), Some(CodigoErro::NaoEPdf));
+        assert_eq!(codigo_ao_contar(""), Some(CodigoErro::NaoEncontrado));
+    }
+
+    #[test]
+    fn arquivo_acima_do_limite_nao_chega_a_ser_interpretado() {
+        let pasta = PastaTemporaria::nova();
+        let bytes = pdf(1, &[], "");
+        let caminho = gravar(&pasta, "grande.pdf", &bytes);
+        let limite = u64::try_from(bytes.len()).expect("tamanho do teste");
+        assert_eq!(contar_com_limite(&caminho, limite), Ok(1));
+        assert_eq!(
+            contar_com_limite(&caminho, limite - 1).map_err(|erro| erro.codigo),
+            Err(CodigoErro::Grande)
+        );
+    }
+
+    #[test]
+    fn aninhamento_profundo_nao_derruba_o_app() {
+        let pasta = PastaTemporaria::nova();
+        let fundo = format!("{}{}", "[".repeat(200_000), "]".repeat(200_000));
+        let caminho = gravar(&pasta, "fundo.pdf", &pdf(1, &[&fundo], ""));
+        // Basta nao derrubar o processo: o objeto nao e referenciado por pagina alguma.
+        let _ = contar_paginas(&caminho);
+    }
+
+    #[test]
+    fn falha_inesperada_identifica_o_arquivo() {
+        assert_eq!(
+            falha_inesperada("pasta/a.pdf"),
+            ErroDocumento {
+                codigo: CodigoErro::PdfInvalido,
+                nome: "a.pdf".to_owned(),
+            }
         );
     }
 }

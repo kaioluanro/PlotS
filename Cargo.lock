@@ -2551,6 +2551,10 @@ dependencies = [
 name = "plots-app"
 version = "0.1.0"
 dependencies = [
+ "plots-core",
+ "plots-pdf",
+ "plots-perfis",
+ "plots-windows",
  "serde",
  "tauri",
  "tauri-build",

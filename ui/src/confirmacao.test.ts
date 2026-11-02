@@ -52,10 +52,10 @@ describe("conteudoDaConfirmacao", () => {
 describe("textos da confirmacao", () => {
   it("a consequencia esta escrita nos dois idiomas", () => {
     expect(traducoes["pt-BR"]["confirmar.consequencia"]).toBe(
-      "O que já foi enviado continua na fila, mas o PlotS deixa de acompanhar este documento e o verso não poderá ser impresso por aqui.",
+      "O que já foi enviado continua na fila de impressão, mas o PlotS deixa de acompanhar este documento e o verso não poderá ser impresso por aqui.",
     );
     expect(traducoes.en["confirmar.consequencia"]).toBe(
-      "Anything already sent stays in the queue, but PlotS stops tracking this document and the back side can no longer be printed from here.",
+      "Anything already sent stays in the print queue, but PlotS stops tracking this document and the back side can no longer be printed from here.",
     );
   });
 

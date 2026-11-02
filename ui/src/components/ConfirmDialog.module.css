@@ -23,7 +23,7 @@
   flex-direction: column;
   width: min(420px, calc(100vw - 48px));
   max-height: calc(100vh - 80px);
-  overflow: auto;
+  overflow: hidden;
   background: var(--surface-modal);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
@@ -42,6 +42,7 @@
 }
 
 .titulo {
+  flex-shrink: 0;
   margin: 0;
   padding: 16px 20px 0;
   color: var(--fg);
@@ -49,10 +50,14 @@
   font-weight: 600;
 }
 
+/* So o corpo rola: titulo e botoes continuam visiveis em qualquer altura. */
 .corpo {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
   padding: 14px 20px 16px;
 }
 
@@ -63,9 +68,55 @@
   overflow-wrap: anywhere;
 }
 
+.comando {
+  flex-shrink: 0;
+  padding: 8px 10px;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.semQuebra {
+  white-space: nowrap;
+}
+
+.termo {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.retorno {
+  display: flex;
+  flex: 1 1 0;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+/* Alinhado a primeira linha do texto: (18 - 12) / 2. */
+.retorno svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+.retornoIcone {
+  color: var(--status-offline-text);
+}
+
 .rodape {
   display: flex;
+  flex-shrink: 0;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
   gap: 8px;
   padding: 12px 20px 16px;
