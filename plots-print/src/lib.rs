@@ -462,7 +462,8 @@ mod tests {
         // folha depois do ciclo físico e exige o resultado legível pelo usuário.
         // Os quatro booleanos mecânicos independentes são enumerados; para cada
         // mecanismo, procura-se um perfil/gesto que passe um lote de calibração.
-        let mut configuracoes_coerentes = [0usize; 8];
+        let mut verificadas = [0usize; 8];
+        let mut puladas = [0usize; 8];
         for mascara_perfil in 0u8..8 {
             let perfil = PerfilImpressora {
                 passada1_inversa: mascara_perfil & 1 != 0,
@@ -498,11 +499,12 @@ mod tests {
                     }
                 }
                 let Some(gesto) = gesto_coerente else {
-                    // Algumas mecânicas artificiais não têm combinação de
-                    // inversão/rotação uniforme que produza páginas aprumadas.
+                    // Mecânica sem gesto que aprume o lote-piloto: fica contada
+                    // como pulada e a contagem final afirma o número exato.
+                    puladas[mascara_perfil as usize] += 1;
                     continue;
                 };
-                configuracoes_coerentes[mascara_perfil as usize] += 1;
+                verificadas[mascara_perfil as usize] += 1;
 
                 for total in 1..=200 {
                     for folhas_por_lote in 1..=50 {
@@ -533,9 +535,19 @@ mod tests {
                     }
                 }
             }
-            assert!(
-                configuracoes_coerentes[mascara_perfil as usize] > 0,
-                "o perfil {mascara_perfil} não foi exercitado em nenhuma mecânica coerente"
+            let (v, p) = (
+                verificadas[mascara_perfil as usize],
+                puladas[mascara_perfil as usize],
+            );
+            assert_eq!(
+                v + p,
+                32,
+                "perfil {mascara_perfil}: toda mecânica deve ser verificada ou pulada"
+            );
+            assert_eq!(
+                (v, p),
+                (8, 24),
+                "perfil {mascara_perfil}: cobertura mudou (verificadas, puladas)"
             );
         }
     }
@@ -798,77 +810,90 @@ mod tests {
         );
     }
 
-    fn perfil_da_mascara(mascara: u8) -> PerfilImpressora {
+    /// Gesto de todas as linhas da tabela: virar o maço e nada mais.
+    const GESTO_DA_TABELA: Recolocacao = Recolocacao {
+        virar_maco: true,
+        inverter_ordem: false,
+        girar_180: false,
+        retirar_folhas: 0,
+    };
+
+    /// Perfis medidos de (passada1_inversa, passada2_inversa, verso_girar_180), cada um com a
+    /// máquina que o produz pelo gesto de virar o maço. Regra física das linhas: a primeira
+    /// passada inverte quando a folha entra pelo topo, sai com a face impressa para cima e é
+    /// impressa com essa face para cima (p1 = entrada pelo topo = face para cima = imprime
+    /// para cima); a segunda inverte quando cada folha volta por cima do maço (p2 = saída no
+    /// topo); e o verso só gira quando a máquina gira a segunda passada sozinha (g = giro).
+    /// A gaveta e a traseira são as duas impressoras virtuais do CLI; as demais linhas são
+    /// máquinas hipotéticas que seguem a mesma regra e não foram medidas.
+    const TABELA_DE_MECANICAS: [((bool, bool, bool), Mecanica); 8] = [
+        // Gaveta: entra por baixo, imprime com a face para baixo e sai por baixo.
+        ((false, false, false), Mecanica::gaveta()),
+        // Gaveta que devolve cada folha por cima do maço: a segunda passada inverte.
+        (
+            (false, true, false),
+            Mecanica {
+                saida_no_topo: true,
+                ..Mecanica::gaveta()
+            },
+        ),
+        // Traseira que devolve cada folha por baixo do maço: a segunda passada não inverte.
+        (
+            (true, false, false),
+            Mecanica {
+                saida_no_topo: false,
+                ..Mecanica::traseira()
+            },
+        ),
+        // Traseira: entra pelo topo, imprime com a face para cima e sai por cima do maço.
+        ((true, true, false), Mecanica::traseira()),
+        // Gaveta que gira a segunda passada: o verso é girado 180° para compensar.
+        (
+            (false, false, true),
+            Mecanica {
+                giro_segunda_passada: true,
+                ..Mecanica::gaveta()
+            },
+        ),
+        // Traseira que devolve por baixo e gira a segunda passada: o verso é compensado.
+        (
+            (true, false, true),
+            Mecanica {
+                saida_no_topo: false,
+                giro_segunda_passada: true,
+                ..Mecanica::traseira()
+            },
+        ),
+        // Gaveta que devolve por cima e gira a segunda passada: o verso é compensado.
+        (
+            (false, true, true),
+            Mecanica {
+                saida_no_topo: true,
+                giro_segunda_passada: true,
+                ..Mecanica::gaveta()
+            },
+        ),
+        // Traseira que gira a segunda passada: o verso é compensado.
+        (
+            (true, true, true),
+            Mecanica {
+                giro_segunda_passada: true,
+                ..Mecanica::traseira()
+            },
+        ),
+    ];
+
+    fn perfil_de(
+        passada1_inversa: bool,
+        passada2_inversa: bool,
+        verso_girar_180: bool,
+    ) -> PerfilImpressora {
         PerfilImpressora {
-            passada1_inversa: mascara & 1 != 0,
-            passada2_inversa: mascara & 2 != 0,
-            verso_girar_180: mascara & 4 != 0,
+            passada1_inversa,
+            passada2_inversa,
+            verso_girar_180,
             ..Default::default()
         }
-    }
-
-    fn mecanica_da_mascara(mascara: u8) -> Mecanica {
-        Mecanica {
-            saida_face_impressa_para_cima: mascara & 1 != 0,
-            saida_no_topo: mascara & 2 != 0,
-            imprime_face_para_cima: mascara & 4 != 0,
-            entrada_pelo_topo: mascara & 8 != 0,
-            giro_segunda_passada: mascara & 16 != 0,
-        }
-    }
-
-    fn gestos_possiveis() -> Vec<Recolocacao> {
-        let mut gestos = Vec::new();
-        for virar_maco in [false, true] {
-            for inverter_ordem in [false, true] {
-                for girar_180 in [false, true] {
-                    gestos.push(Recolocacao {
-                        virar_maco,
-                        inverter_ordem,
-                        girar_180,
-                        retirar_folhas: 0,
-                    });
-                }
-            }
-        }
-        gestos
-    }
-
-    type Combinacao = (PerfilImpressora, Mecanica, Recolocacao);
-
-    /// Para cada um dos oito perfis, escolhe a primeira mecânica (entre as 32
-    /// combinações dos cinco booleanos físicos) e o primeiro gesto que deixam um
-    /// lote-piloto de quatro páginas na ordem certa. Um perfil sem nenhuma
-    /// combinação faz a inicialização falhar; nenhum perfil é descartado.
-    fn combinacoes_coerentes() -> &'static [Combinacao] {
-        static TABELA: std::sync::OnceLock<Vec<Combinacao>> = std::sync::OnceLock::new();
-        TABELA
-            .get_or_init(|| {
-                (0u8..8)
-                    .map(|mascara_perfil| {
-                        let perfil = perfil_da_mascara(mascara_perfil);
-                        let encontrada = (0u8..32)
-                            .flat_map(|mascara| {
-                                gestos_possiveis()
-                                    .into_iter()
-                                    .map(move |gesto| (mecanica_da_mascara(mascara), gesto))
-                            })
-                            .find(|(mecanica, gesto)| {
-                                lote_correto(
-                                    executar(4, *mecanica, perfil, *gesto).pilha(),
-                                    1,
-                                    2,
-                                    4,
-                                )
-                            });
-                        let (mecanica, gesto) = encontrada.unwrap_or_else(|| {
-                            panic!("o perfil {mascara_perfil} não tem mecânica coerente")
-                        });
-                        (perfil, mecanica, gesto)
-                    })
-                    .collect()
-            })
-            .as_slice()
     }
 
     /// Confere o maço inteiro de um documento: cada lote deve sair com as
@@ -911,7 +936,9 @@ mod tests {
             total in 1usize..=200,
             folhas_por_lote in 1usize..=50,
         ) {
-            let (perfil, mecanismo, gesto) = combinacoes_coerentes()[indice_perfil];
+            let ((p1, p2, girar), mecanismo) = TABELA_DE_MECANICAS[indice_perfil];
+            let perfil = perfil_de(p1, p2, girar);
+            let gesto = GESTO_DA_TABELA;
             let resultado = maco_confere(
                 total,
                 folhas_por_lote,
@@ -924,6 +951,32 @@ mod tests {
             proptest::prop_assert!(
                 motivo.is_empty(),
                 "perfil {indice_perfil}, mecânica {mecanismo:?}, gesto {gesto:?}: {motivo}"
+            );
+        }
+    }
+
+    #[test]
+    fn tabela_cobre_os_oito_perfis_e_inclui_as_impressoras_virtuais() {
+        for mascara in 0u8..8 {
+            let perfil = (mascara & 1 != 0, mascara & 2 != 0, mascara & 4 != 0);
+            let linhas = TABELA_DE_MECANICAS
+                .iter()
+                .filter(|(p, _)| *p == perfil)
+                .count();
+            assert_eq!(linhas, 1, "perfil {mascara}");
+        }
+        assert!(TABELA_DE_MECANICAS.contains(&((true, true, false), Mecanica::traseira())));
+        assert!(TABELA_DE_MECANICAS.contains(&((false, false, false), Mecanica::gaveta())));
+    }
+
+    #[test]
+    fn lote_piloto_de_cada_linha_da_tabela_aprumado_com_o_gesto_de_virar() {
+        for ((p1, p2, girar), mecanismo) in TABELA_DE_MECANICAS {
+            let sim = executar(4, mecanismo, perfil_de(p1, p2, girar), GESTO_DA_TABELA);
+            assert!(
+                lote_correto(sim.pilha(), 1, 2, 4),
+                "perfil {:?}, mecânica {mecanismo:?}",
+                (p1, p2, girar)
             );
         }
     }

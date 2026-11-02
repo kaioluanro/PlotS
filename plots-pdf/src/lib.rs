@@ -247,6 +247,287 @@ impl PdfOrigem {
     }
 }
 
+/// Face de uma folha final: página de origem (começando em 1), ou `None` para uma face
+/// em branco, e se a página aparece girada 180° dentro da folha.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FaceFinal {
+    pub pagina: Option<usize>,
+    pub girada: bool,
+}
+
+/// Folha final: a frente fica à esquerda e o verso à direita. Face ausente sai em branco.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FolhaFinal {
+    pub frente: Option<FaceFinal>,
+    pub verso: Option<FaceFinal>,
+}
+
+/// Maior dimensão aceita para uma página do PDF, em pontos (limite da especificação PDF).
+const LIMITE_DIMENSAO_PT: f64 = 14_400.0;
+
+/// Matriz afim no formato do PDF: (x, y) vira (a·x + c·y + e, b·x + d·y + f).
+type Afim = [f64; 6];
+
+/// Aplica `primeiro` e depois `depois` a um ponto.
+fn compor(primeiro: Afim, depois: Afim) -> Afim {
+    let [a1, b1, c1, d1, e1, f1] = primeiro;
+    let [a2, b2, c2, d2, e2, f2] = depois;
+    [
+        a2 * a1 + c2 * b1,
+        b2 * a1 + d2 * b1,
+        a2 * c1 + c2 * d1,
+        b2 * c1 + d2 * d1,
+        a2 * e1 + c2 * f1 + e2,
+        b2 * e1 + d2 * f1 + f2,
+    ]
+}
+
+/// Geometria visível de uma página: caixa (MediaBox ∩ CropBox), unidade e rotação.
+#[derive(Clone, Debug)]
+struct Geometria {
+    caixa: [f64; 4],
+    unidade: f64,
+    rotacao: i64,
+}
+
+impl Geometria {
+    /// Tamanho exibido, em pontos, considerando a rotação da página.
+    fn tamanho_exibido(&self) -> Result<(f64, f64), ErroPdf> {
+        let largura = (self.caixa[2] - self.caixa[0]) * self.unidade;
+        let altura = (self.caixa[3] - self.caixa[1]) * self.unidade;
+        let (largura, altura) = if self.rotacao % 180 == 90 {
+            (altura, largura)
+        } else {
+            (largura, altura)
+        };
+        let cabe = |valor: f64| valor.is_finite() && valor > 0.0 && valor <= LIMITE_DIMENSAO_PT;
+        if !cabe(largura) || !cabe(altura) {
+            return Err(ErroPdf::DocumentoInvalido(
+                "página grande demais para folha final",
+            ));
+        }
+        Ok((largura, altura))
+    }
+}
+
+/// Face pronta para montar: geometria, origem, orientação e tamanho exibido.
+struct FacePronta {
+    geometria: Geometria,
+    id: Option<ObjectId>,
+    girada: bool,
+    largura: f64,
+    altura: f64,
+}
+
+impl FacePronta {
+    /// Matriz que leva a caixa da página original até a posição (ox, oy) da folha.
+    fn matriz(&self, ox: f64, oy: f64) -> Afim {
+        let s = self.geometria.unidade;
+        let [x0, y0, x1, y1] = self.geometria.caixa;
+        let base: Afim = match self.geometria.rotacao {
+            90 => [0.0, -s, s, 0.0, -s * y0, s * x1],
+            180 => [-s, 0.0, 0.0, -s, s * x1, s * y1],
+            270 => [0.0, s, -s, 0.0, s * y1, -s * x0],
+            _ => [s, 0.0, 0.0, s, -s * x0, -s * y0],
+        };
+        let girar = if self.girada {
+            [-1.0, 0.0, 0.0, -1.0, self.largura, self.altura]
+        } else {
+            [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+        };
+        compor(compor(base, girar), [1.0, 0.0, 0.0, 1.0, ox, oy])
+    }
+}
+
+fn reais(valores: &[f64]) -> Vec<Object> {
+    valores.iter().map(|v| Object::Real(*v as f32)).collect()
+}
+
+/// Conteúdo decodificado de uma página, concatenando todos os fluxos de /Contents.
+fn conteudo_da_pagina(doc: &Document, pagina: &Dictionary) -> Result<Vec<u8>, ErroPdf> {
+    let Ok(contents) = pagina.get(b"Contents") else {
+        return Ok(Vec::new());
+    };
+    let itens: Vec<Object> = match doc.dereference(contents)?.1 {
+        Object::Array(itens) => itens.clone(),
+        outro => vec![outro.clone()],
+    };
+    if itens.len() > LIMITE_PAGINAS {
+        return Err(ErroPdf::DocumentoInvalido("fluxos de conteúdo demais"));
+    }
+    let mut bytes = Vec::new();
+    for item in &itens {
+        let fluxo = doc.dereference(item)?.1.as_stream()?;
+        bytes.extend(fluxo.decompressed_content()?);
+        bytes.push(b'\n');
+    }
+    Ok(bytes)
+}
+
+impl PdfOrigem {
+    fn geometria_pagina(&self, numero: usize) -> Result<(Geometria, ObjectId), ErroPdf> {
+        let indice = numero
+            .checked_sub(1)
+            .ok_or(ErroPdf::PaginaInexistente(numero))?;
+        let id = *self
+            .paginas
+            .get(indice)
+            .ok_or(ErroPdf::PaginaInexistente(numero))?;
+        let dict = pagina_com_heranca(&self.documento, id)?;
+        let [mut x0, mut y0, mut x1, mut y1] =
+            caixa(&self.documento, dict.get(b"MediaBox")?)?.map(f64::from);
+        if let Ok(crop) = dict.get(b"CropBox") {
+            let [cx0, cy0, cx1, cy1] = caixa(&self.documento, crop)?.map(f64::from);
+            x0 = x0.max(cx0);
+            y0 = y0.max(cy0);
+            x1 = x1.min(cx1);
+            y1 = y1.min(cy1);
+            if x0 >= x1 || y0 >= y1 {
+                return Err(ErroPdf::DocumentoInvalido("CropBox fora de MediaBox"));
+            }
+        }
+        let unidade = dict
+            .get(b"UserUnit")
+            .ok()
+            .map(|v| {
+                self.documento
+                    .dereference(v)
+                    .and_then(|(_, o)| o.as_float())
+            })
+            .transpose()?
+            .unwrap_or(1.0);
+        let unidade = f64::from(unidade);
+        if !unidade.is_finite() || !(0.0..=75_000.0).contains(&unidade) || unidade == 0.0 {
+            return Err(ErroPdf::DocumentoInvalido("UserUnit inválido"));
+        }
+        let rotacao = dict
+            .get(b"Rotate")
+            .ok()
+            .map(|v| self.documento.dereference(v).and_then(|(_, o)| o.as_i64()))
+            .transpose()?
+            .unwrap_or(0);
+        if rotacao % 90 != 0 {
+            return Err(ErroPdf::DocumentoInvalido("rotação inválida"));
+        }
+        Ok((
+            Geometria {
+                caixa: [x0, y0, x1, y1],
+                unidade,
+                rotacao: rotacao.rem_euclid(360),
+            },
+            id,
+        ))
+    }
+
+    fn face_pronta(
+        &self,
+        face: Option<FaceFinal>,
+        branco: &Geometria,
+    ) -> Result<FacePronta, ErroPdf> {
+        let (geometria, id, girada) = match face {
+            Some(FaceFinal {
+                pagina: Some(numero),
+                girada,
+            }) => {
+                let (geometria, id) = self.geometria_pagina(numero)?;
+                (geometria, Some(id), girada)
+            }
+            _ => (branco.clone(), None, false),
+        };
+        let (largura, altura) = geometria.tamanho_exibido()?;
+        Ok(FacePronta {
+            geometria,
+            id,
+            girada,
+            largura,
+            altura,
+        })
+    }
+
+    /// Monta um PDF com uma página por folha, em tamanho real. Cada página original entra
+    /// como formulário, com recursos, caixa visível e rotação; anotações não são copiadas.
+    /// A face sem página fica em branco, e `pagina_tamanho_branco` dá o tamanho dela.
+    pub fn gerar_folhas_finais(
+        &self,
+        folhas: &[FolhaFinal],
+        pagina_tamanho_branco: usize,
+    ) -> Result<Vec<u8>, ErroPdf> {
+        if folhas.is_empty() || folhas.len() > LIMITE_PAGINAS {
+            return Err(ErroPdf::DocumentoInvalido("quantidade de folhas inválida"));
+        }
+        let (branco, _) = self.geometria_pagina(pagina_tamanho_branco)?;
+        let proibidos = referencias_arvore_original(&self.documento, &self.paginas)?;
+        let mut saida = self.documento.clone();
+        let pages_id = saida.new_object_id();
+        let mut kids = Vec::with_capacity(folhas.len());
+        let mut paginas_novas: HashSet<ObjectId> = HashSet::new();
+        for folha in folhas {
+            let frente = self.face_pronta(folha.frente, &branco)?;
+            let verso = self.face_pronta(folha.verso, &branco)?;
+            let largura = frente.largura + verso.largura;
+            let altura = frente.altura.max(verso.altura);
+            if !largura.is_finite() || largura > LIMITE_DIMENSAO_PT || !altura.is_finite() {
+                return Err(ErroPdf::DocumentoInvalido("folha final grande demais"));
+            }
+            let mut xobjetos = Dictionary::new();
+            let mut desenho = String::new();
+            for (nome, face, ox) in [("Frente", &frente, 0.0), ("Verso", &verso, frente.largura)] {
+                let Some(id) = face.id else { continue };
+                let dict = pagina_com_heranca(&self.documento, id)?;
+                let conteudo = conteudo_da_pagina(&self.documento, &dict)?;
+                let recursos = dict
+                    .get(b"Resources")
+                    .ok()
+                    .cloned()
+                    .unwrap_or_else(|| Object::Dictionary(dictionary! {}));
+                let [x0, y0, x1, y1] = face.geometria.caixa;
+                let matriz = face.matriz(ox, altura - face.altura);
+                let forma = dictionary! {
+                    "Type" => "XObject",
+                    "Subtype" => "Form",
+                    "BBox" => reais(&[x0, y0, x1, y1]),
+                    "Matrix" => reais(&matriz),
+                    "Resources" => recursos,
+                };
+                let forma_id = saida.add_object(lopdf::Stream::new(forma, conteudo));
+                paginas_novas.insert(forma_id);
+                xobjetos.set(nome, Object::Reference(forma_id));
+                desenho.push_str(&format!("q /{nome} Do Q\n"));
+            }
+            let conteudo_id =
+                saida.add_object(lopdf::Stream::new(dictionary! {}, desenho.into_bytes()));
+            let pagina_id = saida.new_object_id();
+            saida.objects.insert(
+                pagina_id,
+                Object::Dictionary(dictionary! {
+                    "Type" => "Page",
+                    "Parent" => pages_id,
+                    "MediaBox" => reais(&[0.0, 0.0, largura, altura]),
+                    "Resources" => dictionary! { "XObject" => Object::Dictionary(xobjetos) },
+                    "Contents" => conteudo_id,
+                }),
+            );
+            paginas_novas.insert(pagina_id);
+            kids.push(Object::Reference(pagina_id));
+        }
+        paginas_novas.insert(pages_id);
+        saida.objects.insert(
+            pages_id,
+            Object::Dictionary(
+                dictionary! { "Type" => "Pages", "Count" => kids.len() as i64, "Kids" => kids },
+            ),
+        );
+        let catalogo = saida.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+        paginas_novas.insert(catalogo);
+        saida.trailer.set("Root", catalogo);
+        saida.trailer.remove(b"Info");
+        remover_inacessiveis(&mut saida, &proibidos, &paginas_novas)?;
+        let mut bytes = Vec::new();
+        saida.save_to(&mut bytes).map_err(ErroPdf::Escrita)?;
+        Ok(bytes)
+    }
+}
+
 fn clonar_anotacoes(
     origem: &Document,
     saida: &mut Document,
@@ -1182,6 +1463,156 @@ mod tests {
             .unwrap()
             .set("Pages", proximo);
         assert!(listar_paginas(&profundo).is_err());
+    }
+
+    fn aproximados(a: &[f64], b: &[f64]) -> bool {
+        a.len() == b.len() && a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-3)
+    }
+
+    fn folha_de_teste(frente: Option<(usize, bool)>, verso: Option<(usize, bool)>) -> FolhaFinal {
+        let face = |(pagina, girada): (usize, bool)| FaceFinal {
+            pagina: Some(pagina),
+            girada,
+        };
+        FolhaFinal {
+            frente: frente.map(face),
+            verso: verso.map(face),
+        }
+    }
+
+    /// Caixa da folha e, para cada formulário de face, nome, matriz e conteúdo.
+    fn ler_folha(doc: &Document, pagina: ObjectId) -> (Vec<f64>, Vec<(String, Vec<f64>, Vec<u8>)>) {
+        let dict = doc.get_object(pagina).unwrap().as_dict().unwrap();
+        let caixa = dict
+            .get(b"MediaBox")
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| f64::from(v.as_float().unwrap()))
+            .collect();
+        let recursos = dict.get(b"Resources").unwrap().as_dict().unwrap();
+        let xobjetos = recursos.get(b"XObject").unwrap().as_dict().unwrap();
+        let faces = xobjetos
+            .iter()
+            .map(|(nome, valor)| {
+                let forma = doc
+                    .get_object(valor.as_reference().unwrap())
+                    .unwrap()
+                    .as_stream()
+                    .unwrap();
+                let matriz = forma
+                    .dict
+                    .get(b"Matrix")
+                    .unwrap()
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|v| f64::from(v.as_float().unwrap()))
+                    .collect();
+                (
+                    String::from_utf8_lossy(nome).into_owned(),
+                    matriz,
+                    forma.decompressed_content().unwrap(),
+                )
+            })
+            .collect();
+        (caixa, faces)
+    }
+
+    #[test]
+    fn folhas_finais_somam_faces_alinham_no_topo_e_seguem_a_rotacao() {
+        let origem = PdfOrigem::carregar(&fixture()).unwrap();
+        let bytes = origem
+            .gerar_folhas_finais(&[folha_de_teste(Some((1, false)), Some((2, false)))], 1)
+            .unwrap();
+        let saida = Document::load_mem(&bytes).unwrap();
+        let paginas: Vec<_> = saida.get_pages().into_values().collect();
+        assert_eq!(paginas.len(), 1);
+        let (caixa, faces) = ler_folha(&saida, paginas[0]);
+        assert!(aproximados(&caixa, &[0.0, 0.0, 480.0, 290.0]), "{caixa:?}");
+        let frente = faces.iter().find(|f| f.0 == "Frente").unwrap();
+        let verso = faces.iter().find(|f| f.0 == "Verso").unwrap();
+        // Página 1 herda /Rotate 90 e fica 290 × 190, alinhada ao topo da folha.
+        assert!(
+            aproximados(&frente.1, &[0.0, -1.0, 1.0, 0.0, 0.0, 290.0]),
+            "{:?}",
+            frente.1
+        );
+        // Página 2 tem /Rotate 180, 190 × 290, à direita da frente.
+        assert!(
+            aproximados(&verso.1, &[-1.0, 0.0, 0.0, -1.0, 480.0, 290.0]),
+            "{:?}",
+            verso.1
+        );
+        assert_eq!(frente.2, b"1 2 m\n");
+        assert_eq!(verso.2, b"3 4 m\n");
+    }
+
+    #[test]
+    fn folhas_finais_com_face_girada_e_face_em_branco() {
+        let origem = PdfOrigem::carregar(&fixture()).unwrap();
+        // Frente girada 180° (página 1); verso em branco com a geometria da página 2.
+        let bytes = origem
+            .gerar_folhas_finais(&[folha_de_teste(Some((1, true)), None)], 2)
+            .unwrap();
+        let saida = Document::load_mem(&bytes).unwrap();
+        let pagina = *saida.get_pages().values().next().unwrap();
+        let (caixa, faces) = ler_folha(&saida, pagina);
+        assert!(aproximados(&caixa, &[0.0, 0.0, 480.0, 290.0]), "{caixa:?}");
+        assert_eq!(faces.len(), 1);
+        assert_eq!(faces[0].0, "Frente");
+        assert!(
+            aproximados(&faces[0].1, &[0.0, 1.0, -1.0, 0.0, 290.0, 100.0]),
+            "{:?}",
+            faces[0].1
+        );
+    }
+
+    #[test]
+    fn folhas_finais_nao_levam_pagina_excluida_nem_anotacoes() {
+        let mut origem = PdfOrigem::carregar(&fixture()).unwrap();
+        let p1 = origem.paginas[0];
+        let p2 = origem.paginas[1];
+        let anotacao = origem.documento.add_object(dictionary! {"Type" => "Annot", "Subtype" => "Square", "P" => p1, "Rect" => vec![0.into(), 0.into(), 20.into(), 20.into()]});
+        origem
+            .documento
+            .get_object_mut(p1)
+            .unwrap()
+            .as_dict_mut()
+            .unwrap()
+            .set("Annots", vec![Object::Reference(anotacao)]);
+        let bytes = origem
+            .gerar_folhas_finais(&[folha_de_teste(Some((1, false)), None)], 1)
+            .unwrap();
+        let saida = Document::load_mem(&bytes).unwrap();
+        assert!(!saida.objects.contains_key(&p2));
+        for objeto in saida.objects.values() {
+            if let Ok(fluxo) = objeto.as_stream() {
+                let conteudo = fluxo.decompressed_content().unwrap_or_default();
+                assert!(!conteudo.windows(5).any(|w| w == b"3 4 m"));
+            }
+            if let Ok(dict) = objeto.as_dict() {
+                assert!(
+                    dict.get(b"Subtype").ok().and_then(|v| v.as_name().ok()) != Some(b"Square")
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn folhas_finais_recusam_entradas_invalidas() {
+        let origem = PdfOrigem::carregar(&fixture()).unwrap();
+        assert!(origem.gerar_folhas_finais(&[], 1).is_err());
+        assert!(matches!(
+            origem.gerar_folhas_finais(&[folha_de_teste(Some((3, false)), None)], 1),
+            Err(ErroPdf::PaginaInexistente(3))
+        ));
+        assert!(origem
+            .gerar_folhas_finais(&[folha_de_teste(Some((1, false)), None)], 0)
+            .is_err());
+        let muitas = vec![folha_de_teste(Some((1, false)), None); LIMITE_PAGINAS + 1];
+        assert!(origem.gerar_folhas_finais(&muitas, 1).is_err());
     }
 }
 

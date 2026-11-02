@@ -944,3 +944,289 @@ fn erro_de_gerar_calibracao_mostra_somente_o_proprio_uso() {
     assert!(!erro.contains("plots simular"));
     assert!(!erro.contains("plots gerar-pdf"));
 }
+
+/// PDF com uma página por tamanho dado; cada conteúdo traz "% pagina N" com o número da página.
+fn pdf_com_conteudo(tamanhos: &[(i64, i64)]) -> Vec<u8> {
+    use lopdf::{dictionary, Document, Object, Stream};
+    let mut doc = Document::with_version("1.5");
+    let raiz = doc.new_object_id();
+    let mut filhos = Vec::new();
+    for (i, (largura, altura)) in tamanhos.iter().enumerate() {
+        let conteudo = doc.add_object(Stream::new(
+            dictionary! {},
+            format!("% pagina {}\n", i + 1).into_bytes(),
+        ));
+        let pagina = doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => raiz,
+            "MediaBox" => vec![0.into(), 0.into(), (*largura).into(), (*altura).into()],
+            "Resources" => dictionary! {}, "Contents" => conteudo,
+        });
+        filhos.push(Object::Reference(pagina));
+    }
+    doc.objects.insert(
+        raiz,
+        Object::Dictionary(
+            dictionary! {"Type" => "Pages", "Count" => filhos.len() as i64, "Kids" => filhos},
+        ),
+    );
+    let catalogo = doc.add_object(dictionary! {"Type" => "Catalog", "Pages" => raiz});
+    doc.trailer.set("Root", catalogo);
+    let mut bytes = Vec::new();
+    doc.save_to(&mut bytes).unwrap();
+    bytes
+}
+
+fn argumentos_folhas(
+    entrada: &Path,
+    saida: &Path,
+    impressora: &str,
+    ordem: Option<&str>,
+) -> Vec<String> {
+    let mut argumentos = vec![
+        "gerar-pdf".to_string(),
+        caminho_texto(entrada),
+        "--lote".into(),
+        "10".into(),
+        "--impressora".into(),
+        impressora.into(),
+        "--saida".into(),
+        caminho_texto(saida),
+        "--folhas-finais".into(),
+    ];
+    if let Some(ordem) = ordem {
+        argumentos.extend(["--ordem".to_string(), ordem.to_string()]);
+    }
+    argumentos
+}
+
+/// Face de uma folha final: número da página de origem e matriz de posicionamento.
+#[derive(Debug)]
+struct Face {
+    pagina: usize,
+    matriz: Vec<f32>,
+}
+
+/// Folha final lida do arquivo; uma face ausente é uma face em branco.
+#[derive(Debug)]
+struct FolhaLida {
+    caixa: Vec<f32>,
+    frente: Option<Face>,
+    verso: Option<Face>,
+}
+
+fn ler_folhas(caminho: &Path) -> Vec<FolhaLida> {
+    let doc = lopdf::Document::load(caminho).unwrap();
+    doc.get_pages()
+        .values()
+        .map(|&id| {
+            let pagina = doc.get_object(id).unwrap().as_dict().unwrap();
+            let caixa = pagina
+                .get(b"MediaBox")
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_float().unwrap())
+                .collect();
+            let recursos = doc
+                .dereference(pagina.get(b"Resources").unwrap())
+                .unwrap()
+                .1
+                .as_dict()
+                .unwrap();
+            let xobjetos = match recursos.get(b"XObject") {
+                Ok(valor) => doc.dereference(valor).unwrap().1.as_dict().unwrap().clone(),
+                Err(_) => lopdf::Dictionary::new(),
+            };
+            let ler = |nome: &[u8]| -> Option<Face> {
+                let referencia = xobjetos.get(nome).ok()?.as_reference().ok()?;
+                let forma = doc.get_object(referencia).ok()?.as_stream().ok()?;
+                let texto = String::from_utf8(forma.decompressed_content().ok()?).ok()?;
+                let pagina = texto.trim().strip_prefix("% pagina ")?.parse().ok()?;
+                let matriz = forma
+                    .dict
+                    .get(b"Matrix")
+                    .ok()?
+                    .as_array()
+                    .ok()?
+                    .iter()
+                    .map(|v| v.as_float().unwrap())
+                    .collect();
+                Some(Face { pagina, matriz })
+            };
+            FolhaLida {
+                caixa,
+                frente: ler(b"Frente"),
+                verso: ler(b"Verso"),
+            }
+        })
+        .collect()
+}
+
+/// Rótulo "esquerda|direita" da folha como está no arquivo; a face em branco sai como "branca".
+fn rotulo_lado_a_lado(folha: &FolhaLida) -> String {
+    [&folha.frente, &folha.verso]
+        .iter()
+        .map(|face| {
+            face.as_ref()
+                .map_or("branca".to_string(), |f| f.pagina.to_string())
+        })
+        .collect::<Vec<_>>()
+        .join("|")
+}
+
+#[test]
+fn folhas_finais_seguem_a_ordem_do_simulador_nas_duas_impressoras() {
+    for total in [4usize, 5] {
+        for impressora in ["traseira", "gaveta"] {
+            for ordem in [None, Some("impares")] {
+                let pasta = Pasta::nova("folhas-ordem");
+                let entrada = pasta.caminho().join("entrada.pdf");
+                std::fs::write(&entrada, pdf_com_conteudo(&vec![(595, 842); total])).unwrap();
+                executar(&argumentos_folhas(
+                    &entrada,
+                    pasta.caminho(),
+                    impressora,
+                    ordem,
+                ))
+                .unwrap();
+                let mut simular = vec![
+                    "simular".to_string(),
+                    "--paginas".into(),
+                    total.to_string(),
+                    "--lote".into(),
+                    "10".into(),
+                    "--impressora".into(),
+                    impressora.into(),
+                ];
+                if let Some(ordem) = ordem {
+                    simular.extend(["--ordem".to_string(), ordem.to_string()]);
+                }
+                let relatorio = executar(&simular).unwrap();
+                let esperados: Vec<String> = relatorio
+                    .lines()
+                    .filter_map(|l| l.strip_prefix("    "))
+                    .filter_map(|l| l.strip_suffix(": certa"))
+                    .map(String::from)
+                    .collect();
+                let folhas = ler_folhas(&pasta.caminho().join("lote-0001-folhas-finais.pdf"));
+                let obtidos: Vec<String> = folhas.iter().map(rotulo_lado_a_lado).collect();
+                assert_eq!(obtidos, esperados, "{impressora} {ordem:?} total {total}");
+                assert_eq!(folhas.len(), total.div_ceil(2));
+                for folha in &folhas {
+                    assert_eq!(folha.caixa, vec![0.0, 0.0, 1190.0, 842.0]);
+                    for face in [&folha.frente, &folha.verso].into_iter().flatten() {
+                        assert_eq!(face.matriz[..4], [1.0, 0.0, 0.0, 1.0]);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn folhas_finais_com_faces_retrato_e_paisagem_ficam_na_ordem_do_documento() {
+    for impressora in ["traseira", "gaveta"] {
+        let pasta = Pasta::nova("folhas-faces-diferentes");
+        let entrada = pasta.caminho().join("entrada.pdf");
+        std::fs::write(&entrada, pdf_com_conteudo(&[(595, 842), (842, 595)])).unwrap();
+        executar(&argumentos_folhas(
+            &entrada,
+            pasta.caminho(),
+            impressora,
+            None,
+        ))
+        .unwrap();
+        let folhas = ler_folhas(&pasta.caminho().join("lote-0001-folhas-finais.pdf"));
+        assert_eq!(folhas.len(), 1, "{impressora}");
+        assert_eq!(rotulo_lado_a_lado(&folhas[0]), "1|2", "{impressora}");
+        assert_eq!(
+            folhas[0].caixa,
+            vec![0.0, 0.0, 1437.0, 842.0],
+            "{impressora}"
+        );
+    }
+}
+
+#[test]
+fn folhas_finais_somam_as_faces_e_seguem_o_papel_de_cada_lote() {
+    let pasta = Pasta::nova("folhas-papeis");
+    let entrada = pasta.caminho().join("entrada.pdf");
+    std::fs::write(
+        &entrada,
+        pdf_com_conteudo(&[(595, 842), (595, 842), (420, 595), (420, 595)]),
+    )
+    .unwrap();
+    executar(&argumentos_folhas(
+        &entrada,
+        pasta.caminho(),
+        "gaveta",
+        None,
+    ))
+    .unwrap();
+    let a4 = ler_folhas(&pasta.caminho().join("lote-0001-folhas-finais.pdf"));
+    assert_eq!(a4.len(), 1);
+    assert_eq!(a4[0].caixa, vec![0.0, 0.0, 1190.0, 842.0]);
+    let a5 = ler_folhas(&pasta.caminho().join("lote-0002-folhas-finais.pdf"));
+    assert_eq!(a5.len(), 1);
+    assert_eq!(a5[0].caixa, vec![0.0, 0.0, 840.0, 595.0]);
+}
+
+#[test]
+fn sem_folhas_finais_a_pasta_recebe_so_as_passadas() {
+    let pasta = Pasta::nova("sem-folhas");
+    let entrada = pasta.caminho().join("entrada.pdf");
+    std::fs::write(&entrada, pdf_com_conteudo(&[(595, 842), (595, 842)])).unwrap();
+    executar(&argumentos_gerar(&entrada, pasta.caminho(), "10")).unwrap();
+    let mut nomes: Vec<String> = std::fs::read_dir(pasta.caminho())
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|nome| nome != "entrada.pdf")
+        .collect();
+    nomes.sort();
+    assert_eq!(
+        nomes,
+        vec!["lote-0001-passada-1.pdf", "lote-0001-passada-2.pdf"]
+    );
+}
+
+#[test]
+fn folhas_finais_nao_sobrescrevem_e_removem_as_passadas_criadas() {
+    let pasta = Pasta::nova("folhas-existente");
+    let entrada = pasta.caminho().join("entrada.pdf");
+    std::fs::write(&entrada, pdf_com_conteudo(&[(595, 842), (595, 842)])).unwrap();
+    let existente = pasta.caminho().join("lote-0001-folhas-finais.pdf");
+    std::fs::write(&existente, b"existente").unwrap();
+    let erro = executar(&argumentos_folhas(
+        &entrada,
+        pasta.caminho(),
+        "gaveta",
+        None,
+    ))
+    .unwrap_err();
+    assert!(erro.contains("lote-0001-folhas-finais.pdf"), "{erro}");
+    assert_eq!(std::fs::read(&existente).unwrap(), b"existente");
+    assert!(!pasta.caminho().join("lote-0001-passada-1.pdf").exists());
+    assert!(!pasta.caminho().join("lote-0001-passada-2.pdf").exists());
+}
+
+#[test]
+fn ajuda_de_gerar_pdf_explica_folhas_finais() {
+    let geral = executar(&args(&["--help"])).unwrap();
+    assert!(geral.contains("--folhas-finais"));
+    let gerar = executar(&args(&["gerar-pdf", "--help"])).unwrap();
+    assert!(gerar.contains("--folhas-finais"));
+    assert!(gerar.contains("anotações"));
+}
+
+#[test]
+fn folhas_finais_repetida_e_recusada_sem_criar_arquivos() {
+    let pasta = Pasta::nova("folhas-repetida");
+    let entrada = pasta.caminho().join("entrada.pdf");
+    std::fs::write(&entrada, pdf_com_conteudo(&[(595, 842), (595, 842)])).unwrap();
+    let mut argumentos = argumentos_folhas(&entrada, pasta.caminho(), "gaveta", None);
+    argumentos.push("--folhas-finais".into());
+    let erro = executar(&argumentos).unwrap_err();
+    assert!(erro.contains("mais de uma vez"), "{erro}");
+    assert_eq!(std::fs::read_dir(pasta.caminho()).unwrap().count(), 1);
+}

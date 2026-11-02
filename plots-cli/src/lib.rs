@@ -2,23 +2,23 @@ use plots_core::{
     pares_com_orientacao_mista, plano_documento, plano_lotes_por_papel, OrdemPassadas, Pagina,
     PerfilImpressora, LIMITE_PAGINAS,
 };
-use plots_pdf::PapelCalibracao;
+use plots_pdf::{FaceFinal, FolhaFinal, PapelCalibracao};
 use plots_print::{
     conferir_folhas,
     job::{ErroJob, EstadoJob, Job, SimBackend},
-    Folha, Marca, Mecanica, Recolocacao, Veredito,
+    Folha, Marca, Mecanica, Recolocacao, Simulador, Veredito,
 };
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
 
 /// Texto de uso geral, mostrado por `--help` e em erros sem subcomando conhecido.
-pub const USO_GERAL: &str = "Uso:\n  plots simular --paginas N --lote K --impressora traseira|gaveta [--ordem pares|impares] [--simular-erro sem-virar|girado|folha-a-menos] [--guiado]\n  plots gerar-pdf ARQUIVO --lote K --impressora traseira|gaveta [--ordem pares|impares] --saida DIRETORIO\n  plots gerar-calibracao --saida DIRETORIO [--papel a4|a5|carta|oficio|legal]\nNenhum comando envia arquivos à impressora: 'simular' só simula; 'gerar-pdf' e 'gerar-calibracao' só gravam arquivos.\n";
+pub const USO_GERAL: &str = "Uso:\n  plots simular --paginas N --lote K --impressora traseira|gaveta [--ordem pares|impares] [--simular-erro sem-virar|girado|folha-a-menos] [--guiado]\n  plots gerar-pdf ARQUIVO --lote K --impressora traseira|gaveta [--ordem pares|impares] [--folhas-finais] --saida DIRETORIO\n  plots gerar-calibracao --saida DIRETORIO [--papel a4|a5|carta|oficio|legal]\nNenhum comando envia arquivos à impressora: 'simular' só simula; 'gerar-pdf' e 'gerar-calibracao' só gravam arquivos.\n";
 
 /// Texto de uso do subcomando `simular`.
 pub const USO_SIMULAR: &str = "Uso:\n  plots simular --paginas N --lote K --impressora traseira|gaveta [--ordem pares|impares] [--simular-erro sem-virar|girado|folha-a-menos] [--guiado]\nA simulação não envia nada à impressora. Com --simular-erro, o gesto errado vale para todos os lotes; com folha-a-menos, cada lote é reimpresso desde a frente.\n";
 
 /// Texto de uso do subcomando `gerar-pdf`.
-pub const USO_GERAR_PDF: &str = "Uso:\n  plots gerar-pdf ARQUIVO --lote K --impressora traseira|gaveta [--ordem pares|impares] --saida DIRETORIO\nOs PDFs gerados não são enviados à impressora.\n";
+pub const USO_GERAR_PDF: &str = "Uso:\n  plots gerar-pdf ARQUIVO --lote K --impressora traseira|gaveta [--ordem pares|impares] [--folhas-finais] --saida DIRETORIO\n--folhas-finais grava também lote-NNNN-folhas-finais.pdf, com uma página por folha: a página de número menor à esquerda e a maior à direita, em tamanho real, na ordem do maço e com a recolocação correta. As anotações não aparecem nessas folhas.\nOs PDFs gerados não são enviados à impressora.\n";
 
 /// Texto de uso do subcomando `gerar-calibracao`.
 pub const USO_GERAR_CALIBRACAO: &str = "Uso:\n  plots gerar-calibracao --saida DIRETORIO [--papel a4|a5|carta|oficio|legal]\nGrava calibracao.pdf com as páginas 1 a 4 e uma seta para cima em cada uma. Nada é enviado à impressora, e um arquivo existente nunca é sobrescrito.\n";
@@ -32,6 +32,7 @@ const MSG_ERRO_SIMULADO_INVALIDO: &str =
     "--simular-erro deve ser sem-virar, girado ou folha-a-menos";
 const MSG_ERRO_SIMULADO_REPETIDO: &str = "--simular-erro foi informado mais de uma vez";
 const MSG_AVISO_IMPARES: &str = "Ordem das passadas: ímpares primeiro.";
+const MSG_FOLHAS_REPETIDA: &str = "--folhas-finais foi informado mais de uma vez";
 
 /// Recolocação correta: vira o maço e nada mais.
 const GESTO_CORRETO: Recolocacao = Recolocacao {
@@ -439,9 +440,18 @@ fn gerar_pdfs(args: &[String], saida: &mut impl Write) -> Result<(), String> {
         .filter(|s| !s.starts_with("--"))
         .ok_or("informe o arquivo PDF")?;
     let (mut tamanho, mut impressora, mut diretorio, mut ordem) = (None, None, None, None);
+    let mut folhas_finais = false;
     let mut i = 2;
     while i < args.len() {
         let chave = &args[i];
+        if chave == "--folhas-finais" {
+            if folhas_finais {
+                return Err(MSG_FOLHAS_REPETIDA.into());
+            }
+            folhas_finais = true;
+            i += 1;
+            continue;
+        }
         let valor = args
             .get(i + 1)
             .ok_or_else(|| format!("faltou valor para {chave}"))?;
@@ -496,6 +506,15 @@ fn gerar_pdfs(args: &[String], saida: &mut impl Write) -> Result<(), String> {
                 .map_err(|e| e.to_string())?;
             arquivos.push((caminho, conteudo));
         }
+        if folhas_finais {
+            let folhas =
+                folhas_finais_do_lote(&lote.passada1, &lote.passada2, impressora.mecanica())?;
+            let conteudo = pdf
+                .gerar_folhas_finais(&folhas, referencia)
+                .map_err(|e| e.to_string())?;
+            let caminho = diretorio.join(format!("lote-{:04}-folhas-finais.pdf", i + 1));
+            arquivos.push((caminho, conteudo));
+        }
     }
     let mut criados = Vec::new();
     for (caminho, conteudo) in &arquivos {
@@ -531,6 +550,51 @@ fn gerar_pdfs(args: &[String], saida: &mut impl Write) -> Result<(), String> {
         diretorio.display()
     )
     .map_err(|e| e.to_string())
+}
+
+/// Simula um lote com a recolocação correta e devolve as folhas finais, de cima para baixo.
+fn folhas_finais_do_lote(
+    frente: &[plots_core::Pagina],
+    verso: &[plots_core::Pagina],
+    mecanica: Mecanica,
+) -> Result<Vec<FolhaFinal>, String> {
+    let mut sim = Simulador::novo(mecanica);
+    sim.imprimir_frente(frente)
+        .map_err(|e| format!("erro na frente: {e}"))?;
+    sim.recolocar(GESTO_CORRETO)
+        .map_err(|e| format!("erro na recolocação: {e}"))?;
+    sim.imprimir_verso(verso)
+        .map_err(|e| format!("erro no verso: {e}"))?;
+    Ok(sim
+        .pilha()
+        .iter()
+        .rev()
+        .map(|folha| ordenar_lados(folha.face_a.map(face_final), folha.face_b.map(face_final)))
+        .collect())
+}
+
+/// Escolhe o lado de cada face: a página de número menor fica à esquerda e a face em branco
+/// vai por último, à direita. A orientação de cada face acompanha a própria face.
+fn ordenar_lados(a: Option<FaceFinal>, b: Option<FaceFinal>) -> FolhaFinal {
+    let chave = |face: &Option<FaceFinal>| face.and_then(|f| f.pagina).map_or((1, 0), |n| (0, n));
+    if chave(&b) < chave(&a) {
+        FolhaFinal {
+            frente: b,
+            verso: a,
+        }
+    } else {
+        FolhaFinal {
+            frente: a,
+            verso: b,
+        }
+    }
+}
+
+fn face_final(marca: Marca) -> FaceFinal {
+    FaceFinal {
+        pagina: marca.pagina,
+        girada: marca.girada,
+    }
 }
 
 /// Grava `calibracao.pdf` na pasta indicada, sem nunca sobrescrever um arquivo.
