@@ -74,6 +74,8 @@ O pacote `pdfium-win-x64.tgz`, tag `chromium/8125`, fica em `%LOCALAPPDATA%/plot
 
 **Decisão do usuário (2026-11-02):** seguir com o pacote, sem revisão jurídica adicional. As patentes de imagem ficam como risco residual aceito, conforme "Decisões do usuário"; reavaliar se o PlotS passar a ser vendido.
 
+Crates ligadas ao `pdfium-render` no grafo Windows: `itertools`, `maybe-owned` e `utf16string` (MIT OR Apache-2.0); `piston-float` e `vecmath` (MIT); `libloading` (ISC).
+
 ## Só na compilação
 
 Não entram no binário; repetir a checagem do grafo ao montar o instalador.

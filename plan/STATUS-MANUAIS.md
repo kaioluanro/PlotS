@@ -1,6 +1,6 @@
 # STATUS
 
-Requisitos: OK 34 · PARTIAL 28 · MISSING 29 · BUG 0 · N/A 2 (93). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
+Requisitos: OK 35 · PARTIAL 34 · MISSING 22 · BUG 0 · N/A 2 (93). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
 
 | Plano | OK | PARTIAL | MISSING | BUG | N/A | Estado |
 |---|---|---|---|---|---|---|
@@ -9,10 +9,10 @@ Requisitos: OK 34 · PARTIAL 28 · MISSING 29 · BUG 0 · N/A 2 (93). Detalhes e
 | [Geração das passadas em PDF](02-geracao-pdf.md) | 5 | 2 | 0 | 0 | 0 | Em andamento |
 | [Modo simulação](03-simulacao.md) | 7 | 2 | 1 | 0 | 1 | Em andamento |
 | [Calibração](04-calibracao.md) | 2 | 3 | 0 | 0 | 0 | Em andamento |
-| [Tamanhos de papel](05-tamanhos-de-papel.md) | 5 | 1 | 2 | 0 | 0 | Em andamento |
+| [Tamanhos de papel](05-tamanhos-de-papel.md) | 5 | 2 | 1 | 0 | 0 | Em andamento |
 | [Perfis salvos](06-perfis.md) | 0 | 2 | 0 | 0 | 0 | Em andamento |
 | [CLI de impressão](07-cli-impressao.md) | 2 | 2 | 1 | 0 | 0 | Em andamento |
-| [Impressão no Windows](08-impressao-windows.md) | 0 | 1 | 7 | 0 | 0 | Em andamento |
+| [Impressão no Windows](08-impressao-windows.md) | 1 | 6 | 1 | 0 | 0 | Em andamento |
 | [Janela, barra superior e abas](09-janela-e-abas.md) | 1 | 3 | 0 | 0 | 0 | Em andamento |
 | [Tela de abertura](10-splash.md) | 0 | 0 | 1 | 0 | 0 | Não iniciado |
 | [Barra lateral de impressoras](11-lateral-impressoras.md) | 0 | 1 | 2 | 0 | 0 | Em andamento |
@@ -40,8 +40,9 @@ Requisitos: OK 34 · PARTIAL 28 · MISSING 29 · BUG 0 · N/A 2 (93). Detalhes e
 | cli-calibrar-imprimir | `92772e5` | concluído, sem envio real |
 | interface-base | `353f54d` | concluído; janela aprovada pelo usuário |
 | windows-filas | `a9f9185` | concluído |
+| windows-envio | `126ac26` | concluído; conferido só na fila de PDF do Windows, sem impressora real |
 
-**Próximo:** envio real ao spooler (`08-impressao-windows`).
+**Próximo:** impressoras virtuais dos dois modelos (`19-modelos-de-impressora`).
 
 ## Bloqueado ou dependente do usuário
 

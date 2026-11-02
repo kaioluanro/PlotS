@@ -11,8 +11,8 @@ Resolver o problema principal pelo terminal, antes de qualquer interface.
 - [x] Mensagens e ajuda fiéis ao que existe
 - [x] Simulação correta nas duas impressoras virtuais
 - [x] `plots imprimir doc.pdf --impressora X --lote 10 --simular`, com pausa para recolocar e avisos claros
-- [ ] Mesmo comando com o backend Windows
-- [ ] Revisar `FRASE_NAO_ENVIA` e a recusa sem `--simular` quando o envio real existir
+- [x] Mesmo comando com o backend Windows, com confirmação antes de cada envio (126ac26)
+- [x] Revisar `FRASE_NAO_ENVIA` e a recusa sem `--simular`
 - [ ] 3 lotes seguidos sem erro em impressora real
 
 ## Pronto quando
@@ -27,7 +27,7 @@ Simulação correta nas duas impressoras virtuais; com impressora real, 3 lotes 
 
 | ID | Requisito | Situação |
 |---|---|---|
-| PS-A074 | `plots imprimir doc.pdf --impressora X --lote 10` | PARTIAL |
+| PS-A074 | `plots imprimir doc.pdf --impressora X --lote 10` | PARTIAL (126ac26) |
 | PS-A077 | Critério: simulação correta nas duas impressoras virtuais | PARTIAL |
 | PS-A078 | Critério: 3 lotes seguidos sem erro numa impressora real | MISSING |
 | PS-A090 | Mensagens do CLI coerentes com as funções atuais | OK (882ba68) |

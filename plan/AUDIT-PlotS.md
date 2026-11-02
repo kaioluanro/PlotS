@@ -2,7 +2,7 @@
 
 Data: 2026-11-02. A especificação foi dividida depois em `plan/`, então as linhas de `AGENTS.md` citadas abaixo são da versão anterior. Escopo: especificação em `AGENTS.md` (seções de Fases, Modo simulação, Perfis, Papel, Múltiplas impressoras, Windows e Interface). Nenhum código de produto foi alterado. Nenhum commit. `Cargo.toml`, `Cargo.lock`, `AGENTS.md`, `CLAUDE.md` e `estilo-ui-ux.md` mantêm os mesmos hashes (md5 conferido antes e depois). **Atenção:** o `.gitignore` foi reescrito às 13:56:41, durante a auditoria, por outro processo ou usuário (este agente não o editou). O conteúdo novo acrescenta `/.claude/`, `/.codex/`, `/estilo-ui-ux.md`, `/plan/`, `/AUDIT-*.md` e `/STATUS-MANUAIS.md`, e por isso o `git status` mostra só `AGENTS.md` e `CLAUDE.md`. Não foi revertido; decisão do usuário.
 
-Contagem: **OK 34 · PARTIAL 28 · MISSING 29 · BUG 0 · N/A 2** (93 requisitos)
+Contagem: **OK 35 · PARTIAL 34 · MISSING 22 · BUG 0 · N/A 2** (93 requisitos)
 
 Verificação executada:
 - `cargo test --workspace --locked`: 51 testes passam (9 de integração do CLI, 19 em plots-core, 12 em plots-pdf, 11 em plots-print). Tempo de 30 s.
@@ -25,7 +25,7 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 
 | ID | Seção | Requisito | Status | Evidência |
 | --- | --- | --- | --- | --- |
-| PS-A001 | Visão geral | Enviar as passadas à impressora real pelo spooler, sem driver manual | MISSING | Só existe `SimBackend` (`plots-print/src/job.rs:159`). Nenhuma dependência de Windows em `Cargo.toml`. |
+| PS-A001 | Visão geral | Enviar as passadas à impressora real pelo spooler, sem driver manual | PARTIAL (126ac26) | `plots imprimir` envia ao spooler (sem impressora real; conferido só na fila de PDF do Windows). |
 | PS-A002 | Perfis | Perfil com os 4 parâmetros: `passada1_inversa`, `passada2_inversa`, `verso_girar_180`, `gesto_recolocar` | OK | `plots-core/src/lib.rs:59-66` (`PerfilImpressora`). |
 | PS-A003 | Perfis | `gesto_recolocar` com texto e figura para o usuário | MISSING | Só `GestoRecolocar { virar_maco, borda_primeiro }` (lib.rs:42-57). Texto e figura dependem da UI (Fase 4). |
 | PS-A004 | Perfis | Jato (traseira) inverte a passada 1; laser (gaveta) não | OK | `plots-cli/src/lib.rs:27-33`. Execução: traseira "Passada 1: 4, 2"; gaveta "Passada 1: 2, 4". |
@@ -64,24 +64,24 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A037 | Modo simulação | Exportar PDF de folhas finais (frente e verso lado a lado) | OK (6baa24a) | `gerar-pdf --folhas-finais`, conferido com PyMuPDF; sem conferência no Firefox. |
 | PS-A038 | Modo simulação | Modelo com `proptest`: 8 perfis, 1 a 200 páginas, lotes de 1 a 50 folhas, maço final 1\|2, 3\|4 | OK (6baa24a) | proptest com tabela fixa de 8 perfis; só traseira e gaveta correspondem às impressoras simuladas, e o modelo da gaveta será revisto. |
 | PS-A039 | Arquitetura | App Tauri 2 com webview e pdf.js | PARTIAL (353f54d) | App Tauri 2 pronto; falta o pdf.js. |
-| PS-A040 | Arquitetura | Camada de backends: trait com duas implementações (Windows e Simulado) | PARTIAL | Trait em `job.rs:19-25`. Só existe `SimBackend`. |
+| PS-A040 | Arquitetura | Camada de backends: trait com duas implementações (Windows e Simulado) | OK (126ac26) | `BackendWindows` e `SimBackend` implementam o mesmo trait. |
 | PS-A041 | Arquitetura | lopdf para reordenar, extrair, inserir página em branco e `/Rotate` | OK | `plots-pdf/src/lib.rs:112-244`. Testes `reabre_ordem_heranca_rotacao_e_branco` (lib.rs:630) e outros. Verificado pelos PDFs gerados. |
-| PS-A042 | Arquitetura | pdfium-render para rasterizar (impressoras que não aceitam PDF) | MISSING | Fase 3. Sem dependência. |
+| PS-A042 | Arquitetura | pdfium-render para rasterizar (impressoras que não aceitam PDF) | PARTIAL (126ac26) | `pdfium-render` rasteriza na resolução da fila (sem impressora real; conferido só na fila de PDF do Windows). |
 | PS-A043 | Arquitetura | Linux e macOS com IPP/CUPS ou `lp` | MISSING | Fase futura. AGENTS decide que o CUPS fica para depois do backend Windows. |
 | PS-A044 | Arquitetura | tokio, um job por impressora em paralelo | MISSING | Fase 5. |
 | PS-A045 | Arquitetura | Config com serde, toml e directories; perfis em `%APPDATA%/plots/perfis.toml` | PARTIAL | Biblioteca `plots-perfis` (72030fb); falta usar no CLI e na interface. |
 | PS-A046 | Arquitetura | Erros com thiserror e logs com tracing | PARTIAL | Erros escritos à mão (`plots-core/src/lib.rs:107-128`, `plots-pdf/src/lib.rs:8-33`). Sem thiserror nem tracing. |
 | PS-A047 | Arquitetura | Frontend React + TypeScript, CSS Modules, lucide-react, Radix | OK (353f54d) | React, TypeScript, CSS Modules, lucide e Radix. |
-| PS-A048 | Windows | Impressão só pelo PlotS, sem diálogo, envio direto ao spooler | MISSING | Sem backend Windows. |
-| PS-A049 | Windows | Rasterizar na resolução da impressora (GetDeviceCaps); DEVMODE com simplex, sem agrupar, bandeja manual e tamanho | MISSING | Fase 3. |
-| PS-A050 | Windows | Acompanhar o trabalho no spooler (GetJob ou notificação) | MISSING | Fase 3. |
+| PS-A048 | Windows | Impressão só pelo PlotS, sem diálogo, envio direto ao spooler | PARTIAL (126ac26) | Envio direto, sem diálogo (sem impressora real; conferido só na fila de PDF do Windows). |
+| PS-A049 | Windows | Rasterizar na resolução da impressora (GetDeviceCaps); DEVMODE com simplex, sem agrupar, bandeja manual e tamanho | PARTIAL (126ac26) | Resolução por `GetDeviceCaps`; `DEVMODE` forçado e conferido; bandeja fica a do driver (sem impressora real; conferido só na fila de PDF do Windows). |
+| PS-A050 | Windows | Acompanhar o trabalho no spooler (GetJob ou notificação) | PARTIAL (126ac26) | `GetJobW` com avisos; nenhum estado real observado (sem impressora real; conferido só na fila de PDF do Windows). |
 | PS-A051 | Windows | Detectar a opção "inverter ordem" do driver e pedir para desligar | MISSING | Fase 3 (calibração). |
 | PS-A052 | Windows | Fila virtual "PlotS" que recebe o PDF de qualquer programa | MISSING | Fase 5. |
 | PS-A053 | Papel | Ler o tamanho de cada página do PDF | OK | `plots-pdf/src/lib.rs:71-108` (`dimensoes_paginas`). Verificado com `rotacionada.pdf`. |
 | PS-A054 | Papel | Reconhecer A4, A5, Carta, Ofício, Legal, com tolerância de 2 mm | OK | `plots-core/src/lib.rs:297-328`. Testes `reconhece_formatos_orientacao_e_personalizado_com_tolerancia` (lib.rs:624) e `valida_par_frente_verso...` (lib.rs:655). Verificado: `tolerancia-par.pdf` (598×844) aceito. |
-| PS-A055 | Papel | Formato "Outro" com `DMPAPER_USER` | PARTIAL | `Personalizado` é reconhecido (`plots-core/src/lib.rs:321`). O mapeamento para DEVMODE não existe (Fase 3). |
+| PS-A055 | Papel | Formato "Outro" com `DMPAPER_USER` | PARTIAL (126ac26) | Medidas personalizadas pelo `DEVMODE`, com conferência (sem impressora real; conferido só na fila de PDF do Windows). |
 | PS-A056 | Papel | Documento com tamanhos misturados dividido em lotes por tamanho | OK | `plots-core/src/lib.rs:357-462`. Verificado: `mistura-papel.pdf` gera lote 1 A4 e lote 2 A5 (`BRANCA` com 420×595). |
-| PS-A057 | Papel | Cartão avisa a troca de papel | MISSING | Fase 4. |
+| PS-A057 | Papel | Cartão avisa a troca de papel | PARTIAL (126ac26) | CLI avisa a troca de papel antes da pergunta; falta o cartão. |
 | PS-A058 | Papel | Frente e verso de tamanhos diferentes são recusados antes de imprimir | OK | `plots-core/src/lib.rs:385-397`. Verificado: `personalizado-par.pdf` (595×842 + 200×300) sai com "as páginas 1 e 2 têm tamanhos incompatíveis para a mesma folha", exit 2. Teste `rejeita_paginas_de_tamanhos_incompativeis_na_mesma_folha` (`plots-cli/tests/cli.rs:260-281`). |
 | PS-A059 | Papel | Frente e verso da mesma folha com mesma orientação (retrato e paisagem) | OK (882ba68) | Ver BUG-1. Orientação diferente é aceita sem aviso. Decisão do usuário: bloquear ou só avisar. |
 | PS-A060 | Papel | Opção "Ajustar ao papel" (imprimir Carta em A4) | MISSING | Não existe no código. |
@@ -98,9 +98,9 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A071 | Fase 2 | Calibração: 2 folhas com páginas 1 a 4, duas perguntas e ajuste do perfil | PARTIAL | `ajustar_perfil_por_calibracao` (`plots-core/src/lib.rs:78-86`, teste 469-493). Falta o PDF, as perguntas e o comando. |
 | PS-A072 | Fase 2 | Os PDFs gerados abrem no Firefox com ordem e rotação certas | OK | O usuário abriu no Firefox as passadas e as folhas finais de um documento de 4 páginas: ordem e rotação certas (2026-11-02). |
 | PS-A073 | Fase 2 | Backend Simulado com impressoras virtuais | OK | `SimBackend` (`plots-print/src/job.rs:159`) e `plots simular`. |
-| PS-A074 | Fase 3 | `plots imprimir doc.pdf --impressora X --lote 10` | PARTIAL | `plots imprimir --simular` conduz os lotes com pausa (92772e5); falta o envio real. |
+| PS-A074 | Fase 3 | `plots imprimir doc.pdf --impressora X --lote 10` | PARTIAL (126ac26) | `plots imprimir` envia com confirmação (sem impressora real; conferido só na fila de PDF do Windows). |
 | PS-A075 | Fase 3 | `plots calibrar X` | PARTIAL | `plots calibrar` faz as perguntas e grava o perfil (92772e5); falta enviar e confirmar em impressora real. |
-| PS-A076 | Fase 3 | Backend CUPS ou Windows | MISSING | Ver PS-A048. |
+| PS-A076 | Fase 3 | Backend CUPS ou Windows | PARTIAL (126ac26) | Backend Windows pronto (sem impressora real; conferido só na fila de PDF do Windows). |
 | PS-A077 | Fase 3 | Critério: simulação correta nas duas impressoras virtuais | PARTIAL | `plots simular` está correto (PS-A028). O critério completo depende de `imprimir` e `calibrar`. |
 | PS-A078 | Fase 3 | Critério: 3 lotes seguidos sem erro numa impressora real | MISSING | Não verificável nesta máquina: não há impressora real e nada foi enviado a impressoras. Depende de decisão do usuário. |
 | PS-A079 | Fase 4 | Interface Tauri + pdf.js: visualizador, painel de impressoras, cartões com figura, fluxo sem terminal | PARTIAL (353f54d) | Só a janela; faltam visualizador, impressoras e cartões. |
