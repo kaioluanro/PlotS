@@ -9,6 +9,8 @@ Registro das dependências e dos ativos do PlotS. Atualize a cada lote que troux
 - **`option-ext` 0.2.0 (MPL-2.0):** mantido sem alterações (2026-11-02). Entra no binário por `plots-perfis → directories → dirs-sys` e por `tauri → dirs → dirs-sys`. Ao distribuir: incluir o texto da MPL 2.0 e informar a origem do código-fonte, https://github.com/soc/option-ext.
 - **Norma de estilo:** vale como instrução de estilo (2026-11-02), e os valores de cores e medidas foram usados. Não cobre logotipos, nomes de marca nem código de terceiros.
 
+- **Distribuição:** o PlotS será só público e gratuito no GitHub, sem venda (2026-11-02). Por isso, o risco residual de patentes de imagem fica aceito e registrado, sem consulta a advogado.
+
 ## Entra no binário
 
 Levantamento de 2026-11-02, a partir das licenças declaradas nos metadados; o texto de cada licença será conferido ao gerar os avisos.
@@ -70,7 +72,7 @@ O pacote `pdfium-win-x64.tgz`, tag `chromium/8125`, fica em `%LOCALAPPDATA%/plot
 
 **CRT da Microsoft:** a DLL só importa `KERNEL32`, `ADVAPI32`, `GDI32` e `USER32`, então parece não exigir outro redistribuível. O CRT provavelmente é estático.
 
-**Decisão do usuário (2026-11-02):** seguir com o pacote, sem revisão jurídica adicional. Antes de distribuir, continua faltando decidir sobre as patentes de imagem (`pdfium-Pesquisa.md`).
+**Decisão do usuário (2026-11-02):** seguir com o pacote, sem revisão jurídica adicional. As patentes de imagem ficam como risco residual aceito, conforme "Decisões do usuário"; reavaliar se o PlotS passar a ser vendido.
 
 ## Só na compilação
 
@@ -83,7 +85,7 @@ Não entram no binário; repetir a checagem do grafo ao montar o instalador.
 ## A conferir antes de distribuir
 
 - **`webview2-com-sys` 0.39.1:** declara MIT, mas traz binários da Microsoft (`WebView2Loader`). Ler os termos do SDK e do Runtime, confirmar o tipo de vínculo no release e registrar os avisos exigidos.
-- **PDFium:** copiar para os avisos os textos de `licenses/`, inteiros, e os de `libc++` e das fontes embutidas, que o pacote não traz; crédito da FreeType e do IJG; decisão registrada sobre patentes de JPEG2000, HTJ2K e JBIG2; confirmação de que a DLL não exige outro redistribuível e de eventuais `NOTICE` da Apache; cópia do `.tgz` guardada fora do Git; uso de "PDFium" só nos avisos, sem sugerir vínculo.
+- **PDFium:** copiar para os avisos os textos de `licenses/`, inteiros, e os de `libc++` e das fontes embutidas, que o pacote não traz; crédito da FreeType e do IJG; confirmação de que a DLL não exige outro redistribuível e de eventuais `NOTICE` da Apache; cópia do `.tgz` guardada fora do Git; uso de "PDFium" só nos avisos, sem sugerir vínculo.
 - **Caminhos locais no executável:** o build de debug contém o nome de usuário. Compilar o release com `--remap-path-prefix` e conferir com busca no arquivo final.
 - **Nome e licença do projeto:** busca de anterioridade de "PlotS" e definição da licença própria.
 - **Linux:** `gtk`, `webkit2gtk` e `soup3` estão no lock; conferir as licenças das bibliotecas do sistema ao empacotar (plano `18-linux-e-macos`).
