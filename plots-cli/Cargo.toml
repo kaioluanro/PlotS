@@ -8,6 +8,7 @@ plots-core = { path = "../plots-core" }
 plots-print = { path = "../plots-print" }
 plots-pdf = { path = "../plots-pdf" }
 plots-perfis = { path = "../plots-perfis" }
+plots-windows = { path = "../plots-windows" }
 
 [dev-dependencies]
 lopdf = "0.46.0"

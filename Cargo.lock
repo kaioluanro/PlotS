@@ -2498,6 +2498,7 @@ dependencies = [
  "plots-pdf",
  "plots-perfis",
  "plots-print",
+ "plots-windows",
 ]
 
 [[package]]
@@ -2529,6 +2530,13 @@ version = "0.1.0"
 dependencies = [
  "plots-core",
  "proptest",
+]
+
+[[package]]
+name = "plots-windows"
+version = "0.1.0"
+dependencies = [
+ "windows",
 ]
 
 [[package]]

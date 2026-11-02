@@ -413,7 +413,7 @@ fn gerar_pdf_nao_avisa_pagina_quadrada_nem_pagina_sem_verso() {
 #[test]
 fn comando_ausente_ou_desconhecido_lista_os_comandos_validos() {
     let esperado =
-        "comando ausente ou desconhecido; use 'simular', 'gerar-pdf', 'gerar-calibracao', 'imprimir' ou 'calibrar'";
+        "comando ausente ou desconhecido; use 'simular', 'gerar-pdf', 'gerar-calibracao', 'imprimir', 'calibrar' ou 'filas'";
     assert_eq!(executar(&args(&[])).unwrap_err(), esperado);
     assert_eq!(executar(&args(&["abrir"])).unwrap_err(), esperado);
     assert_eq!(executar(&args(&["arquivo.pdf"])).unwrap_err(), esperado);
@@ -439,6 +439,47 @@ fn ajuda_aparece_como_primeiro_argumento_e_depois_do_subcomando() {
         assert!(gerar.contains("plots gerar-pdf"));
         assert!(!gerar.contains("plots simular"));
     }
+}
+
+#[test]
+fn filas_mostra_ajuda_propria_sem_listar_as_filas() {
+    for ajuda in ["--help", "-h"] {
+        let geral = executar(&args(&["filas", ajuda])).unwrap();
+        assert!(geral.contains("plots filas"));
+        assert!(!geral.contains("plots simular"));
+        assert!(geral.contains("nada é enviado"));
+    }
+}
+
+#[test]
+fn filas_recusa_opcao_desconhecida_e_valor_faltando() {
+    assert_eq!(
+        executar(&args(&["filas", "--perfis"])).unwrap_err(),
+        "faltou valor para --perfis"
+    );
+    assert!(executar(&args(&["filas", "--enviar", "x"]))
+        .unwrap_err()
+        .starts_with("opção desconhecida"));
+}
+
+#[cfg(windows)]
+#[test]
+fn filas_lista_sem_gravar_perfis_e_diz_que_nada_foi_enviado() {
+    let pasta = Pasta::nova("filas");
+    let perfis = pasta.caminho().join("perfis.toml");
+    let saida = executar(&args(&["filas", "--perfis", &perfis.to_string_lossy()])).unwrap();
+    assert!(saida.contains("nada foi enviado a nenhuma impressora"));
+    assert!(saida.contains("Impressoras simuladas"));
+    assert!(!perfis.exists());
+}
+
+#[cfg(not(windows))]
+#[test]
+fn filas_fora_do_windows_recusa_com_mensagem_clara() {
+    let pasta = Pasta::nova("filas-sem-windows");
+    let perfis = pasta.caminho().join("perfis.toml");
+    let erro = executar(&args(&["filas", "--perfis", &perfis.to_string_lossy()])).unwrap_err();
+    assert!(erro.contains("só está disponível no Windows"));
 }
 
 #[test]

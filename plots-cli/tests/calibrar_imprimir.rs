@@ -699,6 +699,7 @@ fn ajuda_geral_lista_todos_os_comandos_e_quem_nao_envia() {
         "gerar-calibracao",
         "imprimir",
         "calibrar",
+        "filas",
     ];
     for esperado in esperados {
         assert!(

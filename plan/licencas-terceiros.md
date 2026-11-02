@@ -30,6 +30,8 @@ Levantamento de 2026-11-02, a partir das licenças declaradas nos metadados; o t
 | Apache-2.0 AND MIT | 1 |
 | MPL-2.0 (`option-ext`) | 1 |
 
+**Dependência direta nova do `plots-windows`** (2026-11-02): `windows` 0.62.2, versão exata, licença MIT OR Apache-2.0, com as features `Win32_Foundation`, `Win32_Graphics_Gdi`, `Win32_Graphics_Printing` e `Win32_Security`. Já estava no grafo pelo Tauri; agora também entra pelo `plots-windows`, só no alvo Windows.
+
 **npm** (35 pacotes de produção): OFL-1.1 em `@fontsource/inter` (fonte, ver Ativos); MIT em 30; ISC em `lucide-react`, cuja licença também cita ícones derivados do Feather, usados aqui (`minus`, `plus`, `square`, `x`), então o aviso leva as duas partes; 0BSD em `tslib`; `Apache-2.0 OR MIT` em `@tauri-apps/api` e `@tauri-apps/plugin-dialog`.
 
 ## Só na compilação
