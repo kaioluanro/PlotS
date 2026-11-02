@@ -23,6 +23,7 @@ Requisitos: OK 33 · PARTIAL 29 · MISSING 29 · BUG 0 · N/A 2 (93). Detalhes e
 | [Impressora virtual](16-impressora-virtual.md) | 0 | 0 | 1 | 0 | 0 | Não iniciado |
 | [Acabamento e instalador](17-acabamento.md) | 0 | 1 | 2 | 0 | 0 | Em andamento |
 | [Linux e macOS](18-linux-e-macos.md) | 0 | 0 | 1 | 0 | 0 | Não iniciado |
+| [Modelos de impressora](19-modelos-de-impressora.md) | — | — | — | — | — | Em andamento |
 
 ## Lotes
 
@@ -43,6 +44,8 @@ Requisitos: OK 33 · PARTIAL 29 · MISSING 29 · BUG 0 · N/A 2 (93). Detalhes e
 **Próximo:** envio real ao spooler (`08-impressao-windows`).
 
 ## Bloqueado ou dependente do usuário
+
+- Face que a laser imprime: plano `19-modelos-de-impressora`.
 
 - Impressora real: confirmação dos planos `04-calibracao`, `07-cli-impressao` e `08-impressao-windows`.
 - Imagem da tela de abertura: plano `10-splash`.
