@@ -369,8 +369,8 @@ pub fn executar_com_io(
         }
         job.atualizar()
             .map_err(|e| format!("erro ao consultar verso: {e:?}"))?;
-        let pilha = job.backend().simulador().pilha();
-        let veredictos = conferir_folhas(pilha, &pares_esperados(&plano.paginas));
+        let pilha = job.backend().simulador().folhas_para_leitura();
+        let veredictos = conferir_folhas(&pilha, &pares_esperados(&plano.paginas));
         let mut linhas: Vec<(String, Veredito)> =
             pilha.iter().map(rotulo_da_folha).zip(veredictos).collect();
         linhas.reverse();
@@ -566,7 +566,7 @@ fn folhas_finais_do_lote(
     sim.imprimir_verso(verso)
         .map_err(|e| format!("erro no verso: {e}"))?;
     Ok(sim
-        .pilha()
+        .folhas_para_leitura()
         .iter()
         .rev()
         .map(|folha| ordenar_lados(folha.face_a.map(face_final), folha.face_b.map(face_final)))

@@ -49,12 +49,19 @@ impl Mecanica {
         }
     }
 
+    /// Laser com entrada pela gaveta de baixo e saída no topo, face impressa para
+    /// baixo: cada folha cai em cima da anterior e a gaveta puxa a folha de cima.
+    ///
+    /// Qual face recebe tinta depende da máquina e é assunto da calibração. Aqui a
+    /// gaveta imprime a face que fica para baixo; é por isso que o maço volta
+    /// virado. Se a máquina real imprimir a face que fica para cima, o maço não
+    /// deve ser virado, e a ordem do verso muda (passada 2 inversa).
     pub const fn gaveta() -> Self {
         Self {
             saida_face_impressa_para_cima: false,
-            saida_no_topo: false,
+            saida_no_topo: true,
             imprime_face_para_cima: false,
-            entrada_pelo_topo: false,
+            entrada_pelo_topo: true,
             giro_segunda_passada: false,
         }
     }
@@ -130,6 +137,20 @@ impl Simulador {
     /// Pilha na saída ou na entrada, em ordem de baixo para cima.
     pub fn pilha(&self) -> &[Folha] {
         &self.pilha
+    }
+
+    /// Folhas do lote concluído na ordem em que o maço é lido, de baixo para
+    /// cima (a última da lista é a primeira a ser lida).
+    ///
+    /// Com a face impressa para cima, o maço é lido como está na saída. Com a
+    /// face impressa para baixo, o maço sai com a última folha por cima e é
+    /// lido depois de virado, o que inverte a ordem: a folha 1|2 fica por cima.
+    pub fn folhas_para_leitura(&self) -> Vec<Folha> {
+        let mut folhas = self.pilha.clone();
+        if !self.mecanica.saida_face_impressa_para_cima {
+            folhas.reverse();
+        }
+        folhas
     }
 
     /// Libera a máquina para outro lote e entrega a pilha concluída.
@@ -393,13 +414,12 @@ mod tests {
                             ..Default::default()
                         };
                         let resultado = executar(4, mecanismo, perfil, gesto);
-                        let folha_1 = resultado
-                            .pilha()
+                        let leitura = resultado.folhas_para_leitura();
+                        let folha_1 = leitura
                             .iter()
                             .find(|f| f.face_b.unwrap().pagina == Some(1))
                             .unwrap();
-                        let folha_2 = resultado
-                            .pilha()
+                        let folha_2 = leitura
                             .iter()
                             .find(|f| f.face_a.unwrap().pagina == Some(2))
                             .unwrap();
@@ -409,7 +429,7 @@ mod tests {
                         let ajustado =
                             ajustar_perfil_por_calibracao(perfil, par_correto, invertida);
                         let finalizado = executar(4, mecanismo, ajustado, gesto);
-                        for folha in finalizado.pilha() {
+                        for folha in &finalizado.folhas_para_leitura() {
                             let impar = folha.face_b.unwrap();
                             let par = folha.face_a.unwrap();
                             assert_eq!(par.pagina, impar.pagina.map(|n| n + 1));
@@ -441,7 +461,7 @@ mod tests {
                     },
                 );
                 let pares: Vec<_> = sim
-                    .pilha()
+                    .folhas_para_leitura()
                     .iter()
                     .rev()
                     .map(|f| (f.face_b.unwrap().pagina.unwrap(), f.face_a.unwrap().pagina))
@@ -491,7 +511,7 @@ mod tests {
                                 retirar_folhas: 0,
                             };
                             let piloto = executar(4, mecanismo, perfil, gesto);
-                            if lote_correto(piloto.pilha(), 1, 2, 4) {
+                            if lote_correto(&piloto.folhas_para_leitura(), 1, 2, 4) {
                                 gesto_coerente = Some(gesto);
                                 break 'gestos;
                             }
@@ -523,7 +543,7 @@ mod tests {
                                 executar_lote(&lote.passada1, &lote.passada2, mecanismo, gesto);
                             assert!(
                                 lote_correto(
-                                    resultado.pilha(),
+                                    &resultado.folhas_para_leitura(),
                                     primeira_pagina,
                                     folhas_esperadas,
                                     total,
@@ -607,6 +627,97 @@ mod tests {
                 .is_some_and(|(a, b)| !(a.girada ^ folha.girada) && !(b.girada ^ folha.girada));
             faces_corretas && orientacao_correta && folha.sobreimpressao.is_none()
         })
+    }
+
+    fn paginas_de(numeros: &[usize]) -> Vec<Pagina> {
+        numeros
+            .iter()
+            .map(|n| Pagina {
+                numero: Some(*n),
+                girar_180: false,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn gaveta_empilha_cada_folha_em_cima_da_anterior_com_a_face_impressa_para_baixo() {
+        let mut sim = Simulador::novo(Mecanica::gaveta());
+        sim.imprimir_frente(&paginas_de(&[2, 4, 6])).unwrap();
+        let paginas: Vec<_> = sim
+            .pilha()
+            .iter()
+            .map(|f| f.face_a.and_then(|m| m.pagina))
+            .collect();
+        // De baixo para cima: a primeira folha impressa fica embaixo.
+        assert_eq!(paginas, vec![Some(2), Some(4), Some(6)]);
+        assert!(sim.pilha().iter().all(|f| !f.face_a_para_cima));
+    }
+
+    #[test]
+    fn gaveta_alimenta_a_folha_de_cima_da_pilha() {
+        let folha = |pagina: usize| Folha {
+            face_a: Some(Marca {
+                pagina: Some(pagina),
+                girada: false,
+            }),
+            face_b: None,
+            face_a_para_cima: false,
+            girada: false,
+            sobreimpressao: None,
+        };
+        let mut sim = Simulador::novo(Mecanica::gaveta());
+        // Pilha montada à mão, de baixo para cima: a folha 2 e depois a folha 4.
+        sim.pilha = vec![folha(2), folha(4)];
+        sim.estado = Estado::AguardandoRecolocacao;
+        // Sem virar o maço, a face impressa continua para baixo e a gaveta
+        // imprime justamente nela: a sobreimpressão revela qual folha foi puxada.
+        sim.recolocar(Recolocacao::default()).unwrap();
+        sim.imprimir_verso(&paginas_de(&[1, 3])).unwrap();
+        let por_folha: Vec<_> = sim
+            .pilha()
+            .iter()
+            .map(|f| {
+                (
+                    f.face_a.and_then(|m| m.pagina),
+                    f.sobreimpressao.and_then(|(_, m)| m.pagina),
+                )
+            })
+            .collect();
+        // A folha de cima (4) é puxada primeiro e recebe a página 1.
+        assert!(por_folha.contains(&(Some(4), Some(1))), "{por_folha:?}");
+        assert!(por_folha.contains(&(Some(2), Some(3))), "{por_folha:?}");
+    }
+
+    #[test]
+    fn gaveta_ciclo_completo_sai_com_a_ultima_folha_em_cima_e_le_se_virado() {
+        for total in [4usize, 5] {
+            for ordem in [OrdemPassadas::ParesPrimeiro, OrdemPassadas::ImparesPrimeiro] {
+                let lote = plano_documento(total, 10, ordem, PerfilImpressora::default())
+                    .unwrap()
+                    .remove(0);
+                let sim = executar_lote(
+                    &lote.passada1,
+                    &lote.passada2,
+                    Mecanica::gaveta(),
+                    GESTO_DA_TABELA,
+                );
+                // Na saída, a primeira folha impressa está embaixo.
+                let saida = sim.pilha();
+                assert!(saida.first().is_some_and(|f| lote_correto(
+                    &[f.clone()],
+                    1,
+                    1,
+                    total.min(2)
+                )));
+                // Virado o maço, a folha 1|2 fica por cima e nenhuma está invertida.
+                assert!(lote_correto(
+                    &sim.folhas_para_leitura(),
+                    1,
+                    total.div_ceil(2),
+                    total
+                ));
+            }
+        }
     }
 
     #[test]
@@ -818,22 +929,23 @@ mod tests {
         retirar_folhas: 0,
     };
 
-    /// Perfis medidos de (passada1_inversa, passada2_inversa, verso_girar_180), cada um com a
-    /// máquina que o produz pelo gesto de virar o maço. Regra física das linhas: a primeira
-    /// passada inverte quando a folha entra pelo topo, sai com a face impressa para cima e é
-    /// impressa com essa face para cima (p1 = entrada pelo topo = face para cima = imprime
-    /// para cima); a segunda inverte quando cada folha volta por cima do maço (p2 = saída no
-    /// topo); e o verso só gira quando a máquina gira a segunda passada sozinha (g = giro).
-    /// A gaveta e a traseira são as duas impressoras virtuais do CLI; as demais linhas são
-    /// máquinas hipotéticas que seguem a mesma regra e não foram medidas.
+    /// Perfis de (passada1_inversa, passada2_inversa, verso_girar_180), cada um com a máquina
+    /// que o produz pelo gesto de virar o maço, lendo o maço final como em
+    /// `folhas_para_leitura`. Regra física das linhas: a primeira passada inverte quando a
+    /// entrada pelo topo e a face impressa para cima coincidem (face para cima com entrada
+    /// pelo topo, ou face para baixo com entrada por baixo); a segunda inverte quando a
+    /// saída no topo e a face impressa para cima coincidem; e o verso só gira quando a máquina
+    /// gira a segunda passada sozinha. A gaveta e a traseira são as duas impressoras virtuais
+    /// do CLI; as demais linhas são máquinas hipotéticas que seguem a mesma regra e não foram
+    /// medidas.
     const TABELA_DE_MECANICAS: [((bool, bool, bool), Mecanica); 8] = [
-        // Gaveta: entra por baixo, imprime com a face para baixo e sai por baixo.
+        // Gaveta: puxa a folha de cima, imprime a face de baixo e sai no topo, face para baixo.
         ((false, false, false), Mecanica::gaveta()),
-        // Gaveta que devolve cada folha por cima do maço: a segunda passada inverte.
+        // Gaveta que devolve cada folha por baixo do maço: a segunda passada inverte.
         (
             (false, true, false),
             Mecanica {
-                saida_no_topo: true,
+                saida_no_topo: false,
                 ..Mecanica::gaveta()
             },
         ),
@@ -864,11 +976,11 @@ mod tests {
                 ..Mecanica::traseira()
             },
         ),
-        // Gaveta que devolve por cima e gira a segunda passada: o verso é compensado.
+        // Gaveta que devolve por baixo e gira a segunda passada: o verso é compensado.
         (
             (false, true, true),
             Mecanica {
-                saida_no_topo: true,
+                saida_no_topo: false,
                 giro_segunda_passada: true,
                 ..Mecanica::gaveta()
             },
@@ -913,7 +1025,12 @@ mod tests {
             let folhas_esperadas =
                 ((total.saturating_sub(primeira_pagina) + 2) / 2).min(folhas_por_lote);
             let resultado = executar_lote(&lote.passada1, &lote.passada2, mecanismo, gesto);
-            if !lote_correto(resultado.pilha(), primeira_pagina, folhas_esperadas, total) {
+            if !lote_correto(
+                &resultado.folhas_para_leitura(),
+                primeira_pagina,
+                folhas_esperadas,
+                total,
+            ) {
                 return Err(format!(
                     "lote a partir da página {primeira_pagina} com {folhas_esperadas} folha(s) saiu errado"
                 ));
@@ -974,7 +1091,7 @@ mod tests {
         for ((p1, p2, girar), mecanismo) in TABELA_DE_MECANICAS {
             let sim = executar(4, mecanismo, perfil_de(p1, p2, girar), GESTO_DA_TABELA);
             assert!(
-                lote_correto(sim.pilha(), 1, 2, 4),
+                lote_correto(&sim.folhas_para_leitura(), 1, 2, 4),
                 "perfil {:?}, mecânica {mecanismo:?}",
                 (p1, p2, girar)
             );
