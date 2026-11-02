@@ -34,7 +34,43 @@ Levantamento de 2026-11-02, a partir das licenças declaradas nos metadados; o t
 
 **npm** (35 pacotes de produção): OFL-1.1 em `@fontsource/inter` (fonte, ver Ativos); MIT em 30; ISC em `lucide-react`, cuja licença também cita ícones derivados do Feather, usados aqui (`minus`, `plus`, `square`, `x`), então o aviso leva as duas partes; 0BSD em `tslib`; `Apache-2.0 OR MIT` em `@tauri-apps/api` e `@tauri-apps/plugin-dialog`.
 
-**`pdfium-render` 0.9.5** (MIT OR Apache-2.0), versão exata. **`pdfium.dll`**, de `bblanchon/pdfium-binaries`, tag `chromium/8125`, `pdfium-win-x64.tgz` sem V8, 3 904 987 bytes, sha256 `9a964261760cff52570aabf038ab346d3a5034dd8b30d0d5fe8861235d356b8b`, sha256 da DLL `<preencher>`, distribuída sem alteração. Scripts sob MIT; PDFium sob BSD-3 e Apache-2.0; terceiros conforme `licenses/`, conferidos em `<data>`: `<lista>`. A DLL não entra no Git; é obtida por `<script>`.
+**`pdfium-render` 0.9.5** (MIT OR Apache-2.0), versão exata. **`pdfium.dll`**, de `bblanchon/pdfium-binaries`, tag `chromium/8125`, `pdfium-win-x64.tgz` sem V8, 3 904 987 bytes, sha256 `9a964261760cff52570aabf038ab346d3a5034dd8b30d0d5fe8861235d356b8b`, sha256 da DLL `4b0dec92555d69437bef0df37be630181ab3e83a6823ca264ede355a4f2ef994`, distribuída sem alteração. Scripts sob MIT; PDFium sob BSD-3 e Apache-2.0; terceiros conforme `licenses/`, lidos em 2026-11-02. O usuário decidiu seguir com o pacote sem revisão jurídica adicional (2026-11-02). A DLL não entra no Git; é obtida por `scripts/baixar-pdfium.mjs`.
+
+## PDFium (`pdfium.dll`)
+
+O pacote `pdfium-win-x64.tgz`, tag `chromium/8125`, fica em `%LOCALAPPDATA%/plots-build/pdfium/chromium-8125/`, obtido por `scripts/baixar-pdfium.mjs`. Os textos abaixo foram lidos em 2026-11-02. Ao gerar `THIRD-PARTY-NOTICES`, copie cada arquivo **inteiro**, sem resumir.
+
+| Arquivo do pacote | Componente | Licença | O que exige |
+|---|---|---|---|
+| `LICENSE` | Scripts de `bblanchon/pdfium-binaries` | MIT | Manter o aviso |
+| `licenses/pdfium.txt` | PDFium | BSD-3 e Apache-2.0 | Manter o aviso; não usar o nome do Google para promover o PlotS |
+| `licenses/abseil.txt` | Abseil | Apache-2.0 | Manter o aviso |
+| `licenses/agg23.txt` | Anti-Grain Geometry 2.3 | Permissiva própria | Manter o aviso |
+| `licenses/dragonbox-Apache2-LLVM.txt` | Dragonbox | Apache-2.0 com exceções LLVM | Manter o aviso |
+| `licenses/dragonbox-Boost.txt` | Dragonbox | Boost 1.0 | Manter o aviso |
+| `licenses/fast_float.txt` | fast_float | MIT | Manter o aviso |
+| `licenses/freetype.txt` | FreeType | FTL | **Crédito à FreeType na documentação** |
+| `licenses/harfbuzz.txt` | HarfBuzz | "Old MIT" | Manter o aviso |
+| `licenses/highway.txt` | Highway | Apache-2.0 | Manter o aviso |
+| `licenses/icu.txt` | ICU e dados | Unicode-3.0 e outras (ver abaixo) | Manter o aviso |
+| `licenses/lcms.txt` | Little CMS 2.19 | MIT | Manter o aviso |
+| `licenses/libjpeg_turbo.ijg` | libjpeg | IJG | **Dizer na documentação: "based in part on the work of the Independent JPEG Group"** |
+| `licenses/libjpeg_turbo.md` | libjpeg-turbo | BSD-3, IJG e zlib | Manter o aviso |
+| `licenses/libopenjpeg.txt` | OpenJPEG | BSD-2, com ressalva de patentes de terceiros | Manter o aviso |
+| `licenses/libpng.txt` | libpng | PNG Reference Library v2 e v1 | Manter o aviso |
+| `licenses/llvm-libc.txt` | LLVM libc | Apache-2.0 com exceções LLVM e NCSA antiga | Manter o aviso |
+| `licenses/simdutf.txt` | simdutf | MIT | Manter o aviso |
+| `licenses/zlib.txt` | zlib | zlib | Manter o aviso |
+
+**`icu.txt` por dentro:** Unicode-3.0 e a licença antiga do ICU; dicionários cjdict (BSD, Libtabe, IPADIC e ICOT), Lao e Burmese (BSD); Time Zone Database (domínio público); double-conversion (BSD-3); nlohmann/json e sorttable.js (MIT); install-sh (X11). Cita também GPL com exceção do Autoconf em `aclocal.m4` (pkg.m4) e `config.guess`, marcados como "only for ICU4C". Parecem arquivos só de compilação, sem marcadores deles na DLL, o que indica mas não prova que não entram no binário. O texto vai inteiro nos avisos.
+
+**Na DLL, sem texto próprio no pacote; incluir à parte nos avisos:**
+- **libc++:** confirmada por marcadores na DLL. Licença esperada: Apache-2.0 com exceções LLVM; conferir o texto na fonte. libc++abi e os builtins do compilador são prováveis.
+- **Fontes embutidas `ChromeSansMM` e `ChromeSerifMM`:** cabeçalho com "Copyright (c) 1990-1994 Adobe Systems Incorporated. All Rights Reserved". O pacote não traz licença específica; podem estar cobertas pelo texto do PDFium, o que não foi confirmado. Confirmar a origem na fonte do PDFium antes de distribuir.
+
+**CRT da Microsoft:** a DLL só importa `KERNEL32`, `ADVAPI32`, `GDI32` e `USER32`, então parece não exigir outro redistribuível. O CRT provavelmente é estático.
+
+**Decisão do usuário (2026-11-02):** seguir com o pacote, sem revisão jurídica adicional. Antes de distribuir, continua faltando decidir sobre as patentes de imagem (`pdfium-Pesquisa.md`).
 
 ## Só na compilação
 
@@ -47,7 +83,7 @@ Não entram no binário; repetir a checagem do grafo ao montar o instalador.
 ## A conferir antes de distribuir
 
 - **`webview2-com-sys` 0.39.1:** declara MIT, mas traz binários da Microsoft (`WebView2Loader`). Ler os termos do SDK e do Runtime, confirmar o tipo de vínculo no release e registrar os avisos exigidos.
-- **PDFium:** textos de `licenses/` lidos e completos, incluindo o que o pacote omitir; crédito da FreeType e do IJG; decisão registrada sobre patentes de JPEG2000, HTJ2K e JBIG2; confirmação de que a DLL não exige outro redistribuível e de eventuais `NOTICE` da Apache; cópia do `.tgz` guardada fora do Git; uso de "PDFium" só nos avisos, sem sugerir vínculo.
+- **PDFium:** copiar para os avisos os textos de `licenses/`, inteiros, e os de `libc++` e das fontes embutidas, que o pacote não traz; crédito da FreeType e do IJG; decisão registrada sobre patentes de JPEG2000, HTJ2K e JBIG2; confirmação de que a DLL não exige outro redistribuível e de eventuais `NOTICE` da Apache; cópia do `.tgz` guardada fora do Git; uso de "PDFium" só nos avisos, sem sugerir vínculo.
 - **Caminhos locais no executável:** o build de debug contém o nome de usuário. Compilar o release com `--remap-path-prefix` e conferir com busca no arquivo final.
 - **Nome e licença do projeto:** busca de anterioridade de "PlotS" e definição da licença própria.
 - **Linux:** `gtk`, `webkit2gtk` e `soup3` estão no lock; conferir as licenças das bibliotecas do sistema ao empacotar (plano `18-linux-e-macos`).
