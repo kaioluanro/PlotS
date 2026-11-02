@@ -1,0 +1,300 @@
+.barra {
+  container: titlebar / inline-size;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding-left: 12px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+
+.marca {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 17px;
+  height: 17px;
+  margin-right: 4px;
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-mark);
+}
+
+.marca svg {
+  pointer-events: none;
+}
+
+/* A folha da frente recorta a de tras com a cor da barra, para as duas se separarem. */
+.folhaFrente {
+  fill: var(--bg-elevated);
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+
+.botaoIcone {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--fg-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--anim-fast) ease,
+    color var(--anim-fast) ease,
+    transform var(--anim-instant) var(--ease-out-fluid);
+}
+
+.botaoIcone:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.botaoIcone:active {
+  transform: scale(0.97);
+}
+
+.abas {
+  --fade-esquerda: 0px;
+  --fade-direita: 0px;
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* A aba trazida para a vista nao fica debaixo do fade. */
+  scroll-padding-inline: 24px;
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black var(--fade-esquerda),
+    black calc(100% - var(--fade-direita)),
+    transparent 100%
+  );
+}
+
+.ocultaEsquerda {
+  --fade-esquerda: 24px;
+}
+
+.ocultaDireita {
+  --fade-direita: 24px;
+}
+
+.aba {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 1 180px;
+  width: 180px;
+  min-width: 96px;
+  min-height: 26px;
+  color: var(--fg-muted);
+  border-radius: var(--radius-tab);
+  transition:
+    background-color var(--anim-fast) ease,
+    color var(--anim-fast) ease;
+}
+
+.aba:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.abaAtiva {
+  color: var(--fg);
+  background: var(--panel-hover);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+/* Barra 16x2 na base da aba ativa: o estado nao depende so da cor do fundo. */
+.abaAtiva::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  bottom: 1px;
+  width: 16px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+}
+
+/* O anel envolve a aba inteira; a lista corta o que transborda, entao ele fica para dentro. */
+.aba:has(.rotuloAba:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.rotuloAba {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 26px;
+  padding: 0 4px 0 8px;
+  color: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-tab);
+  cursor: pointer;
+}
+
+.rotuloAba:focus-visible {
+  outline: none;
+}
+
+.textoAba {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fecharAba:focus-visible {
+  outline-offset: -2px;
+}
+
+.fecharAba {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  margin-right: 1px;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--anim-fast) ease,
+    background-color var(--anim-fast) ease;
+}
+
+.aba:hover .fecharAba,
+.aba:has(:focus-visible) .fecharAba {
+  opacity: 1;
+}
+
+.fecharAba:hover {
+  color: var(--fg);
+  background: var(--border-strong);
+}
+
+@media (hover: none) {
+  .fecharAba {
+    opacity: 1;
+  }
+}
+
+.arrasto {
+  flex: 1 0 46px;
+  align-self: stretch;
+}
+
+.controles {
+  display: flex;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+/* 32 de altura por 36 de largura: a margem negativa cobre a borda inferior da barra. */
+.controle {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 32px;
+  margin-bottom: -1px;
+  padding: 0;
+  color: var(--fg-muted);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  transition:
+    background-color var(--anim-fast) ease,
+    color var(--anim-fast) ease;
+}
+
+.controle:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.controle:focus-visible {
+  outline-offset: -2px;
+}
+
+/* O glifo nativo de restaurar tem a folha de tras a direita. */
+.espelhado {
+  transform: scaleX(-1);
+}
+
+.fecharJanela:hover {
+  color: var(--window-close-fg);
+  background: var(--window-close-bg);
+}
+
+@container titlebar (max-width: 720px) {
+  .aba {
+    flex-basis: 128px;
+    width: 128px;
+  }
+}
+
+@media (forced-colors: active) {
+  .folhaFrente {
+    fill: Canvas;
+  }
+
+  .aba {
+    border: 1px solid CanvasText;
+  }
+
+  .aba:hover {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .abaAtiva {
+    forced-color-adjust: none;
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .abaAtiva::before {
+    background: HighlightText;
+  }
+
+  /* Mais para dentro: na borda, a cor do anel se confundiria com o fundo da janela. */
+  .aba.abaAtiva:has(.rotuloAba:focus-visible) {
+    outline-color: HighlightText;
+    outline-offset: -4px;
+  }
+
+  .abaAtiva .fecharAba:focus-visible {
+    outline-color: HighlightText;
+  }
+
+  .fecharAba:hover {
+    outline: 1px solid currentColor;
+  }
+
+  .botaoIcone:hover,
+  .controle:hover {
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
+}

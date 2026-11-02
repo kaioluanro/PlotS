@@ -1,0 +1,109 @@
+.veu {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--overlay-scrim);
+  backdrop-filter: blur(10px);
+}
+
+.veu[data-state='open'] {
+  animation: veuEntra var(--anim-normal) ease-out;
+}
+
+.veu[data-state='closed'] {
+  animation: veuSai 150ms ease-in;
+}
+
+.conteudo {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 101;
+  display: flex;
+  flex-direction: column;
+  width: min(420px, calc(100vw - 48px));
+  max-height: calc(100vh - 80px);
+  overflow: auto;
+  background: var(--surface-modal);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow:
+    var(--shadow-lg),
+    0 0 0 1px var(--border-strong);
+  transform: translate(-50%, -50%);
+}
+
+.conteudo[data-state='open'] {
+  animation: dialogoEntra 250ms var(--ease-spring);
+}
+
+.conteudo[data-state='closed'] {
+  animation: dialogoSai 150ms ease-in;
+}
+
+.titulo {
+  margin: 0;
+  padding: 16px 20px 0;
+  color: var(--fg);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.corpo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 20px 16px;
+}
+
+.texto {
+  margin: 0;
+  color: var(--fg);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.rodape {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--border);
+}
+
+@keyframes veuEntra {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes veuSai {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes dialogoEntra {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 4px)) scale(0.985);
+  }
+}
+
+@keyframes dialogoSai {
+  to {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 4px)) scale(0.985);
+  }
+}
+
+@media (forced-colors: active) {
+  .conteudo {
+    border-color: CanvasText;
+  }
+
+  .rodape {
+    border-top-color: CanvasText;
+  }
+}

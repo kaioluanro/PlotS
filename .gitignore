@@ -7,3 +7,6 @@
 /.claude/
 /.codex/
 /plan/estilo-ui-ux.md
+/ui/node_modules/
+/ui/dist/
+/src-tauri/gen/
