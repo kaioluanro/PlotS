@@ -13,7 +13,7 @@ Janela sem menus, com uma barra única e um documento por aba.
 - [x] Abas com estado próprio e confirmação ao fechar com impressão em andamento, na aba e na janela; a janela nunca fica presa se a interface travar
 - [x] Atalhos de teclado e arrastar PDF para abrir aba; recarga do WebView2 bloqueada
 - [ ] Confirmar no lote de impressão que fechar mantém a fila e perde o verso, como diz o diálogo
-- [ ] Verificação manual: bordas, sombra, cantos, Snap Layouts, F5, Ctrl+R e Alt+F4
+- [x] Verificação manual da janela pelo usuário (2026-11-02): aprovada, sem problemas relatados
 
 ## Pronto quando
 
