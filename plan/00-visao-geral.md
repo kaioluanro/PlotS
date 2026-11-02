@@ -12,7 +12,9 @@ Reunir o que vale para o programa inteiro: propósito, stack, ordem das fases, r
 - [x] Comando de CI definido em `.claude/team.json`
 - [ ] Adotar `tracing` para os logs de impressão, junto com o backend Windows
 - [ ] Criar `src-tauri/` e `ui/` no início da interface
-- [ ] Definir a licença do PlotS e gerar os avisos de terceiros antes de distribuir
+- [x] Licença do PlotS: MIT
+- [ ] Declarar `license = "MIT"` nos manifestos, depois dos lotes em andamento
+- [ ] Gerar os avisos de terceiros antes de distribuir
 
 ## Pronto quando
 

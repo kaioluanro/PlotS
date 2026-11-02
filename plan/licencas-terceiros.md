@@ -87,7 +87,7 @@ Não entram no binário; repetir a checagem do grafo ao montar o instalador.
 - **`webview2-com-sys` 0.39.1:** declara MIT, mas traz binários da Microsoft (`WebView2Loader`). Ler os termos do SDK e do Runtime, confirmar o tipo de vínculo no release e registrar os avisos exigidos.
 - **PDFium:** copiar para os avisos os textos de `licenses/`, inteiros, e os de `libc++` e das fontes embutidas, que o pacote não traz; crédito da FreeType e do IJG; confirmação de que a DLL não exige outro redistribuível e de eventuais `NOTICE` da Apache; cópia do `.tgz` guardada fora do Git; uso de "PDFium" só nos avisos, sem sugerir vínculo.
 - **Caminhos locais no executável:** o build de debug contém o nome de usuário. Compilar o release com `--remap-path-prefix` e conferir com busca no arquivo final.
-- **Nome e licença do projeto:** busca de anterioridade de "PlotS" e definição da licença própria.
+- **Nome do projeto:** busca de anterioridade de "PlotS". A licença do PlotS é MIT (`LICENSE`), por decisão do usuário em 2026-11-02; as dependências continuam sob as próprias licenças.
 - **Linux:** `gtk`, `webkit2gtk` e `soup3` estão no lock; conferir as licenças das bibliotecas do sistema ao empacotar (plano `18-linux-e-macos`).
 
 ## Ativos
