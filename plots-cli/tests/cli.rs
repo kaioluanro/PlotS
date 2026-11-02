@@ -411,23 +411,9 @@ fn gerar_pdf_nao_avisa_pagina_quadrada_nem_pagina_sem_verso() {
 }
 
 #[test]
-fn comandos_ainda_nao_disponiveis_dizem_o_que_usar() {
-    for comando in ["imprimir", "calibrar"] {
-        let esperado = format!(
-            "o comando '{comando}' ainda não está disponível; use 'simular', 'gerar-pdf' ou 'gerar-calibracao'"
-        );
-        assert_eq!(executar(&args(&[comando])).unwrap_err(), esperado);
-        assert_eq!(
-            executar(&args(&[comando, "arquivo.pdf", "--impressora", "traseira"])).unwrap_err(),
-            esperado
-        );
-    }
-}
-
-#[test]
 fn comando_ausente_ou_desconhecido_lista_os_comandos_validos() {
     let esperado =
-        "comando ausente ou desconhecido; use 'simular', 'gerar-pdf' ou 'gerar-calibracao'";
+        "comando ausente ou desconhecido; use 'simular', 'gerar-pdf', 'gerar-calibracao', 'imprimir' ou 'calibrar'";
     assert_eq!(executar(&args(&[])).unwrap_err(), esperado);
     assert_eq!(executar(&args(&["abrir"])).unwrap_err(), esperado);
     assert_eq!(executar(&args(&["arquivo.pdf"])).unwrap_err(), esperado);

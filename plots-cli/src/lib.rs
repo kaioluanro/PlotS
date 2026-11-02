@@ -1,18 +1,25 @@
-use plots_core::{
-    pares_com_orientacao_mista, plano_documento, plano_lotes_por_papel, OrdemPassadas, Pagina,
-    PerfilImpressora, LIMITE_PAGINAS,
-};
-use plots_pdf::{FaceFinal, FolhaFinal, PapelCalibracao};
+mod calibrar;
+mod geracao;
+mod imprimir;
+
+use plots_core::{plano_documento, OrdemPassadas, Pagina, PerfilImpressora, LIMITE_PAGINAS};
+use plots_pdf::PapelCalibracao;
 use plots_print::{
     conferir_folhas,
     job::{ErroJob, EstadoJob, Job, SimBackend},
-    Folha, Marca, Mecanica, Recolocacao, Simulador, Veredito,
+    Folha, Marca, Mecanica, Recolocacao, Veredito,
 };
 use std::io::{BufRead, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Texto de uso geral, mostrado por `--help` e em erros sem subcomando conhecido.
-pub const USO_GERAL: &str = "Uso:\n  plots simular --paginas N --lote K --impressora traseira|gaveta [--ordem pares|impares] [--simular-erro sem-virar|girado|folha-a-menos] [--guiado]\n  plots gerar-pdf ARQUIVO --lote K --impressora traseira|gaveta [--ordem pares|impares] [--folhas-finais] --saida DIRETORIO\n  plots gerar-calibracao --saida DIRETORIO [--papel a4|a5|carta|oficio|legal]\nNenhum comando envia arquivos à impressora: 'simular' só simula; 'gerar-pdf' e 'gerar-calibracao' só gravam arquivos.\n";
+pub const USO_GERAL: &str = "Uso:\n  plots simular --paginas N --lote K --impressora traseira|gaveta [--ordem pares|impares] [--simular-erro sem-virar|girado|folha-a-menos] [--guiado]\n  plots gerar-pdf ARQUIVO --lote K --impressora traseira|gaveta [--ordem pares|impares] [--folhas-finais] --saida DIRETORIO\n  plots gerar-calibracao --saida DIRETORIO [--papel a4|a5|carta|oficio|legal]\n  plots calibrar NOME --saida DIRETORIO [--papel a4|a5|carta|oficio|legal] [--perfis ARQUIVO]\n  plots imprimir ARQUIVO --impressora NOME --lote K --saida DIRETORIO --simular [--ordem pares|impares] [--perfis ARQUIVO] [--folhas-finais]\nNenhum comando envia arquivos à impressora: 'simular', 'gerar-pdf', 'gerar-calibracao' e 'calibrar' só simulam ou gravam arquivos, e 'imprimir' só funciona com --simular, que também só simula.\n";
+
+/// Texto de uso do subcomando `imprimir`.
+pub const USO_IMPRIMIR: &str = "Uso:\n  plots imprimir ARQUIVO --impressora NOME --lote K --saida DIRETORIO --simular [--ordem pares|impares] [--perfis ARQUIVO] [--folhas-finais]\nSem --simular o comando recusa e nada é gerado, pois o envio à impressora ainda não existe. Com --simular, grava as passadas de cada lote como 'gerar-pdf' e conduz o fluxo pelo terminal, sem enviar nada à impressora.\nImpressoras: 'Simulada — Traseira' e 'Simulada — Gaveta' (ou traseira e gaveta). Outro NOME usa o perfil salvo por 'plots calibrar'; sem perfil, o comando pede a calibração.\n--perfis ARQUIVO indica o arquivo de perfis; sem ele, usa o arquivo de perfis do usuário.\n";
+
+/// Texto de uso do subcomando `calibrar`.
+pub const USO_CALIBRAR: &str = "Uso:\n  plots calibrar NOME --saida DIRETORIO [--papel a4|a5|carta|oficio|legal] [--perfis ARQUIVO]\nGrava calibracao.pdf em DIRETORIO, sem sobrescrever, e pergunta no terminal o que saiu. O PlotS não envia o arquivo à impressora: imprima as 4 páginas pelo programa que quiser.\nO perfil salvo para NOME é ajustado pelas respostas e gravado em ARQUIVO (ou no arquivo de perfis do usuário). O resultado só vale depois de conferido em um lote impresso de verdade; a simulação não conta.\n";
 
 /// Texto de uso do subcomando `simular`.
 pub const USO_SIMULAR: &str = "Uso:\n  plots simular --paginas N --lote K --impressora traseira|gaveta [--ordem pares|impares] [--simular-erro sem-virar|girado|folha-a-menos] [--guiado]\nA simulação não envia nada à impressora. Com --simular-erro, o gesto errado vale para todos os lotes; com folha-a-menos, cada lote é reimpresso desde a frente.\n";
@@ -24,18 +31,29 @@ pub const USO_GERAR_PDF: &str = "Uso:\n  plots gerar-pdf ARQUIVO --lote K --impr
 pub const USO_GERAR_CALIBRACAO: &str = "Uso:\n  plots gerar-calibracao --saida DIRETORIO [--papel a4|a5|carta|oficio|legal]\nGrava calibracao.pdf com as páginas 1 a 4 e uma seta para cima em cada uma. Nada é enviado à impressora, e um arquivo existente nunca é sobrescrito.\n";
 
 const MSG_COMANDO_DESCONHECIDO: &str =
-    "comando ausente ou desconhecido; use 'simular', 'gerar-pdf' ou 'gerar-calibracao'";
+    "comando ausente ou desconhecido; use 'simular', 'gerar-pdf', 'gerar-calibracao', 'imprimir' ou 'calibrar'";
 const MSG_SIMULAR_PDF: &str = "'simular' não lê PDF: informe --paginas N, ou use 'gerar-pdf' para gerar as passadas de um arquivo";
 const MSG_ORDEM_INVALIDA: &str = "--ordem deve ser pares ou impares";
 const MSG_ORDEM_REPETIDA: &str = "--ordem foi informado mais de uma vez";
 const MSG_ERRO_SIMULADO_INVALIDO: &str =
     "--simular-erro deve ser sem-virar, girado ou folha-a-menos";
 const MSG_ERRO_SIMULADO_REPETIDO: &str = "--simular-erro foi informado mais de uma vez";
-const MSG_AVISO_IMPARES: &str = "Ordem das passadas: ímpares primeiro.";
+pub(crate) const MSG_AVISO_IMPARES: &str = "Ordem das passadas: ímpares primeiro.";
+/// Enquanto `false`, nenhum comando envia nada à impressora. Ligar o envio real exige
+/// revisar `FRASE_NAO_ENVIA` e a recusa sem `--simular`; o teste
+/// `frase_de_nao_envio_acompanha_o_envio_desligado` falha até isso ser feito.
+#[cfg(test)]
+pub(crate) const ENVIO_REAL_LIBERADO: bool = false;
+/// Frase da ajuda geral sobre o que nenhum comando faz com a impressora.
+#[cfg(test)]
+pub(crate) const FRASE_NAO_ENVIA: &str = "Nenhum comando envia arquivos à impressora: 'simular', 'gerar-pdf', 'gerar-calibracao' e 'calibrar' só simulam ou gravam arquivos, e 'imprimir' só funciona com --simular, que também só simula.";
+/// Recusa de `imprimir` sem `--simular`, enquanto o envio real não existe.
+pub(crate) const MSG_ENVIO_INDISPONIVEL: &str =
+    "o envio à impressora ainda não está disponível; use --simular para conferir o fluxo sem imprimir";
 const MSG_FOLHAS_REPETIDA: &str = "--folhas-finais foi informado mais de uma vez";
 
 /// Recolocação correta: vira o maço e nada mais.
-const GESTO_CORRETO: Recolocacao = Recolocacao {
+pub(crate) const GESTO_CORRETO: Recolocacao = Recolocacao {
     virar_maco: true,
     inverter_ordem: false,
     girar_180: false,
@@ -43,7 +61,7 @@ const GESTO_CORRETO: Recolocacao = Recolocacao {
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ImpressoraVirtual {
+pub(crate) enum ImpressoraVirtual {
     Traseira,
     Gaveta,
 }
@@ -59,7 +77,16 @@ impl ImpressoraVirtual {
         }
     }
 
-    fn perfil(self) -> PerfilImpressora {
+    /// Reconhece o atalho ou o nome de exibição de uma impressora simulada.
+    pub(crate) fn de_nome(valor: &str) -> Option<Self> {
+        match valor {
+            "traseira" | "Simulada — Traseira" => Some(Self::Traseira),
+            "gaveta" | "Simulada — Gaveta" => Some(Self::Gaveta),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn perfil(self) -> PerfilImpressora {
         PerfilImpressora {
             passada1_inversa: self == Self::Traseira,
             passada2_inversa: self == Self::Traseira,
@@ -67,14 +94,14 @@ impl ImpressoraVirtual {
         }
     }
 
-    fn mecanica(self) -> Mecanica {
+    pub(crate) fn mecanica(self) -> Mecanica {
         match self {
             Self::Traseira => Mecanica::traseira(),
             Self::Gaveta => Mecanica::gaveta(),
         }
     }
 
-    fn nome(self) -> &'static str {
+    pub(crate) fn nome(self) -> &'static str {
         match self {
             Self::Traseira => "Simulada — Traseira",
             Self::Gaveta => "Simulada — Gaveta",
@@ -136,7 +163,7 @@ impl ErroSimulado {
     }
 }
 
-fn analisar_ordem(valor: &str) -> Result<OrdemPassadas, String> {
+pub(crate) fn analisar_ordem(valor: &str) -> Result<OrdemPassadas, String> {
     match valor {
         "pares" => Ok(OrdemPassadas::ParesPrimeiro),
         "impares" => Ok(OrdemPassadas::ImparesPrimeiro),
@@ -144,7 +171,7 @@ fn analisar_ordem(valor: &str) -> Result<OrdemPassadas, String> {
     }
 }
 
-fn analisar_papel(valor: &str) -> Result<PapelCalibracao, String> {
+pub(crate) fn analisar_papel(valor: &str) -> Result<PapelCalibracao, String> {
     match valor {
         "a4" => Ok(PapelCalibracao::A4),
         "a5" => Ok(PapelCalibracao::A5),
@@ -157,7 +184,7 @@ fn analisar_papel(valor: &str) -> Result<PapelCalibracao, String> {
     }
 }
 
-fn nome_papel(papel: PapelCalibracao) -> &'static str {
+pub(crate) fn nome_papel(papel: PapelCalibracao) -> &'static str {
     match papel {
         PapelCalibracao::A4 => "A4",
         PapelCalibracao::A5 => "A5",
@@ -173,6 +200,8 @@ pub fn uso_para(args: &[String]) -> &'static str {
         Some("simular") => USO_SIMULAR,
         Some("gerar-pdf") => USO_GERAR_PDF,
         Some("gerar-calibracao") => USO_GERAR_CALIBRACAO,
+        Some("imprimir") => USO_IMPRIMIR,
+        Some("calibrar") => USO_CALIBRAR,
         _ => USO_GERAL,
     }
 }
@@ -208,6 +237,8 @@ pub fn executar_com_io(
             Some("simular") => return escrever(saida, USO_SIMULAR),
             Some("gerar-pdf") => return escrever(saida, USO_GERAR_PDF),
             Some("gerar-calibracao") => return escrever(saida, USO_GERAR_CALIBRACAO),
+            Some("imprimir") => return escrever(saida, USO_IMPRIMIR),
+            Some("calibrar") => return escrever(saida, USO_CALIBRAR),
             _ => {}
         }
     }
@@ -215,11 +246,8 @@ pub fn executar_com_io(
         Some("simular") => {}
         Some("gerar-pdf") => return gerar_pdfs(args, saida),
         Some("gerar-calibracao") => return gerar_calibracao(args, saida),
-        Some(comando @ ("imprimir" | "calibrar")) => {
-            return Err(format!(
-                "o comando '{comando}' ainda não está disponível; use 'simular', 'gerar-pdf' ou 'gerar-calibracao'"
-            ));
-        }
+        Some("imprimir") => return imprimir::executar(args, entrada, saida),
+        Some("calibrar") => return calibrar::executar(args, entrada, saida),
         _ => return Err(MSG_COMANDO_DESCONHECIDO.into()),
     }
     let mut paginas = None;
@@ -370,41 +398,51 @@ pub fn executar_com_io(
         job.atualizar()
             .map_err(|e| format!("erro ao consultar verso: {e:?}"))?;
         let pilha = job.backend().simulador().folhas_para_leitura();
-        let veredictos = conferir_folhas(&pilha, &pares_esperados(&plano.paginas));
-        let mut linhas: Vec<(String, Veredito)> =
-            pilha.iter().map(rotulo_da_folha).zip(veredictos).collect();
-        linhas.reverse();
+        let (corretas, total) = relatar_folhas(saida, &plano.paginas, &pilha)?;
         writeln!(
             saida,
-            "  Folhas finais (páginas de cada folha, de cima para baixo):"
-        )
-        .map_err(|e| e.to_string())?;
-        let mut corretas = 0usize;
-        for (rotulo, veredito) in &linhas {
-            match veredito {
-                Veredito::Certa => {
-                    corretas += 1;
-                    writeln!(saida, "    {rotulo}: certa").map_err(|e| e.to_string())?;
-                }
-                Veredito::Errada(defeitos) => {
-                    let motivos: Vec<&str> = defeitos.iter().map(|d| d.descricao()).collect();
-                    writeln!(saida, "    {rotulo}: errada ({})", motivos.join("; "))
-                        .map_err(|e| e.to_string())?;
-                }
-            }
-        }
-        writeln!(
-            saida,
-            "  Resultado do lote: {corretas} de {} folhas corretas",
-            linhas.len()
+            "  Resultado do lote: {corretas} de {total} folhas corretas"
         )
         .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
 
+/// Escreve a conferência de cada folha final do lote, de cima para baixo, e devolve
+/// (corretas, total de folhas).
+pub(crate) fn relatar_folhas(
+    saida: &mut impl Write,
+    paginas: &[Pagina],
+    pilha: &[Folha],
+) -> Result<(usize, usize), String> {
+    let veredictos = conferir_folhas(pilha, &pares_esperados(paginas));
+    let mut linhas: Vec<(String, Veredito)> =
+        pilha.iter().map(rotulo_da_folha).zip(veredictos).collect();
+    linhas.reverse();
+    writeln!(
+        saida,
+        "  Folhas finais (páginas de cada folha, de cima para baixo):"
+    )
+    .map_err(|e| e.to_string())?;
+    let mut corretas = 0usize;
+    for (rotulo, veredito) in &linhas {
+        match veredito {
+            Veredito::Certa => {
+                corretas += 1;
+                writeln!(saida, "    {rotulo}: certa").map_err(|e| e.to_string())?;
+            }
+            Veredito::Errada(defeitos) => {
+                let motivos: Vec<&str> = defeitos.iter().map(|d| d.descricao()).collect();
+                writeln!(saida, "    {rotulo}: errada ({})", motivos.join("; "))
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+    }
+    Ok((corretas, linhas.len()))
+}
+
 /// Pares de páginas esperados em cada folha do lote, na ordem do documento.
-fn pares_esperados(paginas: &[Pagina]) -> Vec<(Option<usize>, Option<usize>)> {
+pub(crate) fn pares_esperados(paginas: &[Pagina]) -> Vec<(Option<usize>, Option<usize>)> {
     paginas
         .chunks(2)
         .map(|par| {
@@ -484,73 +522,18 @@ fn gerar_pdfs(args: &[String], saida: &mut impl Write) -> Result<(), String> {
     if !diretorio.is_dir() {
         return Err("o diretório de saída deve existir".into());
     }
-    let bytes = std::fs::read(entrada).map_err(|e| format!("não foi possível ler o PDF: {e}"))?;
-    let pdf = plots_pdf::PdfOrigem::carregar(&bytes).map_err(|e| e.to_string())?;
-    let assinado = pdf.tem_assinatura_aplicada().map_err(|e| e.to_string())?;
-    let dimensoes = pdf.dimensoes_paginas().map_err(|e| e.to_string())?;
-    let lotes = plano_lotes_por_papel(&dimensoes, tamanho, ordem, impressora.perfil())
-        .map_err(|e| e.to_string())?;
-    let pares_mistos = pares_com_orientacao_mista(&dimensoes).map_err(|e| e.to_string())?;
-    let mut arquivos = Vec::new();
-    for (i, lote) in lotes.iter().enumerate() {
-        let referencia = lote
-            .paginas
-            .iter()
-            .flatten()
-            .last()
-            .copied()
-            .ok_or("lote vazio")?;
-        for (passada, paginas) in [(1, &lote.passada1), (2, &lote.passada2)] {
-            let caminho = diretorio.join(format!("lote-{:04}-passada-{passada}.pdf", i + 1));
-            let conteudo = pdf
-                .gerar_passada(paginas, referencia)
-                .map_err(|e| e.to_string())?;
-            arquivos.push((caminho, conteudo));
-        }
-        if folhas_finais {
-            let folhas =
-                folhas_finais_do_lote(&lote.passada1, &lote.passada2, impressora.mecanica())?;
-            let conteudo = pdf
-                .gerar_folhas_finais(&folhas, referencia)
-                .map_err(|e| e.to_string())?;
-            let caminho = diretorio.join(format!("lote-{:04}-folhas-finais.pdf", i + 1));
-            arquivos.push((caminho, conteudo));
-        }
-    }
-    let mut criados = Vec::new();
-    for (caminho, conteudo) in &arquivos {
-        let resultado = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(caminho)
-            .and_then(|mut f| {
-                criados.push(caminho.clone());
-                f.write_all(conteudo)
-            });
-        if let Err(e) = resultado {
-            for criado in &criados {
-                let _ = std::fs::remove_file(criado);
-            }
-            return Err(format!("não foi possível criar {}: {e}", caminho.display()));
-        }
-    }
-    for (frente, verso) in &pares_mistos {
-        writeln!(
-            saida,
-            "Aviso: a folha das páginas {frente} e {verso} mistura retrato e paisagem; confira o resultado antes de imprimir."
-        )
-        .map_err(|e| e.to_string())?;
-    }
-    if ordem == OrdemPassadas::ImparesPrimeiro {
-        writeln!(saida, "{MSG_AVISO_IMPARES}").map_err(|e| e.to_string())?;
-    }
-    if assinado {
-        writeln!(
-            saida,
-            "Aviso: este PDF tem assinatura digital. As cópias geradas servem só para imprimir: mostram a aparência da assinatura, mas não a contêm. Para enviar ou guardar o documento, use o arquivo original."
-        )
-        .map_err(|e| e.to_string())?;
-    }
+    let opcoes = geracao::Opcoes {
+        tamanho,
+        ordem,
+        perfil: impressora.perfil(),
+        mecanica: impressora.mecanica(),
+        folhas_finais,
+    };
+    let documento = geracao::Documento::ler(Path::new(entrada))?;
+    let plano = geracao::planejar(&documento, &opcoes)?;
+    let arquivos = geracao::gerar_arquivos(&documento, &plano, &opcoes, &diretorio)?;
+    geracao::gravar_sem_sobrescrever(&arquivos)?;
+    geracao::escrever_avisos(&documento, &plano, ordem, saida)?;
     writeln!(
         saida,
         "Gerados {} PDFs em {}. Nenhum arquivo foi enviado à impressora.",
@@ -558,51 +541,6 @@ fn gerar_pdfs(args: &[String], saida: &mut impl Write) -> Result<(), String> {
         diretorio.display()
     )
     .map_err(|e| e.to_string())
-}
-
-/// Simula um lote com a recolocação correta e devolve as folhas finais, de cima para baixo.
-fn folhas_finais_do_lote(
-    frente: &[plots_core::Pagina],
-    verso: &[plots_core::Pagina],
-    mecanica: Mecanica,
-) -> Result<Vec<FolhaFinal>, String> {
-    let mut sim = Simulador::novo(mecanica);
-    sim.imprimir_frente(frente)
-        .map_err(|e| format!("erro na frente: {e}"))?;
-    sim.recolocar(GESTO_CORRETO)
-        .map_err(|e| format!("erro na recolocação: {e}"))?;
-    sim.imprimir_verso(verso)
-        .map_err(|e| format!("erro no verso: {e}"))?;
-    Ok(sim
-        .folhas_para_leitura()
-        .iter()
-        .rev()
-        .map(|folha| ordenar_lados(folha.face_a.map(face_final), folha.face_b.map(face_final)))
-        .collect())
-}
-
-/// Escolhe o lado de cada face: a página de número menor fica à esquerda e a face em branco
-/// vai por último, à direita. A orientação de cada face acompanha a própria face.
-fn ordenar_lados(a: Option<FaceFinal>, b: Option<FaceFinal>) -> FolhaFinal {
-    let chave = |face: &Option<FaceFinal>| face.and_then(|f| f.pagina).map_or((1, 0), |n| (0, n));
-    if chave(&b) < chave(&a) {
-        FolhaFinal {
-            frente: b,
-            verso: a,
-        }
-    } else {
-        FolhaFinal {
-            frente: a,
-            verso: b,
-        }
-    }
-}
-
-fn face_final(marca: Marca) -> FaceFinal {
-    FaceFinal {
-        pagina: marca.pagina,
-        girada: marca.girada,
-    }
 }
 
 /// Grava `calibracao.pdf` na pasta indicada, sem nunca sobrescrever um arquivo.
@@ -628,28 +566,7 @@ fn gerar_calibracao(args: &[String], saida: &mut impl Write) -> Result<(), Strin
     }
     let caminho = diretorio.join("calibracao.pdf");
     let bytes = plots_pdf::pdf_calibracao(papel).map_err(|e| e.to_string())?;
-    let mut arquivo = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&caminho)
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::AlreadyExists {
-                format!(
-                    "o arquivo {} já existe; escolha outra pasta ou remova o arquivo existente",
-                    caminho.display()
-                )
-            } else {
-                format!("não foi possível criar {}: {e}", caminho.display())
-            }
-        })?;
-    if let Err(e) = arquivo.write_all(&bytes) {
-        drop(arquivo);
-        let _ = std::fs::remove_file(&caminho);
-        return Err(format!(
-            "não foi possível gravar {}: {e}",
-            caminho.display()
-        ));
-    }
+    geracao::criar_novo(&caminho, &bytes)?;
     writeln!(
         saida,
         "Calibração gravada em {} (papel {}, {} páginas). Nenhum arquivo foi enviado à impressora.",
@@ -660,7 +577,7 @@ fn gerar_calibracao(args: &[String], saida: &mut impl Write) -> Result<(), Strin
     .map_err(|e| e.to_string())
 }
 
-fn listar(paginas: &[plots_core::Pagina]) -> String {
+pub(crate) fn listar(paginas: &[plots_core::Pagina]) -> String {
     if paginas.is_empty() {
         return "(vazia)".into();
     }

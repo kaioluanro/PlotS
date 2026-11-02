@@ -537,6 +537,7 @@ dependencies = [
  "lopdf",
  "plots-core",
  "plots-pdf",
+ "plots-perfis",
  "plots-print",
 ]
 
