@@ -1,6 +1,6 @@
 # Múltiplas impressoras
 
-**Estado:** Em andamento · OK 0 · PARTIAL 2 · MISSING 6 · BUG 0 · N/A 0
+**Estado:** Em andamento · OK 0 · PARTIAL 3 · MISSING 5 · BUG 0 · N/A 0
 
 ## Objetivo
 
@@ -29,7 +29,7 @@ Duas impressoras avançam de forma independente e entregam o mesmo maço.
 |---|---|---|
 | PS-A044 | tokio, um job por impressora em paralelo | MISSING |
 | PS-A061 | Marcar várias impressoras e enviar a mesma origem, cada uma com o perfil próprio | MISSING |
-| PS-A062 | Descoberta das filas do sistema (EnumPrintersW) | MISSING |
+| PS-A062 | Descoberta das filas do sistema (EnumPrintersW) | PARTIAL (a9f9185) |
 | PS-A064 | Máquina de estados por job: Ocioso, FrenteEnviada, AguardandoRecolocacao, VersoEnviado, Concluído, Erro | PARTIAL |
 | PS-A065 | Modos espelho e divisão | PARTIAL |
 | PS-A066 | Consulta periódica do spooler; avisa papel acabado ou atolado | MISSING |

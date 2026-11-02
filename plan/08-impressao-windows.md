@@ -9,7 +9,7 @@ Enviar cada passada direto ao spooler, na ordem do PlotS, sem diálogo de impres
 ## Plano de implementação
 
 - [x] `trait Backend` e máquina de estados com o verso bloqueado até a frente terminar
-- [ ] Listar filas com `EnumPrintersW`
+- [x] Listar filas e estado com `EnumPrintersW` e `GetDefaultPrinterW`, comando `plots filas` (a9f9185)
 - [ ] Rasterizar com `pdfium-render`, uma página por vez, na resolução da impressora
 - [ ] `DEVMODE` simplex, sem agrupar, com bandeja e papel; desenhar com GDI
 - [ ] Acompanhar o trabalho com `GetJobW`

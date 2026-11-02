@@ -1,6 +1,6 @@
 # STATUS
 
-Requisitos: OK 33 · PARTIAL 28 · MISSING 30 · BUG 0 · N/A 2 (93). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
+Requisitos: OK 33 · PARTIAL 29 · MISSING 29 · BUG 0 · N/A 2 (93). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
 
 | Plano | OK | PARTIAL | MISSING | BUG | N/A | Estado |
 |---|---|---|---|---|---|---|
@@ -19,7 +19,7 @@ Requisitos: OK 33 · PARTIAL 28 · MISSING 30 · BUG 0 · N/A 2 (93). Detalhes e
 | [Visualizador de PDF](12-visualizador.md) | 0 | 1 | 2 | 0 | 0 | Em andamento |
 | [Fluxo de impressão e recolocação](13-fluxo-e-recolocacao.md) | 0 | 2 | 4 | 0 | 0 | Em andamento |
 | [Padrão visual e idiomas](14-padrao-visual-e-idiomas.md) | 2 | 1 | 0 | 0 | 0 | Em andamento |
-| [Múltiplas impressoras](15-multiplas-impressoras.md) | 0 | 2 | 6 | 0 | 0 | Em andamento |
+| [Múltiplas impressoras](15-multiplas-impressoras.md) | 0 | 3 | 5 | 0 | 0 | Em andamento |
 | [Impressora virtual](16-impressora-virtual.md) | 0 | 0 | 1 | 0 | 0 | Não iniciado |
 | [Acabamento e instalador](17-acabamento.md) | 0 | 1 | 2 | 0 | 0 | Em andamento |
 | [Linux e macOS](18-linux-e-macos.md) | 0 | 0 | 1 | 0 | 0 | Não iniciado |
@@ -38,8 +38,9 @@ Requisitos: OK 33 · PARTIAL 28 · MISSING 30 · BUG 0 · N/A 2 (93). Detalhes e
 | pdfs-reais | `25557c9` | concluído: 64 de 64 PDFs reais aceitos, conferidos no PyMuPDF |
 | cli-calibrar-imprimir | `92772e5` | concluído, sem envio real |
 | interface-base | `353f54d` | concluído; janela aprovada pelo usuário |
+| windows-filas | `a9f9185` | concluído |
 
-**Próximo:** backend do Windows (`08-impressao-windows`), depois do lote da interface.
+**Próximo:** envio real ao spooler (`08-impressao-windows`).
 
 ## Bloqueado ou dependente do usuário
 

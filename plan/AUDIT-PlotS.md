@@ -2,7 +2,7 @@
 
 Data: 2026-11-02. A especificação foi dividida depois em `plan/`, então as linhas de `AGENTS.md` citadas abaixo são da versão anterior. Escopo: especificação em `AGENTS.md` (seções de Fases, Modo simulação, Perfis, Papel, Múltiplas impressoras, Windows e Interface). Nenhum código de produto foi alterado. Nenhum commit. `Cargo.toml`, `Cargo.lock`, `AGENTS.md`, `CLAUDE.md` e `estilo-ui-ux.md` mantêm os mesmos hashes (md5 conferido antes e depois). **Atenção:** o `.gitignore` foi reescrito às 13:56:41, durante a auditoria, por outro processo ou usuário (este agente não o editou). O conteúdo novo acrescenta `/.claude/`, `/.codex/`, `/estilo-ui-ux.md`, `/plan/`, `/AUDIT-*.md` e `/STATUS-MANUAIS.md`, e por isso o `git status` mostra só `AGENTS.md` e `CLAUDE.md`. Não foi revertido; decisão do usuário.
 
-Contagem: **OK 33 · PARTIAL 28 · MISSING 30 · BUG 0 · N/A 2** (93 requisitos)
+Contagem: **OK 33 · PARTIAL 29 · MISSING 29 · BUG 0 · N/A 2** (93 requisitos)
 
 Verificação executada:
 - `cargo test --workspace --locked`: 51 testes passam (9 de integração do CLI, 19 em plots-core, 12 em plots-pdf, 11 em plots-print). Tempo de 30 s.
@@ -86,7 +86,7 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A059 | Papel | Frente e verso da mesma folha com mesma orientação (retrato e paisagem) | OK (882ba68) | Ver BUG-1. Orientação diferente é aceita sem aviso. Decisão do usuário: bloquear ou só avisar. |
 | PS-A060 | Papel | Opção "Ajustar ao papel" (imprimir Carta em A4) | MISSING | Não existe no código. |
 | PS-A061 | Múltiplas | Marcar várias impressoras e enviar a mesma origem, cada uma com o perfil próprio | MISSING | CLI aceita uma impressora virtual por comando. |
-| PS-A062 | Múltiplas | Descoberta das filas do sistema (EnumPrintersW) | MISSING | Fase 3/5. |
+| PS-A062 | Múltiplas | Descoberta das filas do sistema (EnumPrintersW) | PARTIAL (a9f9185) | `plots filas` lista as filas e o estado com `EnumPrintersW`; falta usar na interface. |
 | PS-A063 | Múltiplas | Perfil por fila: chave com o nome da fila e apelido amigável | PARTIAL | Chave pelo nome exato da fila e apelido em `plots-perfis` (72030fb); falta a tela de apelido. |
 | PS-A064 | Múltiplas | Máquina de estados por job: Ocioso, FrenteEnviada, AguardandoRecolocacao, VersoEnviado, Concluído, Erro | PARTIAL | `plots-print/src/job.rs:28-35` usa `Pronto` no lugar de `Ocioso`. Demais estados existem. |
 | PS-A065 | Múltiplas | Modos espelho e divisão | PARTIAL | `plots-core/src/distribuicao.rs:52-80`, testes em lib 86-124. Não é usado por CLI nem UI. |
