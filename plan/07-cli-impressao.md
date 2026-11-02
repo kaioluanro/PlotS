@@ -27,7 +27,7 @@ Simulação correta nas duas impressoras virtuais; com impressora real, 3 lotes 
 
 | ID | Requisito | Situação |
 |---|---|---|
-| PS-A074 | `plots imprimir doc.pdf --impressora X --lote 10` | PARTIAL (92772e5) |
+| PS-A074 | `plots imprimir doc.pdf --impressora X --lote 10` | PARTIAL |
 | PS-A077 | Critério: simulação correta nas duas impressoras virtuais | PARTIAL |
 | PS-A078 | Critério: 3 lotes seguidos sem erro numa impressora real | MISSING |
 | PS-A090 | Mensagens do CLI coerentes com as funções atuais | OK (882ba68) |

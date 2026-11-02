@@ -1,6 +1,6 @@
 # Padrão visual e idiomas
 
-**Estado:** Em andamento · OK 0 · PARTIAL 1 · MISSING 2 · BUG 0 · N/A 0
+**Estado:** Em andamento · OK 2 · PARTIAL 1 · MISSING 0 · BUG 0 · N/A 0
 
 ## Objetivo
 
@@ -8,10 +8,12 @@ Aplicar `estilo-ui-ux.md` em toda a interface, em pt-BR e en.
 
 ## Plano de implementação
 
-- [ ] `theme.css` com os tokens, temas escuro e claro
-- [ ] Componentes base com CSS Modules, `lucide-react` e Radix
-- [ ] Textos via `t()` em pt-BR e en
-- [ ] Foco visível, ESC em diálogos, estado com ponto e texto, contraste medido
+- [x] `theme.css` com os tokens, temas escuro e claro, e Inter embutida
+- [x] Componentes base com CSS Modules, `lucide-react` e Radix
+- [x] Textos via `t()` em pt-BR e en
+- [x] Foco visível, ESC em diálogos e contraste medido
+- [ ] Estado da impressora com ponto e texto, no lote da lateral
+- [ ] Escala real de 125% e 150% e a marca definitiva
 
 ## Decisões
 
@@ -30,9 +32,9 @@ Nenhuma.
 
 | ID | Requisito | Situação |
 |---|---|---|
-| PS-A026 | Tokens da norma de estilo, tema escuro, foco visível, ESC fecha diálogos, sem emoji, `aria-live` para o estado | MISSING |
-| PS-A027 | Textos em pt-BR e en via `t()` | PARTIAL |
-| PS-A047 | Frontend React + TypeScript, CSS Modules, lucide-react, Radix | MISSING |
+| PS-A026 | Tokens da norma de estilo, tema escuro, foco visível, ESC fecha diálogos, sem emoji, `aria-live` para o estado | PARTIAL (353f54d) |
+| PS-A027 | Textos em pt-BR e en via `t()` | OK (353f54d) |
+| PS-A047 | Frontend React + TypeScript, CSS Modules, lucide-react, Radix | OK (353f54d) |
 
 ## Especificação
 

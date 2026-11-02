@@ -13,6 +13,10 @@ Escolher por documento quais impressoras recebem o arquivo e em que modo de pape
 - [ ] Campo de lote com resumo e botão "Imprimir frente" com a contagem
 - [ ] "Calibrar…" em impressora sem modo
 
+## A reavaliar com o conteúdo real
+
+Lateral de 240 px e altura mínima de 420 px, com a linha de impressora e "Imprimir frente" sempre visível; o que Ctrl+P faz; menu de contexto no campo de lote.
+
 ## Pronto quando
 
 Trocar de aba troca a seleção, e o modo escolhido define `passada1_inversa`.

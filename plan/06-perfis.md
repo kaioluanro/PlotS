@@ -26,8 +26,8 @@ Um perfil salvo é reaberto igual, e arquivo corrompido nunca derruba o programa
 
 | ID | Requisito | Situação |
 |---|---|---|
-| PS-A045 | Config com serde, toml e directories; perfis em `%APPDATA%/plots/perfis.toml` | PARTIAL (72030fb) |
-| PS-A063 | Perfil por fila: chave com o nome da fila e apelido amigável | PARTIAL (72030fb) |
+| PS-A045 | Config com serde, toml e directories; perfis em `%APPDATA%/plots/perfis.toml` | PARTIAL |
+| PS-A063 | Perfil por fila: chave com o nome da fila e apelido amigável | PARTIAL |
 
 ## Licenças de terceiros
 

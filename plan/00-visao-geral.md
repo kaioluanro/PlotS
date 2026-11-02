@@ -1,6 +1,6 @@
 # Visão geral, arquitetura e fases
 
-**Estado:** Em andamento · OK 0 · PARTIAL 3 · MISSING 0 · BUG 0 · N/A 1
+**Estado:** Em andamento · OK 1 · PARTIAL 2 · MISSING 0 · BUG 0 · N/A 1
 
 ## Objetivo
 
@@ -27,7 +27,7 @@ Nenhuma.
 | ID | Requisito | Situação |
 |---|---|---|
 | PS-A046 | Erros com thiserror e logs com tracing | PARTIAL |
-| PS-A082 | Workspace Cargo com plots-core, plots-print, plots-cli, src-tauri e ui | PARTIAL |
+| PS-A082 | Workspace Cargo com plots-core, plots-print, plots-cli, src-tauri e ui | OK (353f54d) |
 | PS-A083 | Um único `target/` (até 2 GB); artefatos de verificação removidos após o registro | PARTIAL |
 | PS-A092 | Uso obrigatório da craft-team e do Graphify | N/A |
 

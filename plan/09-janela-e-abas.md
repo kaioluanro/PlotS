@@ -1,6 +1,6 @@
 # Janela, barra superior e abas
 
-**Estado:** Não iniciado · OK 0 · PARTIAL 0 · MISSING 4 · BUG 0 · N/A 0
+**Estado:** Em andamento · OK 1 · PARTIAL 3 · MISSING 0 · BUG 0 · N/A 0
 
 ## Objetivo
 
@@ -8,10 +8,12 @@ Janela sem menus, com uma barra única e um documento por aba.
 
 ## Plano de implementação
 
-- [ ] Criar o app Tauri 2 com React e TypeScript
-- [ ] Barra própria com arrasto da janela e controles
-- [ ] Abas com estado próprio e confirmação ao fechar com impressão em andamento
-- [ ] Atalhos de teclado e arrastar PDF para abrir aba
+- [x] Criar o app Tauri 2 com React e TypeScript
+- [x] Barra própria com arrasto da janela e controles
+- [x] Abas com estado próprio e confirmação ao fechar com impressão em andamento, na aba e na janela; a janela nunca fica presa se a interface travar
+- [x] Atalhos de teclado e arrastar PDF para abrir aba; recarga do WebView2 bloqueada
+- [ ] Confirmar no lote de impressão que fechar mantém a fila e perde o verso, como diz o diálogo
+- [ ] Verificação manual: bordas, sombra, cantos, Snap Layouts, F5, Ctrl+R e Alt+F4
 
 ## Pronto quando
 
@@ -25,10 +27,10 @@ Abrir, trocar e fechar documentos sem terminal, só com teclado ou mouse.
 
 | ID | Requisito | Situação |
 |---|---|---|
-| PS-A019 | Janela sem menus; barra superior única (ícone, botão da lateral, abas, "+", controles) | MISSING |
-| PS-A022 | Abas por documento com estado próprio; confirmação ao fechar com impressão em andamento | MISSING |
-| PS-A023 | Atalhos Ctrl+O, Ctrl+T, Ctrl+W, Ctrl+Tab, Ctrl+B; arrastar PDF abre aba | MISSING |
-| PS-A079 | Interface Tauri + pdf.js: visualizador, painel de impressoras, cartões com figura, fluxo sem terminal | MISSING |
+| PS-A019 | Janela sem menus; barra superior única (ícone, botão da lateral, abas, "+", controles) | OK (353f54d) |
+| PS-A022 | Abas por documento com estado próprio; confirmação ao fechar com impressão em andamento | PARTIAL (353f54d) |
+| PS-A023 | Atalhos Ctrl+O, Ctrl+T, Ctrl+W, Ctrl+Tab, Ctrl+B; arrastar PDF abre aba | PARTIAL (353f54d) |
+| PS-A079 | Interface Tauri + pdf.js: visualizador, painel de impressoras, cartões com figura, fluxo sem terminal | PARTIAL (353f54d) |
 
 ## Especificação
 

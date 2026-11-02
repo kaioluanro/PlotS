@@ -1,6 +1,6 @@
 # Visualizador de PDF
 
-**Estado:** Não iniciado · OK 0 · PARTIAL 0 · MISSING 3 · BUG 0 · N/A 0
+**Estado:** Em andamento · OK 0 · PARTIAL 1 · MISSING 2 · BUG 0 · N/A 0
 
 ## Objetivo
 
@@ -26,7 +26,7 @@ Abrir um PDF mostra páginas e miniaturas, e o intervalo escolhido chega ao plan
 |---|---|---|
 | PS-A013 | Abrir PDF (arrastar, "Abrir com") e escolher o intervalo de páginas | MISSING |
 | PS-A025 | Visualizador pdf.js com miniaturas, página e zoom | MISSING |
-| PS-A039 | App Tauri 2 com webview e pdf.js | MISSING |
+| PS-A039 | App Tauri 2 com webview e pdf.js | PARTIAL (353f54d) |
 
 ## Especificação
 

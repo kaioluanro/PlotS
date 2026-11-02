@@ -30,7 +30,7 @@ As respostas preenchem `passada2_inversa` e `verso_girar_180`, e o perfil salvo 
 | PS-A005 | `passada2_inversa` e `verso_girar_180` ficam "a calibrar", sem presunção | PARTIAL |
 | PS-A070 | PDF de teste de calibração com números grandes e setas | OK (cf22592) |
 | PS-A071 | Calibração: 2 folhas com páginas 1 a 4, duas perguntas e ajuste do perfil | PARTIAL |
-| PS-A075 | `plots calibrar X` | PARTIAL (92772e5) |
+| PS-A075 | `plots calibrar X` | PARTIAL |
 | PS-A089 | Teste de calibração ajusta as respostas relativas ao perfil testado | OK |
 
 ## Especificação

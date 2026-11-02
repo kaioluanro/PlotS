@@ -2,7 +2,7 @@
 
 Data: 2026-11-02. A especificação foi dividida depois em `plan/`, então as linhas de `AGENTS.md` citadas abaixo são da versão anterior. Escopo: especificação em `AGENTS.md` (seções de Fases, Modo simulação, Perfis, Papel, Múltiplas impressoras, Windows e Interface). Nenhum código de produto foi alterado. Nenhum commit. `Cargo.toml`, `Cargo.lock`, `AGENTS.md`, `CLAUDE.md` e `estilo-ui-ux.md` mantêm os mesmos hashes (md5 conferido antes e depois). **Atenção:** o `.gitignore` foi reescrito às 13:56:41, durante a auditoria, por outro processo ou usuário (este agente não o editou). O conteúdo novo acrescenta `/.claude/`, `/.codex/`, `/estilo-ui-ux.md`, `/plan/`, `/AUDIT-*.md` e `/STATUS-MANUAIS.md`, e por isso o `git status` mostra só `AGENTS.md` e `CLAUDE.md`. Não foi revertido; decisão do usuário.
 
-Contagem: **OK 29 · PARTIAL 25 · MISSING 37 · BUG 0 · N/A 2** (93 requisitos)
+Contagem: **OK 33 · PARTIAL 28 · MISSING 30 · BUG 0 · N/A 2** (93 requisitos)
 
 Verificação executada:
 - `cargo test --workspace --locked`: 51 testes passam (9 de integração do CLI, 19 em plots-core, 12 em plots-pdf, 11 em plots-print). Tempo de 30 s.
@@ -43,15 +43,15 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A016 | Fluxo | Botão do verso libera só depois que o spooler confirma a frente | PARTIAL | Lógica no núcleo: `plots-print/src/job.rs:112-145` (só `Concluido` libera; `EmAndamento` e `Falhou` não). Teste `pendencia_e_falha_nao_liberam_verso` (job.rs:268-277). O `SimBackend` responde sempre `Concluido` (job.rs:193-195), então não testa spooler real. |
 | PS-A017 | Fluxo | Folha de controle opcional no canto do verso | MISSING | Sem ocorrência no código. |
 | PS-A018 | Fluxo | "Reimprimir lote" refaz só aquele lote | PARTIAL | `Job::reiniciar_lote` (`job.rs:76-83`) e `Simulador::cancelar_lote` (`plots-print/src/lib.rs:144-155`). Nenhum comando no CLI nem na UI. |
-| PS-A019 | Interface | Janela sem menus; barra superior única (ícone, botão da lateral, abas, "+", controles) | MISSING | Fase 4. `ui/` e `src-tauri/` não existem. |
+| PS-A019 | Interface | Janela sem menus; barra superior única (ícone, botão da lateral, abas, "+", controles) | OK (353f54d) | Barra sem menus, medidas conferidas no app. |
 | PS-A020 | Interface | Splash 480×300, carregamento até 10 s, depois a janela principal | MISSING | Fase 4. |
 | PS-A021 | Interface | Barra lateral de impressoras com caixa de seleção e seletor de modo (Traseira, Gaveta, "Calibrar…") | MISSING | Fase 4. O mapeamento de modo existe só no CLI (`plots-cli/src/lib.rs:15-25`). |
-| PS-A022 | Interface | Abas por documento com estado próprio; confirmação ao fechar com impressão em andamento | MISSING | Fase 4. |
-| PS-A023 | Interface | Atalhos Ctrl+O, Ctrl+T, Ctrl+W, Ctrl+Tab, Ctrl+B; arrastar PDF abre aba | MISSING | Fase 4. |
+| PS-A022 | Interface | Abas por documento com estado próprio; confirmação ao fechar com impressão em andamento | PARTIAL (353f54d) | A aba guarda só a impressão em andamento; faltam impressoras, intervalo e lote. |
+| PS-A023 | Interface | Atalhos Ctrl+O, Ctrl+T, Ctrl+W, Ctrl+Tab, Ctrl+B; arrastar PDF abre aba | PARTIAL (353f54d) | Ctrl+W, Ctrl+Tab e Ctrl+B testados no app; seletor e arrasto nativos sem teste real. |
 | PS-A024 | Interface | Seleção de impressoras por documento (decidido no AGENTS) | MISSING | Fase 4. |
 | PS-A025 | Interface | Visualizador pdf.js com miniaturas, página e zoom | MISSING | Fase 4. pdf.js não está no repositório. |
-| PS-A026 | Interface | Tokens da norma de estilo, tema escuro, foco visível, ESC fecha diálogos, sem emoji, `aria-live` para o estado | MISSING | Fase 4. Existe só `estilo-ui-ux.md`. |
-| PS-A027 | Interface | Textos em pt-BR e en via `t()` | PARTIAL | Mensagens do CLI estão em pt-BR fixo (`plots-cli/src/lib.rs`). Não há en nem `t()`. |
+| PS-A026 | Interface | Tokens da norma de estilo, tema escuro, foco visível, ESC fecha diálogos, sem emoji, `aria-live` para o estado | PARTIAL (353f54d) | Tokens, temas, foco e ESC prontos; o `aria-live` do estado de impressão depende do lote de impressão. |
+| PS-A027 | Interface | Textos em pt-BR e en via `t()` | OK (353f54d) | `t()` em pt-BR e en nesta tela. |
 | PS-A028 | Modo simulação | Rodar o fluxo inteiro sem impressora (`simular`) | OK | `plots-cli/src/lib.rs:51-223`. Testes `plots-cli/tests/cli.rs:8-43` e `94-149`. Execução verificada. |
 | PS-A029 | Modo simulação | Chave "Simular impressão" por documento; botão vira "Simular frente"; selo SIMULAÇÃO | MISSING | Fase 4. |
 | PS-A030 | Modo simulação | Duas impressoras virtuais "Simulada — Traseira" e "Simulada — Gaveta", com outras combinações possíveis | PARTIAL | Nomes e perfis em `plots-cli/src/lib.rs:27-47`, só acessíveis via `--impressora`. Não aparecem como filas e não há como criar outra combinação. |
@@ -63,7 +63,7 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A036 | Modo simulação | Exportar `passada1.pdf` e `passada2.pdf` para abrir no Firefox | PARTIAL | `gerar-pdf` gera os PDFs (`plots-cli/src/lib.rs:225-310`). Nomes diferentes. Abertura no Firefox não verificada. |
 | PS-A037 | Modo simulação | Exportar PDF de folhas finais (frente e verso lado a lado) | OK (6baa24a) | `gerar-pdf --folhas-finais`, conferido com PyMuPDF; sem conferência no Firefox. |
 | PS-A038 | Modo simulação | Modelo com `proptest`: 8 perfis, 1 a 200 páginas, lotes de 1 a 50 folhas, maço final 1\|2, 3\|4 | OK (6baa24a) | proptest com tabela fixa de 8 perfis; só traseira e gaveta correspondem às impressoras simuladas, e o modelo da gaveta será revisto. |
-| PS-A039 | Arquitetura | App Tauri 2 com webview e pdf.js | MISSING | Fase 4. Nenhuma dependência de Tauri. |
+| PS-A039 | Arquitetura | App Tauri 2 com webview e pdf.js | PARTIAL (353f54d) | App Tauri 2 pronto; falta o pdf.js. |
 | PS-A040 | Arquitetura | Camada de backends: trait com duas implementações (Windows e Simulado) | PARTIAL | Trait em `job.rs:19-25`. Só existe `SimBackend`. |
 | PS-A041 | Arquitetura | lopdf para reordenar, extrair, inserir página em branco e `/Rotate` | OK | `plots-pdf/src/lib.rs:112-244`. Testes `reabre_ordem_heranca_rotacao_e_branco` (lib.rs:630) e outros. Verificado pelos PDFs gerados. |
 | PS-A042 | Arquitetura | pdfium-render para rasterizar (impressoras que não aceitam PDF) | MISSING | Fase 3. Sem dependência. |
@@ -71,7 +71,7 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A044 | Arquitetura | tokio, um job por impressora em paralelo | MISSING | Fase 5. |
 | PS-A045 | Arquitetura | Config com serde, toml e directories; perfis em `%APPDATA%/plots/perfis.toml` | PARTIAL | Biblioteca `plots-perfis` (72030fb); falta usar no CLI e na interface. |
 | PS-A046 | Arquitetura | Erros com thiserror e logs com tracing | PARTIAL | Erros escritos à mão (`plots-core/src/lib.rs:107-128`, `plots-pdf/src/lib.rs:8-33`). Sem thiserror nem tracing. |
-| PS-A047 | Arquitetura | Frontend React + TypeScript, CSS Modules, lucide-react, Radix | MISSING | Fase 4. |
+| PS-A047 | Arquitetura | Frontend React + TypeScript, CSS Modules, lucide-react, Radix | OK (353f54d) | React, TypeScript, CSS Modules, lucide e Radix. |
 | PS-A048 | Windows | Impressão só pelo PlotS, sem diálogo, envio direto ao spooler | MISSING | Sem backend Windows. |
 | PS-A049 | Windows | Rasterizar na resolução da impressora (GetDeviceCaps); DEVMODE com simplex, sem agrupar, bandeja manual e tamanho | MISSING | Fase 3. |
 | PS-A050 | Windows | Acompanhar o trabalho no spooler (GetJob ou notificação) | MISSING | Fase 3. |
@@ -103,10 +103,10 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A076 | Fase 3 | Backend CUPS ou Windows | MISSING | Ver PS-A048. |
 | PS-A077 | Fase 3 | Critério: simulação correta nas duas impressoras virtuais | PARTIAL | `plots simular` está correto (PS-A028). O critério completo depende de `imprimir` e `calibrar`. |
 | PS-A078 | Fase 3 | Critério: 3 lotes seguidos sem erro numa impressora real | MISSING | Não verificável nesta máquina: não há impressora real e nada foi enviado a impressoras. Depende de decisão do usuário. |
-| PS-A079 | Fase 4 | Interface Tauri + pdf.js: visualizador, painel de impressoras, cartões com figura, fluxo sem terminal | MISSING | Bloco inteiro não existe (`ui/`, `src-tauri/`). |
+| PS-A079 | Fase 4 | Interface Tauri + pdf.js: visualizador, painel de impressoras, cartões com figura, fluxo sem terminal | PARTIAL (353f54d) | Só a janela; faltam visualizador, impressoras e cartões. |
 | PS-A080 | Fase 5 | Várias impressoras, jobs paralelos, espelho e divisão, status do spooler, fila virtual "PlotS" | MISSING | Bloco. Só o núcleo de distribuição existe (PS-A065). |
 | PS-A081 | Fase 6 | Instalador (tauri bundle), reimprimir lote, folha de controle, histórico | MISSING | Bloco. |
-| PS-A082 | Estrutura | Workspace Cargo com plots-core, plots-print, plots-cli, src-tauri e ui | PARTIAL | `Cargo.toml:2` lista 4 membros, incluindo plots-pdf, que o AGENTS não cita. `src-tauri/` e `ui/` não existem. |
+| PS-A082 | Estrutura | Workspace Cargo com plots-core, plots-print, plots-cli, src-tauri e ui | OK (353f54d) | Workspace com `src-tauri` e `ui`. |
 | PS-A083 | Limpeza do disco | Um único `target/` (até 2 GB); artefatos de verificação removidos após o registro | PARTIAL | `target/` tem 444 MB. `.qa-pdf/` mantém `entrada.pdf`, `saida.pdf`, `saida-1..3.png` da sessão anterior, já registrados. Os arquivos da auditoria foram apagados no fim. |
 | PS-A084 | Segurança dos dados | Não sobrescrever arquivos existentes; em falha, remover só o que foi criado | OK | `plots-cli/src/lib.rs:286-302` (`create_new` e rollback). Verificado: segunda execução na mesma pasta falha e mantém os PDFs; pasta com `lote-0001-passada-2.pdf` pré-existente mantém o conteúdo "ORIGINAL". |
 | PS-A085 | Segurança dos dados | PDF criptografado e inválido são recusados com mensagem | OK | `plots-pdf/src/lib.rs:42-46` e teste `rejeita_pdf_criptografado` (lib.rs:712). Verificado: "PDF criptografado não é suportado"; arquivo inválido: "erro ao processar PDF". |
