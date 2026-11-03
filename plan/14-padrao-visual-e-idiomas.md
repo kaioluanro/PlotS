@@ -22,6 +22,10 @@ Aplicar `estilo-ui-ux.md` em toda a interface, em pt-BR e en.
 - O nome da impressora vai até 2 linhas, com `line-clamp: 2`, `overflow-wrap: anywhere` e `title`, como exceção à §6.5 e à §8.4 de `estilo-ui-ux.md`: errar a impressora desperdiça papel, e nomes de fila costumam diferir só no fim. O estado também vai até 2 linhas, com `title`.
 - "Calibrar…" usa padding `2px 8px` em 11 px, como exceção ao `4px 10px` do botão pequeno da norma: o botão fica na primeira linha, ao lado do nome, em uma lateral de 240 px.
 
+## Pendente
+
+Em movimento reduzido, a regra global de `theme.css` também para `.girando`, e a norma manda o indicador continuar girando. Restaurar a duração de 900 ms em `.girando`.
+
 ## Pronto quando
 
 A autoridade de interface aprova as telas nos dois temas.
