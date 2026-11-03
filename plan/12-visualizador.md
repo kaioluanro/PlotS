@@ -1,6 +1,6 @@
 # Visualizador de PDF
 
-**Estado:** Em andamento · OK 2 · PARTIAL 1 · MISSING 0 · BUG 0 · N/A 0
+**Estado:** Concluído · OK 3 · PARTIAL 0 · MISSING 0 · BUG 0 · N/A 0
 
 ## Objetivo
 
@@ -11,7 +11,7 @@ Mostrar o documento e as miniaturas na janela; toda a decisão de ordem continua
 - [x] Integrar `pdfjs-dist` na webview
 - [x] Barra com página e zoom
 - [x] Miniaturas
-- [ ] Escolha do intervalo de páginas
+- [x] Escolha do intervalo de páginas
 
 ## Decisões e limitações
 
@@ -23,6 +23,9 @@ Mostrar o documento e as miniaturas na janela; toda a decisão de ordem continua
 - **Pendente:** medir a troca de aba com um PDF de 20 MB e, se passar de 300 ms, manter vivo o documento da última aba; Ctrl+roda; ir à página digitando o número; `--panel-hover` no tema claro; primeiro "+" quase não muda o zoom; foco em "Tentar de novo"; ícones de "−" e "+" em cinza nas cores forçadas do tema escuro; rever os 8 `Foxit` Serif e Fixed, que parecem sem uso com `useSystemFonts`.
 - **Memória:** PDF de 425 MB, base de 185 MB, pico de 1,39 GB, 414 MB depois de fechar. O resíduo está na GPU do WebView2, causa não determinada.
 - **Conferido no exe de release:** abertura, página e miniatura de um PDF com JPX. **Não verificado:** JBIG2 aritmético (sem codificador para gerar o teste; pelo código usa o mesmo módulo do MMR), instalador, captura de erro de página, escalas de 125% e 150%, leitor de tela real.
+
+- **Intervalo de páginas (`ccb1ebc`):** um trecho contínuo por aba, nas opções da lateral. Vários trechos separados e marcar o trecho nas miniaturas ficaram de fora. A linha "Páginas" nunca cede espaço enquanto há botão de envio. Texto válido deixa o botão ativo na hora, então "10" a caminho de "100" sai como 10 se a pessoa clicar nesse instante; no envio real, a confirmação mostra o trecho.
+- **Não verificado no intervalo:** gesto real de arrastar, que só foi exercitado pelo evento interno; "Reimprimir" de um trecho no app, só em teste Rust; papéis mistos no diálogo, só em teste Rust; leitor de tela e cores forçadas reais do Windows.
 
 ## Pronto quando
 
@@ -36,7 +39,7 @@ Abrir um PDF mostra páginas e miniaturas, e o intervalo escolhido chega ao plan
 
 | ID | Requisito | Situação |
 |---|---|---|
-| PS-A013 | Abrir PDF (arrastar, "Abrir com") e escolher o intervalo de páginas | PARTIAL |
+| PS-A013 | Abrir PDF (arrastar, "Abrir com") e escolher o intervalo de páginas | OK |
 | PS-A025 | Visualizador pdf.js com miniaturas, página e zoom | OK |
 | PS-A039 | App Tauri 2 com webview e pdf.js | OK |
 

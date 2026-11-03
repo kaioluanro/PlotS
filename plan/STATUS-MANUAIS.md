@@ -1,6 +1,6 @@
 # STATUS
 
-Requisitos: OK 45 · PARTIAL 34 · MISSING 12 · BUG 0 · N/A 2 (93). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
+Requisitos: OK 46 · PARTIAL 33 · MISSING 12 · BUG 0 · N/A 2 (93). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
 
 | Plano | OK | PARTIAL | MISSING | BUG | N/A | Estado |
 |---|---|---|---|---|---|---|
@@ -16,7 +16,7 @@ Requisitos: OK 45 · PARTIAL 34 · MISSING 12 · BUG 0 · N/A 2 (93). Detalhes e
 | [Janela, barra superior e abas](09-janela-e-abas.md) | 1 | 3 | 0 | 0 | 0 | Em andamento |
 | [Tela de abertura](10-splash.md) | 0 | 1 | 0 | 0 | 0 | Em andamento |
 | [Barra lateral de impressoras](11-lateral-impressoras.md) | 3 | 0 | 0 | 0 | 0 | Concluído |
-| [Visualizador de PDF](12-visualizador.md) | 2 | 1 | 0 | 0 | 0 | Em andamento |
+| [Visualizador de PDF](12-visualizador.md) | 3 | 0 | 0 | 0 | 0 | Concluído |
 | [Fluxo de impressão e recolocação](13-fluxo-e-recolocacao.md) | 3 | 3 | 0 | 0 | 0 | Em andamento |
 | [Padrão visual e idiomas](14-padrao-visual-e-idiomas.md) | 2 | 1 | 0 | 0 | 0 | Em andamento |
 | [Múltiplas impressoras](15-multiplas-impressoras.md) | 0 | 3 | 5 | 0 | 0 | Em andamento |
@@ -48,8 +48,9 @@ Requisitos: OK 45 · PARTIAL 34 · MISSING 12 · BUG 0 · N/A 2 (93). Detalhes e
 | seletor-modelos | `826b726` | concluído; sem medição em papel |
 | cartoes-impressao | `256e8ce` | concluído; simuladas e fila de PDF, sem impressora real; figura do gesto pendente |
 | visualizador | `b29796e` | concluído; conferido com PDFs de teste, sem o intervalo de páginas |
+| intervalo-paginas | `ccb1ebc` | concluído; simuladas e fila de PDF, gesto real de arrastar não verificado |
 
-**Próximo:** escolher o intervalo de páginas (`12-visualizador`); depois, figura do gesto (`13-fluxo-e-recolocacao`), modos de impressão múltipla (`15-multiplas-impressoras`) e instalador (`17-acabamento`).
+**Próximo:** figura do gesto e avisos do spooler (`13-fluxo-e-recolocacao`), modos de impressão múltipla (`15-multiplas-impressoras`) e instalador (`17-acabamento`).
 
 ## Bloqueado ou dependente do usuário
 

@@ -37,7 +37,7 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A010 | Algoritmo | Gerar `passada1.pdf` e `passada2.pdf` temporários com lopdf | PARTIAL | Gerados como `lote-NNNN-passada-N.pdf` (`plots-cli/src/lib.rs:278-284`), persistentes, não temporários. Nome diverge da especificação. |
 | PS-A011 | Algoritmo | Mostrar o gesto de recolocação e esperar "Imprimir verso" antes da passada 2 | OK (`256e8ce`) | Cartão mostra o gesto e espera "Imprimir verso"; conferido no app com as duas simuladas. |
 | PS-A012 | Gesto único | Cartão com a frase fixa e a figura do gesto | PARTIAL (`256e8ce`) | Cartão com a frase do gesto. Falta a figura. |
-| PS-A013 | Fluxo | Abrir PDF (arrastar, "Abrir com") e escolher o intervalo de páginas | PARTIAL (`b29796e`) | Abrir PDF pela barra e por "Abrir com". Falta escolher o intervalo de páginas e conferir arrastar. |
+| PS-A013 | Fluxo | Abrir PDF (arrastar, "Abrir com") e escolher o intervalo de páginas | OK (`ccb1ebc`) | Trecho contínuo por aba até o plano, com os números originais; soltar um PDF abre a aba. O gesto nativo de arrastar não foi feito no teste. |
 | PS-A014 | Fluxo | Marcar impressoras e tamanho do lote (padrão 10 folhas) | OK (f6e3433) | Caixas por aba e campo de lote com padrão 10, de 1 a 50. |
 | PS-A015 | Fluxo | "Imprimir frente" envia para cada impressora a ordem do seu perfil | PARTIAL (`256e8ce`) | Envio pela janela conferido nas simuladas e na fila de PDF; sem impressora real. |
 | PS-A016 | Fluxo | Botão do verso libera só depois que o spooler confirma a frente | OK (`256e8ce`) | Verso só libera com a confirmação do `Job`; o texto avisa que isso não garante que o papel saiu. |
