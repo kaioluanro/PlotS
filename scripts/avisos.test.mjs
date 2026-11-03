@@ -4,7 +4,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { avisosDoRepositorio, RAIZ } from "./gerar-avisos.mjs";
+import { execFileSync } from "node:child_process";
+import { ARGUMENTOS_DA_ARVORE, avisosDoRepositorio, RAIZ } from "./gerar-avisos.mjs";
 import {
   arquivoExcluido,
   cratesDeProducao,
@@ -186,6 +187,19 @@ test("a lista gerada cobre todo crate e pacote de produção e deixa a fonte de 
   assert.ok(!/LICENSE_LIBERATION/i.test(texto));
   assert.ok(!texto.includes("LIBERATION FONT SOFTWARE"));
   assert.ok(!texto.includes("LICENSE AGREEMENT AND LIMITED PRODUCT WARRANTY"));
+});
+
+test("o simulador de testes e as dependências dele ficam fora da árvore do aviso", () => {
+  const arvore = execFileSync("cargo", ARGUMENTOS_DA_ARVORE, {
+    cwd: RAIZ,
+    maxBuffer: 64 * 1024 * 1024,
+    encoding: "utf8",
+  });
+  const nomes = new Set(arvore.split(/\r?\n/).map((linha) => linha.split(" ")[0]));
+  assert.ok(nomes.has("plots-core"), "a árvore veio sem o programa");
+  for (const fora of ["plotsim-core", "plotsim-physics", "notify", "notify-types"]) {
+    assert.ok(!nomes.has(fora), `${fora} apareceu na árvore`);
+  }
 });
 
 test("o arquivo versionado é igual ao que o gerador produz agora", () => {

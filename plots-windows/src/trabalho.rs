@@ -11,6 +11,8 @@ use plots_print::job::EstadoEnvio;
 /// Bits de `JOB_STATUS_*` da documentação do winspool.
 const ERRO: u32 = 0x0000_0002;
 const EXCLUINDO: u32 = 0x0000_0004;
+const SPOOLING: u32 = 0x0000_0008;
+const IMPRIMINDO: u32 = 0x0000_0010;
 const OFFLINE: u32 = 0x0000_0020;
 const SEM_PAPEL: u32 = 0x0000_0040;
 const IMPRESSO: u32 = 0x0000_0080;
@@ -95,7 +97,14 @@ fn avisos_ligados(
 
 /// O trabalho já terminou ou está saindo da fila: o estado da fila não muda mais nada nele.
 pub(crate) fn trabalho_terminou(status: u32) -> bool {
-    status & (IMPRESSO | COMPLETO | RETIDO | EXCLUINDO | EXCLUIDO) != 0
+    status & (EXCLUINDO | EXCLUIDO) != 0 || saida_concluida(status)
+}
+
+/// A saída do trabalho está pronta. Retido sozinho não basta: há driver que liga esse bit antes de
+/// gravar a saída, junto com imprimindo ou gravando.
+fn saida_concluida(status: u32) -> bool {
+    status & (IMPRESSO | COMPLETO) != 0
+        || (status & RETIDO != 0 && status & (IMPRIMINDO | SPOOLING) == 0)
 }
 
 /// Traduz o campo `Status` de `JOB_INFO_2W`, sem olhar a fila.
@@ -128,15 +137,19 @@ pub fn traduzir_com_fila(status: u32, fila: Option<&Estado>) -> SituacaoTrabalho
     if !falhas.is_empty() {
         return falhou(falhas.join("; "));
     }
-    if status & (IMPRESSO | COMPLETO | RETIDO) != 0 {
+    if saida_concluida(status) {
         return SituacaoTrabalho {
             estado: EstadoEnvio::Concluido,
             motivo: None,
             condicao: None,
         };
     }
+    // Há driver cujo trabalho bem-sucedido termina assim: retido, saindo da fila e ainda imprimindo.
+    // Isso não decide nada; o trabalho some logo depois, e quem acompanha trata o sumiço.
+    let saindo_retido =
+        status & (RETIDO | EXCLUINDO | EXCLUIDO | IMPRIMINDO) == (RETIDO | EXCLUINDO | IMPRIMINDO);
     // Excluir sem ter terminado quer dizer que alguém tirou o trabalho da fila.
-    if status & (EXCLUINDO | EXCLUIDO) != 0 {
+    if status & (EXCLUINDO | EXCLUIDO) != 0 && !saindo_retido {
         return falhou("o trabalho foi excluído da fila antes de terminar".to_string());
     }
     // Os demais bits, inclusive pausado, só pedem para esperar: quem pausou pode retomar.
@@ -319,16 +332,69 @@ mod testes {
         }
     }
 
+    #[test]
+    fn retido_saindo_da_fila_e_imprimindo_espera_o_sumico() {
+        let status = RETIDO | EXCLUINDO | IMPRIMINDO;
+        let situacao = traduzir_status(status);
+        assert_eq!(situacao.estado, EstadoEnvio::EmAndamento);
+        assert_eq!(situacao.motivo, None);
+        assert_eq!(situacao.condicao, None);
+        // Saindo da fila, a bandeja vazia depois da última folha não vira aviso.
+        let situacao = com_fila(status, FILA_SEM_PAPEL);
+        assert_eq!(situacao.estado, EstadoEnvio::EmAndamento);
+        assert_eq!(situacao.motivo, None);
+        // Com erro ligado, a falha continua valendo.
+        assert_eq!(traduzir_status(status | ERRO).estado, EstadoEnvio::Falhou);
+        // Já excluído de vez, ou sem o retido, continua sendo falha.
+        assert_eq!(
+            traduzir_status(status | EXCLUIDO).estado,
+            EstadoEnvio::Falhou
+        );
+        assert_eq!(
+            traduzir_status(EXCLUINDO | IMPRIMINDO).estado,
+            EstadoEnvio::Falhou
+        );
+    }
+
     /// Bits de `PRINTER_STATUS_*` usados nos testes abaixo.
     const FILA_ATOLADA: u32 = 0x8;
     const FILA_SEM_PAPEL: u32 = 0x10;
     const FILA_OFFLINE: u32 = 0x80;
     const FILA_INDISPONIVEL: u32 = 0x1000;
     const FILA_SERVIDOR_OFFLINE: u32 = 0x0200_0000;
-    const IMPRIMINDO: u32 = 0x10;
 
     fn com_fila(status: u32, fila: u32) -> SituacaoTrabalho {
         traduzir_com_fila(status, Some(&Estado::de_bits(fila)))
+    }
+
+    #[test]
+    fn retido_ainda_imprimindo_ou_gravando_nao_terminou() {
+        for status in [RETIDO | IMPRIMINDO, RETIDO | SPOOLING] {
+            assert!(!trabalho_terminou(status), "{status:#x}");
+            let situacao = traduzir_status(status);
+            assert_eq!(situacao.estado, EstadoEnvio::EmAndamento, "{status:#x}");
+            assert_eq!(situacao.motivo, None, "{status:#x}");
+        }
+    }
+
+    #[test]
+    fn retido_imprimindo_com_a_fila_atolada_mantem_o_motivo() {
+        let situacao = com_fila(RETIDO | IMPRIMINDO, FILA_ATOLADA);
+        assert_eq!(situacao.estado, EstadoEnvio::EmAndamento);
+        assert_eq!(situacao.motivo.as_deref(), Some(TEXTO_ATOLADO));
+        assert_eq!(situacao.condicao, Some(CondicaoDoAviso::Atolado));
+    }
+
+    #[test]
+    fn retido_impresso_ou_sozinho_continua_concluido() {
+        for status in [RETIDO | IMPRESSO, RETIDO, RETIDO | IMPRESSO | IMPRIMINDO] {
+            assert!(trabalho_terminou(status), "{status:#x}");
+            assert_eq!(
+                traduzir_status(status).estado,
+                EstadoEnvio::Concluido,
+                "{status:#x}"
+            );
+        }
     }
 
     #[test]

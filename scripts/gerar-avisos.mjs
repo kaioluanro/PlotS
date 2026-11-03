@@ -25,6 +25,9 @@ export function pastaDoPdfium() {
   return join(process.env.LOCALAPPDATA, "plots-build", "pdfium", "chromium-8125");
 }
 
+// O simulador de testes não vai no instalador: nem ele nem as dependências dele entram no aviso.
+export const ARGUMENTOS_DA_ARVORE = ["tree", "--workspace", "--exclude", "plotsim-*", "--edges", "no-build,no-dev,no-proc-macro", "--target", ALVO, "--prefix", "none", "--format", "{p}", "--offline", "--locked"];
+
 export function avisosDoRepositorio() {
   const saida = execFileSync(
     "cargo",
@@ -33,7 +36,7 @@ export function avisosDoRepositorio() {
   );
   const arvore = execFileSync(
     "cargo",
-    ["tree", "--workspace", "--edges", "no-build,no-dev,no-proc-macro", "--target", ALVO, "--prefix", "none", "--format", "{p}", "--offline", "--locked"],
+    ARGUMENTOS_DA_ARVORE,
     { cwd: RAIZ, maxBuffer: 64 * 1024 * 1024, encoding: "utf8" },
   );
   const pastaUi = join(RAIZ, "ui");

@@ -1,0 +1,19 @@
+[package]
+name = "plotsim-core"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+notify = { version = "=8.2.1", default-features = false }
+plots-pdf = { path = "../../plots-pdf" }
+plots-windows = { path = "../../plots-windows" }
+serde = { version = "=1.0.229", features = ["derive"] }
+toml = "=1.1.6"
+
+[target.'cfg(windows)'.dependencies]
+pdfium-render = { version = "=0.9.5", default-features = false, features = ["pdfium_8125", "thread_safe"] }
+windows = { version = "=0.62.2", default-features = false, features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Printing", "Win32_Security"] }
+
+[dev-dependencies]
+lopdf = "0.46.0"
