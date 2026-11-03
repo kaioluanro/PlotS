@@ -1,6 +1,6 @@
 # STATUS
 
-Requisitos: OK 46 · PARTIAL 33 · MISSING 12 · BUG 0 · N/A 2 (93). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
+Requisitos: OK 46 · PARTIAL 34 · MISSING 11 · BUG 0 · N/A 2 (93). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
 
 | Plano | OK | PARTIAL | MISSING | BUG | N/A | Estado |
 |---|---|---|---|---|---|---|
@@ -21,9 +21,11 @@ Requisitos: OK 46 · PARTIAL 33 · MISSING 12 · BUG 0 · N/A 2 (93). Detalhes e
 | [Padrão visual e idiomas](14-padrao-visual-e-idiomas.md) | 2 | 1 | 0 | 0 | 0 | Em andamento |
 | [Múltiplas impressoras](15-multiplas-impressoras.md) | 0 | 3 | 5 | 0 | 0 | Em andamento |
 | [Impressora virtual](16-impressora-virtual.md) | 0 | 0 | 1 | 0 | 0 | Não iniciado |
-| [Acabamento e instalador](17-acabamento.md) | 1 | 0 | 2 | 0 | 0 | Em andamento |
+| [Acabamento e instalador](17-acabamento.md) | 1 | 1 | 1 | 0 | 0 | Em andamento |
 | [Linux e macOS](18-linux-e-macos.md) | 0 | 0 | 1 | 0 | 0 | Não iniciado |
 | [Modelos de impressora](19-modelos-de-impressora.md) | — | — | — | — | — | Em andamento |
+| [Preferências do driver](20-preferencias-do-driver.md) | — | — | — | — | — | Em andamento |
+| [Frente e verso automático](21-frente-e-verso-automatico.md) | — | — | — | — | — | Não iniciado |
 
 ## Lotes
 
@@ -49,10 +51,12 @@ Requisitos: OK 46 · PARTIAL 33 · MISSING 12 · BUG 0 · N/A 2 (93). Detalhes e
 | cartoes-impressao | `256e8ce` | concluído; simuladas e fila de PDF, sem impressora real; figura do gesto pendente |
 | visualizador | `b29796e` | concluído; conferido com PDFs de teste, sem o intervalo de páginas |
 | intervalo-paginas | `ccb1ebc` | concluído; simuladas e fila de PDF, gesto real de arrastar não verificado |
+| instalador | `1a1f6d7` | concluído; instalador gerado, não executado |
 
-**Próximo:** figura do gesto e avisos do spooler (`13-fluxo-e-recolocacao`), modos de impressão múltipla (`15-multiplas-impressoras`) e instalador (`17-acabamento`).
+**Próximo:** figura do gesto e avisos do spooler (`13-fluxo-e-recolocacao`), modos de impressão múltipla (`15-multiplas-impressoras`), engrenagem do driver (`20-preferencias-do-driver`) e frente e verso automático (`21-frente-e-verso-automatico`).
 
 ## Bloqueado ou dependente do usuário
 
 - Impressora real, que o usuário não tem à mão: confirmação dos planos `04-calibracao`, `07-cli-impressao` e `08-impressao-windows`.
 - Imagem da tela de abertura: plano `10-splash`.
+- Executar o instalador em máquina ou conta de teste: plano `17-acabamento`.

@@ -13,7 +13,7 @@ Registro das dependências e dos ativos do PlotS. Atualize a cada lote que troux
 
 ## Entra no binário
 
-Levantamento de 2026-11-02, a partir das licenças declaradas nos metadados; o texto de cada licença será conferido ao gerar os avisos.
+Levantamento de 2026-11-02, a partir das licenças declaradas nos metadados. Em 2026-11-03, `scripts/gerar-avisos.mjs` contou 191 crates de terceiros no grafo de produção e 36 pacotes npm e gerou `THIRD-PARTY-NOTICES` dos arquivos reais; a tabela abaixo é a do levantamento.
 
 **Rust** (133 crates de terceiros no grafo Windows, sem macros):
 
@@ -34,7 +34,7 @@ Levantamento de 2026-11-02, a partir das licenças declaradas nos metadados; o t
 
 **Dependência direta nova do `plots-windows`** (2026-11-02): `windows` 0.62.2, versão exata, licença MIT OR Apache-2.0, com as features `Win32_Foundation`, `Win32_Graphics_Gdi`, `Win32_Graphics_Printing` e `Win32_Security`. Já estava no grafo pelo Tauri; agora também entra pelo `plots-windows`, só no alvo Windows.
 
-**npm** (36 pacotes de produção): OFL-1.1 em `@fontsource/inter` (fonte, ver Ativos); MIT em 30; ISC em `lucide-react`, cuja licença também cita ícones derivados do Feather, usados aqui (`minus`, `plus`, `square`, `x`), então o aviso leva as duas partes; 0BSD em `tslib`; `Apache-2.0 OR MIT` em `@tauri-apps/api` e `@tauri-apps/plugin-dialog`; Apache-2.0 em `pdfjs-dist`. O lock traz ainda 12 pacotes opcionais `@napi-rs/canvas*` (MIT), dependências opcionais do `pdfjs-dist`, sem arquivos no bundle.
+**npm** (36 pacotes de produção): OFL-1.1 em `@fontsource/inter` (fonte, ver Ativos); MIT em 30; ISC em `lucide-react`, cuja licença também cita ícones derivados do Feather, usados aqui (`check`, `chevron-down`, `chevron-right`, `minus`, `plus`, `square`, `trash-2`, `x`, a conferir `arrow-down` e `arrow-up`), então o aviso leva as duas partes; 0BSD em `tslib`; `Apache-2.0 OR MIT` em `@tauri-apps/api` e `@tauri-apps/plugin-dialog`; Apache-2.0 em `pdfjs-dist`. O lock traz ainda 12 pacotes opcionais `@napi-rs/canvas*` (MIT), dependências opcionais do `pdfjs-dist`, sem arquivos no bundle.
 
 **`pdfjs-dist` 6.5.438** (Apache-2.0), versão exata; o pacote não traz `NOTICE`. `pdf.worker.min` e `pdf.renderer.min` entram sem alteração. O build remove o cabeçalho de licença do trecho principal, então o aviso vai em `THIRD-PARTY-NOTICES`. Entram só estes dados do pacote: `cmaps/*.bcmap`, `standard_fonts/Foxit*.pfb`, `wasm/jbig2.wasm` e `wasm/openjpeg.wasm`. **Ficam fora do bundle:** `standard_fonts/LiberationSans-*.ttf` (versão 1.07.4, GPLv2 com exceções), `wasm/qcms_bg.wasm`, `iccs/` e `quickjs-eval`. Os testes de `ui/src/visualizador/recursos.test.ts` barram a Liberation e o `qcms_bg`. Com `useSystemFonts` ligado, as fontes base-14 não embutidas no PDF usam a fonte instalada no sistema do usuário; nada dela é copiado nem distribuído.
 
@@ -90,10 +90,10 @@ Não entram no binário; repetir a checagem do grafo ao montar o instalador.
 
 ## A conferir antes de distribuir
 
-- **`pdfjs-dist`:** levar a Apache-2.0 e os arquivos de licença da linha em Ativos para `THIRD-PARTY-NOTICES`, junto com `wasm/LICENSE_PDFJS_QCMS` e `wasm/LICENSE_QCMS`, porque a cola JavaScript do `qcms` continua dentro de `pdf.worker.min`, embora o `qcms_bg.wasm` não entre. Não levar `LICENSE_LIBERATION`, já que a fonte não é distribuída. Repetir no bundle final a busca por `.ttf`, `qcms_bg.wasm` e fontes em data-URL.
-- **`webview2-com-sys` 0.39.1:** declara MIT, mas traz binários da Microsoft (`WebView2Loader`). Ler os termos do SDK e do Runtime, confirmar o tipo de vínculo no release e registrar os avisos exigidos.
-- **PDFium:** copiar para os avisos os textos de `licenses/`, inteiros, e os de `libc++` e das fontes embutidas, que o pacote não traz; crédito da FreeType e do IJG; confirmação de que a DLL não exige outro redistribuível e de eventuais `NOTICE` da Apache; cópia do `.tgz` guardada fora do Git; uso de "PDFium" só nos avisos, sem sugerir vínculo.
-- **Caminhos locais no executável:** o build de debug contém o nome de usuário. Compilar o release com `--remap-path-prefix` e conferir com busca no arquivo final.
+- **Avisos, feitos em `1a1f6d7`:** SDK do WebView2 1.0.3800.47 com `LICENSE.txt` e `NOTICE.txt`; libc++ e libc++abi com origem fixada; NSIS 3.13 com `COPYING` e a declaração da CPL 1.0, seção 3(b); `nsis_tauri_utils` 0.5.3 (MIT e Apache-2.0); `RUST-STD-NOTICES.html`, copiado do toolchain; seção própria da licença do Vite, pelo auxiliar de pré-carregamento no bundle; licenças aninhadas de `regex-syntax` e `tracing-core`, com `rfd` fora por ser só Linux. Cinco pacotes sem arquivo de licença têm o texto fixado por commit e hash em `scripts/licencas-externas/origens.json`.
+- **Risco residual das fontes do PDFium:** a `pdfium.dll` contém ChromeSansMM e ChromeSerifMM, publicadas pelo PDFium sob BSD, com a nota de 1990-1994 da Adobe mantida nos dados. O BSD do PDFium não prova a cadeia de direitos entre Adobe, Foxit e Google. O uso do pacote é decisão do usuário; o assunto volta se o PlotS passar a ser vendido.
+- **Ainda não lidos:** termos do WebView2 Runtime, que o instalador baixa da Microsoft se faltar; contrato do Visual Studio da máquina de build, pelo CRT estático.
+- **Executável:** sem caminhos da máquina, conferido por busca de bytes; "Kaio Luan" fica no recurso de versão, por escolha. Os briefs antigos em `plan/briefs/` trazem caminhos locais: decidir antes de abrir o repositório.
 - **Nome do projeto:** busca de anterioridade de "PlotS". A licença do PlotS é MIT (`LICENSE`), por decisão do usuário em 2026-11-02; as dependências continuam sob as próprias licenças.
 - **Linux:** `gtk`, `webkit2gtk` e `soup3` estão no lock; conferir as licenças das bibliotecas do sistema ao empacotar (plano `18-linux-e-macos`).
 

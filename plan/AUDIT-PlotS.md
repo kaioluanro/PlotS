@@ -105,7 +105,7 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A078 | Fase 3 | Critério: 3 lotes seguidos sem erro numa impressora real | MISSING | Não verificável nesta máquina: não há impressora real e nada foi enviado a impressoras. Depende de decisão do usuário. |
 | PS-A079 | Fase 4 | Interface Tauri + pdf.js: visualizador, painel de impressoras, cartões com figura, fluxo sem terminal | PARTIAL (353f54d) | Só a janela; faltam visualizador, impressoras e cartões. |
 | PS-A080 | Fase 5 | Várias impressoras, jobs paralelos, espelho e divisão, status do spooler, fila virtual "PlotS" | MISSING | Bloco. Só o núcleo de distribuição existe (PS-A065). |
-| PS-A081 | Fase 6 | Instalador (tauri bundle), reimprimir lote, folha de controle, histórico | MISSING | Bloco. |
+| PS-A081 | Fase 6 | Instalador (tauri bundle), reimprimir lote, folha de controle, histórico | PARTIAL (`1a1f6d7`) | Instalador NSIS por usuário gerado, não executado. Faltam folha de controle e histórico. |
 | PS-A082 | Estrutura | Workspace Cargo com plots-core, plots-print, plots-cli, src-tauri e ui | OK (353f54d) | Workspace com `src-tauri` e `ui`. |
 | PS-A083 | Limpeza do disco | Um único `target/` (até 2 GB); artefatos de verificação removidos após o registro | PARTIAL | `target/` tem 444 MB. `.qa-pdf/` mantém `entrada.pdf`, `saida.pdf`, `saida-1..3.png` da sessão anterior, já registrados. Os arquivos da auditoria foram apagados no fim. |
 | PS-A084 | Segurança dos dados | Não sobrescrever arquivos existentes; em falha, remover só o que foi criado | OK | `plots-cli/src/lib.rs:286-302` (`create_new` e rollback). Verificado: segunda execução na mesma pasta falha e mantém os PDFs; pasta com `lote-0001-passada-2.pdf` pré-existente mantém o conteúdo "ORIGINAL". |
