@@ -12,7 +12,8 @@ Decisão do usuário em 2026-11-03: remover "Folhas por lote" da janela e deixar
 - **Papéis mistos:** um trecho por papel; a troca de papel para o envio e é dita antes.
 - **Todas as impressoras marcadas imprimem a mesma coisa.** A divisão sai da janela, por decisão do usuário em 2026-11-03; o núcleo e o PlotSim seguem testando a repartição.
 - **Escolha do que imprimir, no rodapé: Frente ou Verso**, para todas as marcadas. Só frente hoje, e só verso quando quiser, mesmo depois de fechar o programa. A escolha nunca muda sozinha, por decisão do usuário: só ele a troca. O verso sempre pede confirmação, com o gesto de cada impressora, porque o maço errado estraga as folhas.
-- **Automático:** sem essa escolha, porque imprime as duas faces de uma vez.
+- **Campo "Quantidade", no rodapé, por decisão do usuário em 2026-11-03:** quantas cópias do documento, de 1 a 999, com padrão 1. Com 3, as frentes do documento saem 3 vezes, em sequência e sem clique, em um maço só, e o Verso imprime as 3 também, na ordem que o gesto do modelo exige. Vale para todas as marcadas, e só a pessoa muda o número. Cada cópia fecha com a sua folha: em total ímpar, cada uma tem o verso em branco da última folha, e as páginas nunca se juntam entre cópias. O intervalo vale para cada cópia. O PlotS manda as cópias como páginas, sem usar as cópias do driver. A confirmação do verso diz o número, para evitar maço e quantidade diferentes, e o aviso de maço maior que a bandeja conta o total de folhas.
+- **Automático:** sem essa escolha, porque imprime as duas faces de uma vez. A quantidade também vale.
 - **Maço maior que a bandeja:** acima de 30 folhas, a confirmação avisa. Na frente, a impressora pede papel, e a pessoa coloca mais folhas em branco. No verso, coloca a parte de cima e completa com o resto quando a entrada esvazia, sem mudar a ordem.
 - **O preço da decisão:** um atolamento afeta o trecho inteiro. "Reimprimir" refaz o trecho, com confirmação dizendo quantas folhas.
 - **Fechar o PlotS durante a espera:** a confirmação diz que os versos ainda não foram impressos. Depois, é só abrir o documento, marcar as impressoras e escolher Verso. O PlotS não guarda estado: quem garante que o maço é o certo é a pessoa.
@@ -23,6 +24,7 @@ Decisão do usuário em 2026-11-03: remover "Folhas por lote" da janela e deixar
 - [ ] Tirar "Folhas por lote" da janela
 - [ ] Um trecho por papel no envio, com divisão em partes
 - [ ] Cartões e confirmação sem a palavra lote, quando houver um só
+- [ ] Campo "Quantidade" no rodapé, com cópias em frente, verso e automático
 - [ ] Simuladas e PlotSim conferem o maço final
 
 ## Pronto quando
