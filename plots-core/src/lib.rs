@@ -39,18 +39,35 @@ pub enum BordaEntrada {
     Longa,
 }
 
-/// Instrução física registrada no perfil calibrado.
+/// Como o maço é virado antes de voltar à entrada.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ViradaMaco {
+    /// O maço volta como saiu.
+    NaoVirar,
+    /// Vira pela lateral, como a página de um livro.
+    PelaLateral,
+    /// Vira pela borda de cima, como um bloco de notas.
+    PelaBordaDeCima,
+}
+
+/// Instrução física registrada no perfil.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GestoRecolocar {
-    /// `true` quando é preciso virar o maço para expor os versos.
-    pub virar_maco: bool,
+    pub virada: ViradaMaco,
     pub borda_primeiro: BordaEntrada,
+}
+
+impl GestoRecolocar {
+    /// `true` quando é preciso virar o maço, por qualquer borda, para expor os versos.
+    pub const fn vira_o_maco(self) -> bool {
+        !matches!(self.virada, ViradaMaco::NaoVirar)
+    }
 }
 
 impl Default for GestoRecolocar {
     fn default() -> Self {
         Self {
-            virar_maco: true,
+            virada: ViradaMaco::PelaLateral,
             borda_primeiro: BordaEntrada::Curta,
         }
     }
@@ -63,6 +80,57 @@ pub struct PerfilImpressora {
     pub passada2_inversa: bool,
     pub verso_girar_180: bool,
     pub gesto_recolocar: GestoRecolocar,
+}
+
+/// Configuração pronta para um tipo de máquina, usada sem medir a impressora.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ModeloImpressora {
+    /// Entrada traseira: sai com a face impressa para cima, e o maço vira pela borda de cima.
+    JatoDeTinta,
+    /// Gaveta: sai com a face impressa para baixo, e o maço volta sem ser virado.
+    Laser,
+}
+
+impl ModeloImpressora {
+    /// Código curto usado no arquivo de perfis, na linha de comando e na interface.
+    pub const fn codigo(self) -> &'static str {
+        match self {
+            Self::JatoDeTinta => "jato",
+            Self::Laser => "laser",
+        }
+    }
+
+    /// Modelo com este código exato.
+    pub fn de_codigo(codigo: &str) -> Option<Self> {
+        match codigo {
+            "jato" => Some(Self::JatoDeTinta),
+            "laser" => Some(Self::Laser),
+            _ => None,
+        }
+    }
+
+    /// Ordem das passadas e giro do verso. Nos dois modelos a frente sai da última página para
+    /// a primeira; só o jato inverte o verso, e o imprime girado 180°.
+    pub const fn perfil(self) -> PerfilImpressora {
+        let jato = matches!(self, Self::JatoDeTinta);
+        PerfilImpressora {
+            passada1_inversa: true,
+            passada2_inversa: jato,
+            verso_girar_180: jato,
+            gesto_recolocar: self.gesto(),
+        }
+    }
+
+    /// Gesto de recolocação: o jato vira o maço pela borda de cima; a laser não vira.
+    pub const fn gesto(self) -> GestoRecolocar {
+        GestoRecolocar {
+            virada: match self {
+                Self::JatoDeTinta => ViradaMaco::PelaBordaDeCima,
+                Self::Laser => ViradaMaco::NaoVirar,
+            },
+            borda_primeiro: BordaEntrada::Curta,
+        }
+    }
 }
 
 /// Ajusta o perfil usado para imprimir um teste de calibração de duas folhas.
@@ -511,6 +579,43 @@ pub fn plano_lotes_por_papel(
 mod tests {
     use super::*;
 
+    fn numeros(paginas: &[Pagina]) -> Vec<Option<usize>> {
+        paginas.iter().map(|pagina| pagina.numero).collect()
+    }
+
+    #[test]
+    fn jato_de_tinta_inverte_as_duas_passadas_e_gira_o_verso() {
+        let modelo = ModeloImpressora::JatoDeTinta;
+        let lotes = plano_documento(6, 3, OrdemPassadas::ParesPrimeiro, modelo.perfil()).unwrap();
+        assert_eq!(numeros(&lotes[0].passada1), [Some(6), Some(4), Some(2)]);
+        assert_eq!(numeros(&lotes[0].passada2), [Some(5), Some(3), Some(1)]);
+        assert!(lotes[0].passada1.iter().all(|pagina| !pagina.girar_180));
+        assert!(lotes[0].passada2.iter().all(|pagina| pagina.girar_180));
+        assert_eq!(modelo.gesto().virada, ViradaMaco::PelaBordaDeCima);
+        assert_eq!(modelo.perfil().gesto_recolocar, modelo.gesto());
+    }
+
+    #[test]
+    fn laser_inverte_so_a_frente_e_nao_vira_o_maco() {
+        let modelo = ModeloImpressora::Laser;
+        let lotes = plano_documento(6, 3, OrdemPassadas::ParesPrimeiro, modelo.perfil()).unwrap();
+        assert_eq!(numeros(&lotes[0].passada1), [Some(6), Some(4), Some(2)]);
+        assert_eq!(numeros(&lotes[0].passada2), [Some(1), Some(3), Some(5)]);
+        assert!(lotes[0].passada2.iter().all(|pagina| !pagina.girar_180));
+        assert_eq!(modelo.gesto().virada, ViradaMaco::NaoVirar);
+        assert!(!modelo.gesto().vira_o_maco());
+    }
+
+    #[test]
+    fn codigo_do_modelo_vai_e_volta_e_recusa_o_que_nao_conhece() {
+        for modelo in [ModeloImpressora::JatoDeTinta, ModeloImpressora::Laser] {
+            assert_eq!(ModeloImpressora::de_codigo(modelo.codigo()), Some(modelo));
+        }
+        for codigo in ["", "Jato", "LASER", "traseira", " jato"] {
+            assert_eq!(ModeloImpressora::de_codigo(codigo), None, "{codigo:?}");
+        }
+    }
+
     #[test]
     fn calibracao_ajusta_as_respostas_relativas_ao_perfil_testado() {
         for ordem_inicial in [false, true] {
@@ -522,7 +627,7 @@ mod tests {
                             passada2_inversa: ordem_inicial,
                             verso_girar_180: giro_inicial,
                             gesto_recolocar: GestoRecolocar {
-                                virar_maco: false,
+                                virada: ViradaMaco::NaoVirar,
                                 borda_primeiro: BordaEntrada::Longa,
                             },
                         };

@@ -1,7 +1,7 @@
 //! Comando `calibrar`: grava a folha de teste, lê as duas respostas e guarda o perfil da fila.
 
 use crate::geracao;
-use plots_core::{ajustar_perfil_por_calibracao, GestoRecolocar, PerfilImpressora};
+use plots_core::{ajustar_perfil_por_calibracao, PerfilImpressora, ViradaMaco};
 use plots_pdf::PapelCalibracao;
 use plots_perfis::{EntradaPerfil, ErroPerfis, Perfis};
 use std::io::{BufRead, Write};
@@ -13,6 +13,11 @@ pub(crate) const MSG_RESPOSTA_INVALIDA: &str = "Resposta inválida: responda s o
 /// Também usada no texto de uso: a ajuda de `calibrar` deve trazer esta mesma frase.
 pub(crate) const MSG_RESULTADO_SO_VALE_EM_LOTE_REAL: &str =
     "O resultado só vale depois de conferido em um lote impresso de verdade; a simulação não conta.";
+
+/// Recusa de quem pede um perfil para uma impressora simulada, que já vem com o seu.
+pub(crate) fn msg_impressora_simulada(fila: &str) -> String {
+    format!("'{fila}' é uma impressora simulada e não precisa de calibração")
+}
 
 /// Caminho do arquivo de perfis: o informado, ou o padrão do usuário.
 pub(crate) fn caminho_perfis(informado: Option<PathBuf>) -> Result<PathBuf, String> {
@@ -76,9 +81,7 @@ pub(crate) fn executar(
     let diretorio = diretorio.ok_or("informe --saida DIRETORIO")?;
     let papel = papel.unwrap_or(PapelCalibracao::A4);
     if crate::ImpressoraVirtual::de_nome(fila).is_some() {
-        return Err(format!(
-            "'{fila}' é uma impressora simulada e não precisa de calibração"
-        ));
+        return Err(msg_impressora_simulada(fila));
     }
     if !diretorio.is_dir() {
         return Err("o diretório de saída deve existir".into());
@@ -107,6 +110,8 @@ pub(crate) fn executar(
     let ajustado = ajustar_perfil_por_calibracao(base, verso_certo, invertida);
     let mut nova: EntradaPerfil = lidos.obter(fila).cloned().unwrap_or_default();
     nova.perfil = ajustado;
+    // Os valores deixam de ser os do modelo, mesmo que as respostas não mudem nenhum deles.
+    nova.modelo = None;
     lidos.inserir(fila, nova);
     salvar_perfis(&caminho_perfis, &lidos)?;
     writeln!(
@@ -163,16 +168,12 @@ pub(crate) fn descrever_perfil(perfil: &PerfilImpressora) -> Vec<String> {
     } else {
         "páginas sem giro"
     };
-    let GestoRecolocar {
-        virar_maco,
-        borda_primeiro,
-    } = perfil.gesto_recolocar;
-    let recolocacao = if virar_maco {
-        "virar o maço"
-    } else {
-        "não virar o maço"
+    let recolocacao = match perfil.gesto_recolocar.virada {
+        ViradaMaco::NaoVirar => "não virar o maço",
+        ViradaMaco::PelaLateral => "virar o maço",
+        ViradaMaco::PelaBordaDeCima => "virar o maço pela borda de cima",
     };
-    let borda = match borda_primeiro {
+    let borda = match perfil.gesto_recolocar.borda_primeiro {
         plots_core::BordaEntrada::Curta => "curta",
         plots_core::BordaEntrada::Longa => "longa",
     };
@@ -188,7 +189,7 @@ pub(crate) fn descrever_perfil(perfil: &PerfilImpressora) -> Vec<String> {
 #[cfg(test)]
 mod testes {
     use super::*;
-    use plots_core::BordaEntrada;
+    use plots_core::{BordaEntrada, GestoRecolocar};
 
     #[test]
     fn descreve_o_perfil_padrao_em_palavras() {
@@ -205,13 +206,22 @@ mod testes {
     }
 
     #[test]
+    fn descreve_a_virada_pela_borda_de_cima() {
+        let linhas = descrever_perfil(&plots_core::ModeloImpressora::JatoDeTinta.perfil());
+        assert!(
+            linhas.contains(&"Recolocação: virar o maço pela borda de cima".to_owned()),
+            "{linhas:?}"
+        );
+    }
+
+    #[test]
     fn descreve_os_valores_invertidos_em_palavras() {
         let perfil = PerfilImpressora {
             passada1_inversa: true,
             passada2_inversa: true,
             verso_girar_180: true,
             gesto_recolocar: GestoRecolocar {
-                virar_maco: false,
+                virada: ViradaMaco::NaoVirar,
                 borda_primeiro: BordaEntrada::Longa,
             },
         };

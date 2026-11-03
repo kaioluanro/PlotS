@@ -1,16 +1,18 @@
 use std::collections::BTreeMap;
 
-use plots_core::PerfilImpressora;
+use plots_core::{ModeloImpressora, PerfilImpressora};
 
 /// Perfil salvo para uma fila de impressão.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct EntradaPerfil {
     /// Nome amigável opcional, exibido no lugar do nome técnico da fila.
     pub apelido: Option<String>,
-    /// Parâmetros medidos pela calibração.
+    /// Parâmetros do perfil: os do modelo, ou os ajustados pela calibração.
     pub perfil: PerfilImpressora,
     /// Texto livre que descreve o gesto de recolocação do maço.
     pub gesto_texto: Option<String>,
+    /// Modelo de que os parâmetros vieram; `None` quando foram medidos ou escritos à mão.
+    pub modelo: Option<ModeloImpressora>,
 }
 
 /// Conjunto de perfis, indexado pelo nome exato da fila.
@@ -33,6 +35,22 @@ impl Perfis {
     /// Insere ou substitui o perfil da fila; devolve o anterior, se houver.
     pub fn inserir(&mut self, fila: &str, entrada: EntradaPerfil) -> Option<EntradaPerfil> {
         self.filas.insert(fila.to_owned(), entrada)
+    }
+
+    /// Dá à fila o perfil pronto do modelo, mesmo que ela não tenha perfil ainda.
+    ///
+    /// O apelido fica. O texto do gesto sai, porque descrevia o perfil anterior.
+    pub fn definir_modelo(&mut self, fila: &str, modelo: ModeloImpressora) {
+        let apelido = self.filas.remove(fila).and_then(|entrada| entrada.apelido);
+        self.inserir(
+            fila,
+            EntradaPerfil {
+                apelido,
+                perfil: modelo.perfil(),
+                gesto_texto: None,
+                modelo: Some(modelo),
+            },
+        );
     }
 
     /// Remove o perfil da fila e o devolve, se existir.

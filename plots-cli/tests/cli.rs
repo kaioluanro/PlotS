@@ -413,7 +413,7 @@ fn gerar_pdf_nao_avisa_pagina_quadrada_nem_pagina_sem_verso() {
 #[test]
 fn comando_ausente_ou_desconhecido_lista_os_comandos_validos() {
     let esperado =
-        "comando ausente ou desconhecido; use 'simular', 'gerar-pdf', 'gerar-calibracao', 'imprimir', 'calibrar' ou 'filas'";
+        "comando ausente ou desconhecido; use 'simular', 'gerar-pdf', 'gerar-calibracao', 'imprimir', 'calibrar', 'perfil' ou 'filas'";
     assert_eq!(executar(&args(&[])).unwrap_err(), esperado);
     assert_eq!(executar(&args(&["abrir"])).unwrap_err(), esperado);
     assert_eq!(executar(&args(&["arquivo.pdf"])).unwrap_err(), esperado);

@@ -3,8 +3,11 @@ mod enviar;
 mod filas;
 mod geracao;
 mod imprimir;
+mod perfil;
 
-use plots_core::{plano_documento, OrdemPassadas, Pagina, PerfilImpressora, LIMITE_PAGINAS};
+use plots_core::{
+    plano_documento, ModeloImpressora, OrdemPassadas, Pagina, PerfilImpressora, LIMITE_PAGINAS,
+};
 use plots_pdf::PapelCalibracao;
 use plots_print::{
     conferir_folhas,
@@ -15,16 +18,19 @@ use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
 /// Texto de uso geral, mostrado por `--help` e em erros sem subcomando conhecido.
-pub const USO_GERAL: &str = "Uso:\n  plots simular --paginas N --lote K --impressora traseira|gaveta [--ordem pares|impares] [--simular-erro sem-virar|girado|folha-a-menos] [--guiado]\n  plots gerar-pdf ARQUIVO --lote K --impressora traseira|gaveta [--ordem pares|impares] [--folhas-finais] --saida DIRETORIO\n  plots gerar-calibracao --saida DIRETORIO [--papel a4|a5|carta|oficio|legal]\n  plots calibrar NOME --saida DIRETORIO [--papel a4|a5|carta|oficio|legal] [--perfis ARQUIVO]\n  plots imprimir ARQUIVO --impressora NOME --lote K [--arquivo-saida PASTA] [--ordem pares|impares] [--perfis ARQUIVO] [--simular --saida DIRETORIO [--folhas-finais]]\n  plots filas [--perfis ARQUIVO]\nSó 'imprimir' sem --simular envia à impressora, com uma confirmação antes de cada envio. 'simular', 'gerar-pdf', 'gerar-calibracao', 'calibrar' e 'filas' só simulam, gravam arquivos ou leem o estado das filas, e 'imprimir --simular' também só simula.\n";
+pub const USO_GERAL: &str = "Uso:\n  plots simular --paginas N --lote K --impressora traseira|gaveta [--ordem pares|impares] [--simular-erro sem-virar|girado|folha-a-menos] [--guiado]\n  plots gerar-pdf ARQUIVO --lote K --impressora traseira|gaveta [--ordem pares|impares] [--folhas-finais] --saida DIRETORIO\n  plots gerar-calibracao --saida DIRETORIO [--papel a4|a5|carta|oficio|legal]\n  plots calibrar NOME --saida DIRETORIO [--papel a4|a5|carta|oficio|legal] [--perfis ARQUIVO]\n  plots imprimir ARQUIVO --impressora NOME --lote K [--arquivo-saida PASTA] [--ordem pares|impares] [--perfis ARQUIVO] [--simular --saida DIRETORIO [--folhas-finais]]\n  plots perfil NOME --modelo jato|laser [--perfis ARQUIVO]\n  plots filas [--perfis ARQUIVO]\nSó 'imprimir' sem --simular envia à impressora, com uma confirmação antes de cada envio. 'simular', 'gerar-pdf', 'gerar-calibracao', 'calibrar', 'perfil' e 'filas' só simulam, gravam arquivos ou leem o estado das filas, e 'imprimir --simular' também só simula.\n";
 
 /// Texto de uso do subcomando `filas`.
 pub const USO_FILAS: &str = "Uso:\n  plots filas [--perfis ARQUIVO]\nLista as filas do Windows, com o estado de cada uma, o driver, a porta, se é a padrão e se tem perfil salvo. As impressoras simuladas aparecem em seção própria.\nEsta listagem só lê o estado: nada é enviado a nenhuma fila, física ou virtual.\n--perfis ARQUIVO indica o arquivo de perfis; sem ele, usa o arquivo de perfis do usuário.\n";
 
 /// Texto de uso do subcomando `imprimir`.
-pub const USO_IMPRIMIR: &str = "Uso:\n  plots imprimir ARQUIVO --impressora NOME --lote K [--arquivo-saida PASTA] [--ordem pares|impares] [--perfis ARQUIVO] [--simular --saida DIRETORIO [--folhas-finais]]\nSem --simular, envia à fila NOME do Windows, lote a lote. Exige o perfil salvo por 'plots calibrar' e uma confirmação antes de cada envio; fim da entrada cancela. O verso só é oferecido depois de o trabalho da frente terminar ou sair da fila do spooler. Isso não garante que o papel já saiu: espere a última folha antes de recolocar o maço.\n--arquivo-saida PASTA grava cada passada em um arquivo novo dentro de PASTA, pela própria fila; foi conferido só na fila de PDF do Windows.\nO envio usa pdfium.dll, ao lado do executável ou na pasta indicada por PLOTS_PDFIUM_DIR; 'node scripts/baixar-pdfium.mjs' a obtém.\nCom --simular, grava as passadas de cada lote em --saida DIRETORIO, como 'gerar-pdf', e conduz o fluxo pelo terminal, sem enviar nada à impressora. Impressoras: 'Simulada — Traseira' e 'Simulada — Gaveta' (ou traseira e gaveta). Outro NOME usa o perfil salvo por 'plots calibrar'; sem perfil, o comando pede a calibração.\n--perfis ARQUIVO indica o arquivo de perfis; sem ele, usa o arquivo de perfis do usuário.\n";
+pub const USO_IMPRIMIR: &str = "Uso:\n  plots imprimir ARQUIVO --impressora NOME --lote K [--arquivo-saida PASTA] [--ordem pares|impares] [--perfis ARQUIVO] [--simular --saida DIRETORIO [--folhas-finais]]\nSem --simular, envia à fila NOME do Windows, lote a lote. Exige um perfil salvo por 'plots perfil' ou 'plots calibrar' e uma confirmação antes de cada envio; fim da entrada cancela. O verso só é oferecido depois de o trabalho da frente terminar ou sair da fila do spooler. Isso não garante que o papel já saiu: espere a última folha antes de recolocar o maço.\n--arquivo-saida PASTA grava cada passada em um arquivo novo dentro de PASTA, pela própria fila; foi conferido só na fila de PDF do Windows.\nO envio usa pdfium.dll, ao lado do executável ou na pasta indicada por PLOTS_PDFIUM_DIR; 'node scripts/baixar-pdfium.mjs' a obtém.\nCom --simular, grava as passadas de cada lote em --saida DIRETORIO, como 'gerar-pdf', e conduz o fluxo pelo terminal, sem enviar nada à impressora. Impressoras: 'Simulada — Traseira' e 'Simulada — Gaveta' (ou traseira e gaveta). Outro NOME usa o perfil salvo: com modelo, a mecânica e o gesto do modelo, que não foi medido naquela máquina; sem modelo, os valores da calibração. Sem perfil, o comando pede um.\n--perfis ARQUIVO indica o arquivo de perfis; sem ele, usa o arquivo de perfis do usuário.\n";
 
 /// Texto de uso do subcomando `calibrar`.
-pub const USO_CALIBRAR: &str = "Uso:\n  plots calibrar NOME --saida DIRETORIO [--papel a4|a5|carta|oficio|legal] [--perfis ARQUIVO]\nGrava calibracao.pdf em DIRETORIO, sem sobrescrever, e pergunta no terminal o que saiu. O PlotS não envia o arquivo à impressora: imprima as 4 páginas pelo programa que quiser.\nO perfil salvo para NOME é ajustado pelas respostas e gravado em ARQUIVO (ou no arquivo de perfis do usuário). O resultado só vale depois de conferido em um lote impresso de verdade; a simulação não conta.\n";
+pub const USO_CALIBRAR: &str = "Uso:\n  plots calibrar NOME --saida DIRETORIO [--papel a4|a5|carta|oficio|legal] [--perfis ARQUIVO]\nGrava calibracao.pdf em DIRETORIO, sem sobrescrever, e pergunta no terminal o que saiu. O PlotS não envia o arquivo à impressora: imprima as 4 páginas pelo programa que quiser.\nO perfil salvo para NOME é ajustado pelas respostas e gravado em ARQUIVO (ou no arquivo de perfis do usuário), sem o modelo que ele tivesse, porque os valores deixam de ser os do modelo. O resultado só vale depois de conferido em um lote impresso de verdade; a simulação não conta.\n";
+
+/// Texto de uso do subcomando `perfil`.
+pub const USO_PERFIL: &str = "Uso:\n  plots perfil NOME --modelo jato|laser [--perfis ARQUIVO]\nGrava para NOME o perfil pronto do modelo, em ARQUIVO (ou no arquivo de perfis do usuário), mantendo o apelido. A fila não precisa existir e nada é enviado à impressora.\nO modelo é um ponto de partida, não uma medição: confira com 2 ou 3 folhas. 'plots calibrar' ajusta o perfil depois e tira o modelo dele.\n";
 
 /// Texto de uso do subcomando `simular`.
 pub const USO_SIMULAR: &str = "Uso:\n  plots simular --paginas N --lote K --impressora traseira|gaveta [--ordem pares|impares] [--simular-erro sem-virar|girado|folha-a-menos] [--guiado]\nA simulação não envia nada à impressora. Com --simular-erro, o gesto errado vale para todos os lotes; com folha-a-menos, cada lote é reimpresso desde a frente.\n";
@@ -36,7 +42,7 @@ pub const USO_GERAR_PDF: &str = "Uso:\n  plots gerar-pdf ARQUIVO --lote K --impr
 pub const USO_GERAR_CALIBRACAO: &str = "Uso:\n  plots gerar-calibracao --saida DIRETORIO [--papel a4|a5|carta|oficio|legal]\nGrava calibracao.pdf com as páginas 1 a 4 e uma seta para cima em cada uma. Nada é enviado à impressora, e um arquivo existente nunca é sobrescrito.\n";
 
 const MSG_COMANDO_DESCONHECIDO: &str =
-    "comando ausente ou desconhecido; use 'simular', 'gerar-pdf', 'gerar-calibracao', 'imprimir', 'calibrar' ou 'filas'";
+    "comando ausente ou desconhecido; use 'simular', 'gerar-pdf', 'gerar-calibracao', 'imprimir', 'calibrar', 'perfil' ou 'filas'";
 const MSG_SIMULAR_PDF: &str = "'simular' não lê PDF: informe --paginas N, ou use 'gerar-pdf' para gerar as passadas de um arquivo";
 const MSG_ORDEM_INVALIDA: &str = "--ordem deve ser pares ou impares";
 const MSG_ORDEM_REPETIDA: &str = "--ordem foi informado mais de uma vez";
@@ -51,7 +57,7 @@ pub(crate) const MSG_AVISO_IMPARES: &str = "Ordem das passadas: ímpares primeir
 pub(crate) const ENVIO_REAL_LIBERADO: bool = true;
 /// Frase da ajuda geral sobre qual comando envia à impressora.
 #[cfg(test)]
-pub(crate) const FRASE_NAO_ENVIA: &str = "Só 'imprimir' sem --simular envia à impressora, com uma confirmação antes de cada envio. 'simular', 'gerar-pdf', 'gerar-calibracao', 'calibrar' e 'filas' só simulam, gravam arquivos ou leem o estado das filas, e 'imprimir --simular' também só simula.";
+pub(crate) const FRASE_NAO_ENVIA: &str = "Só 'imprimir' sem --simular envia à impressora, com uma confirmação antes de cada envio. 'simular', 'gerar-pdf', 'gerar-calibracao', 'calibrar', 'perfil' e 'filas' só simulam, gravam arquivos ou leem o estado das filas, e 'imprimir --simular' também só simula.";
 /// Recusa de `imprimir` sem `--simular` fora do Windows, onde o envio real não existe.
 #[cfg(not(windows))]
 pub(crate) const MSG_ENVIO_INDISPONIVEL: &str =
@@ -84,34 +90,24 @@ impl ImpressoraVirtual {
         }
     }
 
-    /// Perfil do modelo: o jato de tinta (traseira) tem o verso girado; a laser (gaveta)
-    /// tem a frente invertida e o verso direto.
-    pub(crate) fn perfil(self) -> PerfilImpressora {
-        let gesto = self.gesto();
-        PerfilImpressora {
-            passada1_inversa: true,
-            passada2_inversa: self == Self::Traseira,
-            verso_girar_180: self == Self::Traseira,
-            gesto_recolocar: plots_core::GestoRecolocar {
-                virar_maco: gesto.virar_maco,
-                ..plots_core::GestoRecolocar::default()
-            },
+    /// Cada impressora simulada imita um modelo: a traseira, o jato; a gaveta, a laser.
+    pub(crate) fn modelo(self) -> ModeloImpressora {
+        match self {
+            Self::Traseira => ModeloImpressora::JatoDeTinta,
+            Self::Gaveta => ModeloImpressora::Laser,
         }
     }
 
-    /// Gesto de recolocação do modelo: o jato vira o maço pela borda de cima; a laser não vira.
+    pub(crate) fn perfil(self) -> PerfilImpressora {
+        self.modelo().perfil()
+    }
+
     pub(crate) fn gesto(self) -> Recolocacao {
-        match self {
-            Self::Traseira => Recolocacao::virada_pela_borda_de_cima(),
-            Self::Gaveta => Recolocacao::default(),
-        }
+        self.modelo().gesto().into()
     }
 
     pub(crate) fn mecanica(self) -> Mecanica {
-        match self {
-            Self::Traseira => Mecanica::traseira(),
-            Self::Gaveta => Mecanica::gaveta(),
-        }
+        Mecanica::do_modelo(self.modelo())
     }
 
     pub(crate) fn nome(self) -> &'static str {
@@ -186,6 +182,14 @@ impl ErroSimulado {
     }
 }
 
+/// Nome do modelo na saída do terminal.
+pub(crate) fn nome_do_modelo(modelo: ModeloImpressora) -> &'static str {
+    match modelo {
+        ModeloImpressora::JatoDeTinta => "Jato de tinta",
+        ModeloImpressora::Laser => "Laser",
+    }
+}
+
 pub(crate) fn analisar_ordem(valor: &str) -> Result<OrdemPassadas, String> {
     match valor {
         "pares" => Ok(OrdemPassadas::ParesPrimeiro),
@@ -226,6 +230,7 @@ pub fn uso_para(args: &[String]) -> &'static str {
         Some("imprimir") => USO_IMPRIMIR,
         Some("calibrar") => USO_CALIBRAR,
         Some("filas") => USO_FILAS,
+        Some("perfil") => USO_PERFIL,
         _ => USO_GERAL,
     }
 }
@@ -264,6 +269,7 @@ pub fn executar_com_io(
             Some("imprimir") => return escrever(saida, USO_IMPRIMIR),
             Some("calibrar") => return escrever(saida, USO_CALIBRAR),
             Some("filas") => return escrever(saida, USO_FILAS),
+            Some("perfil") => return escrever(saida, USO_PERFIL),
             _ => {}
         }
     }
@@ -274,6 +280,7 @@ pub fn executar_com_io(
         Some("imprimir") => return imprimir::executar(args, entrada, saida),
         Some("calibrar") => return calibrar::executar(args, entrada, saida),
         Some("filas") => return filas::executar(args, saida),
+        Some("perfil") => return perfil::executar(args, saida),
         _ => return Err(MSG_COMANDO_DESCONHECIDO.into()),
     }
     let mut paginas = None;

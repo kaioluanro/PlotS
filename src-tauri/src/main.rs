@@ -8,7 +8,7 @@ mod lote;
 
 use documento::{Documento, ErroDocumento};
 use fechamento::{DecisaoDoPrazo, EsperaDeResposta};
-use impressoras::ListaImpressoras;
+use impressoras::{Aviso, ListaImpressoras};
 use lote::LoteCaminhos;
 use std::io::Write;
 use std::process::ExitCode;
@@ -38,6 +38,15 @@ async fn listar_impressoras() -> ListaImpressoras {
     tauri::async_runtime::spawn_blocking(impressoras::ler_do_sistema)
         .await
         .unwrap_or_else(|_| impressoras::sem_leitura())
+}
+
+/// Grava o perfil pronto do modelo. O disco pode demorar, por isso a thread propria.
+#[tauri::command]
+async fn definir_modelo(fila: String, modelo: String) -> Result<(), Aviso> {
+    let interrompida = impressoras::falha_ao_gravar(&fila);
+    tauri::async_runtime::spawn_blocking(move || impressoras::definir_modelo(&fila, &modelo))
+        .await
+        .unwrap_or(Err(interrompida))
 }
 
 /// Caminhos recebidos na linha de comando, como acontece no "Abrir com" do sistema.
@@ -121,6 +130,7 @@ fn main() -> ExitCode {
             abrir_documento,
             caminhos_iniciais,
             contar_paginas,
+            definir_modelo,
             limitar_lote,
             listar_impressoras,
             pedido_de_fechamento_recebido

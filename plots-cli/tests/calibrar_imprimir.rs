@@ -1,5 +1,5 @@
 use plots_cli::{executar, executar_com_io};
-use plots_core::{GestoRecolocar, PerfilImpressora};
+use plots_core::{GestoRecolocar, ModeloImpressora, PerfilImpressora, ViradaMaco};
 use plots_perfis::{carregar, salvar, EntradaPerfil, Perfis};
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
@@ -192,6 +192,7 @@ fn calibrar_ajusta_o_perfil_salvo_e_mantem_apelido_e_texto() {
             apelido: Some("Jato — escritório".into()),
             perfil: perfil_com(true, true, false),
             gesto_texto: Some("virar o maço".into()),
+            modelo: None,
         },
     );
     salvar(&perfis, &anteriores).unwrap();
@@ -794,11 +795,11 @@ fn linha_na_gaveta_so_aparece_na_gaveta_simulada() {
 
 #[test]
 fn perfil_salvo_usa_frase_sem_lado_e_mostra_o_texto_do_gesto() {
-    for virar_maco in [true, false] {
+    for virada in [ViradaMaco::PelaLateral, ViradaMaco::NaoVirar] {
         let pasta = Pasta::nova("perfil-gesto");
         let perfil = PerfilImpressora {
             gesto_recolocar: GestoRecolocar {
-                virar_maco,
+                virada,
                 borda_primeiro: plots_core::BordaEntrada::Curta,
             },
             ..Default::default()
@@ -824,7 +825,7 @@ fn perfil_salvo_usa_frase_sem_lado_e_mostra_o_texto_do_gesto() {
             &perfis,
         ));
         let (resultado, saida) = rodar(&argumentos, "\n\n");
-        let contexto = format!("virar_maco={virar_maco}\n{saida}");
+        let contexto = format!("{virada:?}\n{saida}");
         assert!(resultado.is_ok(), "{contexto}");
         assert!(
             saida.contains(
@@ -894,6 +895,7 @@ fn ajuda_geral_lista_todos_os_comandos_e_quem_nao_envia() {
         "gerar-calibracao",
         "imprimir",
         "calibrar",
+        "perfil",
         "filas",
     ];
     for esperado in esperados {
@@ -909,4 +911,277 @@ fn ajuda_geral_lista_todos_os_comandos_e_quem_nao_envia() {
             assert!(esperados.contains(&comando.as_str()), "{comando}");
         }
     }
+}
+
+// ---- perfil pronto de um modelo ----
+
+fn perfil_args(fila: &str, modelo: &str, perfis: &Path) -> Vec<String> {
+    vec![
+        "perfil".into(),
+        fila.into(),
+        "--modelo".into(),
+        modelo.into(),
+        "--perfis".into(),
+        perfis.to_string_lossy().into_owned(),
+    ]
+}
+
+/// Grava o perfil do modelo e simula a impressão de 6 páginas em um lote, dando Enter no gesto.
+fn imprimir_seis_paginas_com_modelo(codigo: &str) -> String {
+    imprimir_seis_paginas_com_modelo_e_opcoes(codigo, &[])
+}
+
+fn imprimir_seis_paginas_com_modelo_e_opcoes(codigo: &str, opcoes: &[&str]) -> String {
+    let pasta = Pasta::nova("modelo-imprimir");
+    let perfis = pasta.caminho().join("perfis.toml");
+    let (resultado, saida) = rodar(&perfil_args("Fila X", codigo, &perfis), "");
+    assert!(resultado.is_ok(), "{resultado:?}\n{saida}");
+    let entrada = pasta.caminho().join("entrada.pdf");
+    std::fs::write(&entrada, pdf_a4(6)).unwrap();
+    let saida_dir = pasta.caminho().join("saida");
+    std::fs::create_dir_all(&saida_dir).unwrap();
+    let mut argumentos = com_simular(imprimir_args(&entrada, "Fila X", "3", &saida_dir, &perfis));
+    argumentos.extend(opcoes.iter().map(|opcao| (*opcao).to_owned()));
+    let (resultado, saida) = rodar(&argumentos, "\n");
+    assert!(resultado.is_ok(), "{resultado:?}\n{saida}");
+    saida
+}
+
+#[test]
+fn imprimir_impares_primeiro_com_cada_modelo_confere_as_tres_folhas() {
+    for codigo in ["jato", "laser"] {
+        let saida = imprimir_seis_paginas_com_modelo_e_opcoes(codigo, &["--ordem", "impares"]);
+        assert!(
+            saida.contains("Ordem das passadas: ímpares primeiro."),
+            "{saida}"
+        );
+        assert!(
+            saida.contains("3 de 3 folhas corretas"),
+            "{codigo}\n{saida}"
+        );
+    }
+}
+
+#[test]
+fn perfil_grava_o_modelo_de_uma_fila_que_nao_existe() {
+    for (codigo, modelo) in [
+        ("jato", ModeloImpressora::JatoDeTinta),
+        ("laser", ModeloImpressora::Laser),
+    ] {
+        let pasta = Pasta::nova("perfil-modelo");
+        let perfis = pasta.caminho().join("pasta nova").join("perfis.toml");
+        let (resultado, saida) = rodar(&perfil_args(FILA_INEXISTENTE, codigo, &perfis), "");
+        assert!(resultado.is_ok(), "{resultado:?}");
+        let lidos = carregar(&perfis).unwrap();
+        let entrada = lidos.obter(FILA_INEXISTENTE).expect("perfil gravado");
+        assert_eq!(entrada.modelo, Some(modelo));
+        assert_eq!(entrada.perfil, modelo.perfil());
+        assert!(saida.contains("não foi medido nesta máquina"), "{saida}");
+        assert!(saida.contains("confira com 2 ou 3 folhas"), "{saida}");
+    }
+}
+
+#[test]
+fn perfil_preserva_o_apelido_e_as_outras_filas() {
+    let pasta = Pasta::nova("perfil-apelido");
+    let perfis = perfil_salvo_em(
+        &pasta,
+        "Fila X",
+        EntradaPerfil {
+            apelido: Some("Sala".into()),
+            perfil: perfil_com(false, true, true),
+            gesto_texto: Some("Texto antigo.".into()),
+            ..Default::default()
+        },
+    );
+    let mut salvos = carregar(&perfis).unwrap();
+    salvos.inserir("Outra", EntradaPerfil::default());
+    salvar(&perfis, &salvos).unwrap();
+    let (resultado, _) = rodar(&perfil_args("Fila X", "laser", &perfis), "");
+    assert!(resultado.is_ok(), "{resultado:?}");
+    let lidos = carregar(&perfis).unwrap();
+    let entrada = lidos.obter("Fila X").unwrap();
+    assert_eq!(entrada.apelido.as_deref(), Some("Sala"));
+    assert_eq!(entrada.gesto_texto, None);
+    assert_eq!(entrada.perfil, ModeloImpressora::Laser.perfil());
+    assert_eq!(lidos.obter("Outra"), Some(&EntradaPerfil::default()));
+}
+
+#[test]
+fn perfil_recusa_simulada_com_a_mesma_mensagem_de_calibrar() {
+    for nome in [
+        "traseira",
+        "gaveta",
+        "Simulada — Traseira",
+        "Simulada — Gaveta",
+    ] {
+        let pasta = Pasta::nova("perfil-simulada");
+        let perfis = pasta.caminho().join("perfis.toml");
+        let (de_perfil, _) = rodar(&perfil_args(nome, "jato", &perfis), "");
+        let (de_calibrar, _) = rodar(&calibrar_args(nome, pasta.caminho(), &perfis), "");
+        assert_eq!(de_perfil.unwrap_err(), de_calibrar.unwrap_err());
+        assert!(!perfis.exists());
+    }
+}
+
+#[test]
+fn perfil_recusa_argumentos_ruins_sem_gravar() {
+    let pasta = Pasta::nova("perfil-ruim");
+    let perfis = pasta.caminho().join("perfis.toml");
+    let caminho = perfis.to_string_lossy().into_owned();
+    let casos: [(&[&str], &str); 7] = [
+        (&["perfil"], "informe o nome da impressora"),
+        (
+            &["perfil", "--modelo", "jato"],
+            "informe o nome da impressora",
+        ),
+        (
+            &["perfil", "  ", "--modelo", "jato"],
+            "informe o nome da impressora",
+        ),
+        (&["perfil", "Fila"], "informe --modelo jato|laser"),
+        (
+            &["perfil", "Fila", "--modelo"],
+            "faltou valor para --modelo",
+        ),
+        (
+            &["perfil", "Fila", "--modelo", "matricial"],
+            "--modelo deve ser jato ou laser",
+        ),
+        (
+            &["perfil", "Fila", "--modelo", "jato", "--modelo", "laser"],
+            "opção desconhecida ou repetida: --modelo",
+        ),
+    ];
+    for (argumentos, esperado) in casos {
+        let mut linha: Vec<String> = argumentos.iter().map(|&a| a.to_owned()).collect();
+        if !argumentos.contains(&"--modelo") || argumentos.len() > 3 {
+            linha.extend(["--perfis".to_owned(), caminho.clone()]);
+        }
+        let (resultado, _) = rodar(&linha, "");
+        assert_eq!(resultado.unwrap_err(), esperado, "{linha:?}");
+        assert!(!perfis.exists(), "{linha:?}");
+    }
+}
+
+#[test]
+fn perfil_nao_toca_em_arquivo_de_perfis_danificado() {
+    let pasta = Pasta::nova("perfil-danificado");
+    let perfis = pasta.caminho().join("perfis.toml");
+    std::fs::write(&perfis, "isto não é toml = = =").unwrap();
+    let (resultado, _) = rodar(&perfil_args("Fila", "jato", &perfis), "");
+    assert!(resultado.unwrap_err().contains("não é um TOML válido"));
+    assert_eq!(
+        std::fs::read_to_string(&perfis).unwrap(),
+        "isto não é toml = = ="
+    );
+}
+
+#[test]
+fn imprimir_com_jato_vira_pela_borda_de_cima_e_confere_as_seis_paginas() {
+    let saida = imprimir_seis_paginas_com_modelo("jato");
+    assert!(
+        saida.contains("Modelo Jato de tinta: não foi medido nesta máquina"),
+        "{saida}"
+    );
+    assert!(saida.contains("  Frente: 6, 4, 2\n"), "{saida}");
+    assert!(saida.contains("  Verso: 5, 3, 1\n"), "{saida}");
+    assert!(
+        saida.contains(
+            "coloque na entrada com a face impressa para baixo.\n  Vire o maço pela borda de cima, como um bloco de notas.\n"
+        ),
+        "{saida}"
+    );
+    assert!(saida.contains("3 de 3 folhas corretas"), "{saida}");
+    assert!(!saida.contains("coerente com o perfil salvo"), "{saida}");
+    assert!(!saida.contains("Na gaveta,"), "{saida}");
+}
+
+#[test]
+fn imprimir_com_laser_nao_vira_e_confere_as_seis_paginas() {
+    let saida = imprimir_seis_paginas_com_modelo("laser");
+    assert!(
+        saida.contains("Modelo Laser: não foi medido nesta máquina"),
+        "{saida}"
+    );
+    assert!(saida.contains("  Frente: 6, 4, 2\n"), "{saida}");
+    assert!(saida.contains("  Verso: 1, 3, 5\n"), "{saida}");
+    assert!(
+        saida.contains("coloque na entrada com a face impressa para baixo.\n  Não vire o maço.\n"),
+        "{saida}"
+    );
+    assert!(saida.contains("3 de 3 folhas corretas"), "{saida}");
+    assert!(!saida.contains("coerente com o perfil salvo"), "{saida}");
+    assert!(
+        saida.contains("Na gaveta, vire o maço antes de ler as folhas."),
+        "{saida}"
+    );
+}
+
+#[test]
+fn calibrar_tira_o_modelo_e_mantem_o_gesto_do_modelo() {
+    for respostas in ["s\nn\n", "n\ns\n"] {
+        let pasta = Pasta::nova("calibrar-limpa-modelo");
+        let perfis = pasta.caminho().join("perfis.toml");
+        let (resultado, _) = rodar(&perfil_args("Fila X", "jato", &perfis), "");
+        assert!(resultado.is_ok(), "{resultado:?}");
+        let (resultado, _) = rodar(
+            &calibrar_args("Fila X", pasta.caminho(), &perfis),
+            respostas,
+        );
+        assert!(resultado.is_ok(), "{resultado:?}");
+        let lidos = carregar(&perfis).unwrap();
+        let entrada = lidos.obter("Fila X").unwrap();
+        assert_eq!(entrada.modelo, None);
+        assert_eq!(
+            entrada.perfil.gesto_recolocar.virada,
+            ViradaMaco::PelaBordaDeCima
+        );
+    }
+}
+
+#[test]
+fn perfil_sem_modelo_com_virada_pela_borda_de_cima_passa_pelo_simulador_coerente() {
+    let pasta = Pasta::nova("sem-modelo-cima");
+    let perfis = perfil_salvo_em(
+        &pasta,
+        "Fila X",
+        EntradaPerfil {
+            perfil: ModeloImpressora::JatoDeTinta.perfil(),
+            ..Default::default()
+        },
+    );
+    let entrada = pasta.caminho().join("entrada.pdf");
+    std::fs::write(&entrada, pdf_a4(6)).unwrap();
+    let saida_dir = pasta.caminho().join("saida");
+    std::fs::create_dir_all(&saida_dir).unwrap();
+    let argumentos = com_simular(imprimir_args(&entrada, "Fila X", "3", &saida_dir, &perfis));
+    let (resultado, saida) = rodar(&argumentos, "\n");
+    assert!(resultado.is_ok(), "{resultado:?}\n{saida}");
+    assert!(saida.contains("coerente com o perfil salvo"), "{saida}");
+    assert!(
+        saida.contains("do mesmo jeito que na calibração"),
+        "{saida}"
+    );
+    assert!(!saida.contains("não foi medido"), "{saida}");
+    assert!(saida.contains("3 de 3 folhas corretas"), "{saida}");
+}
+
+#[test]
+fn ajuda_do_perfil_explica_o_modelo() {
+    for argumentos in [vec!["perfil", "--help"], vec!["perfil", "-h"]] {
+        let linha: Vec<String> = argumentos.iter().map(|&a| a.to_owned()).collect();
+        let (resultado, saida) = rodar(&linha, "");
+        assert!(resultado.is_ok());
+        assert!(
+            saida.contains("plots perfil NOME --modelo jato|laser"),
+            "{saida}"
+        );
+        assert!(saida.contains("confira com 2 ou 3 folhas"), "{saida}");
+    }
+    let (_, geral) = rodar(&["--help".to_owned()], "");
+    assert!(
+        geral.contains("plots perfil NOME --modelo jato|laser"),
+        "{geral}"
+    );
 }

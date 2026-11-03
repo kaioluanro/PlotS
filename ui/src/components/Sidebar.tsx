@@ -1,25 +1,36 @@
-import { Check, CircleAlert, RefreshCw } from "lucide-react";
-import { useEffect, useId, useState } from "react";
-import { t, type Chave } from "../i18n";
+import { Check, ChevronDown, CircleAlert, LoaderCircle, RefreshCw } from "lucide-react";
+import { Fragment, useEffect, useId, useRef, useState } from "react";
+import { t } from "../i18n";
 import {
+  abrirListaPeloTeclado,
   ATRIBUTO_MENU_DE_CONTEXTO,
+  avisosDoTopo,
   caminhoDoAviso,
   confirmarLote,
   conteudoAbaixoDoLote,
+  eModelo,
+  ESPERA_DO_INDICADOR_MS,
   estadoDoBotao,
+  estadoDoSeletor,
   impressorasValidas,
+  indicaGravacao,
+  interpretarEscolha,
   interpretarLote,
   limitarAoIntervaloDoLote,
+  linhaDaFalha,
   LOTE_MAXIMO,
   LOTE_MINIMO,
   LOTE_PADRAO,
   nomeDeExibicao,
+  nomeDoModelo,
+  pedeConfirmacao,
   resumoDoLote,
+  teclaAbreALista,
   textoDoAviso,
   textoDoEstado,
   type Aviso,
   type Impressora,
-  type Modo,
+  type Modelo,
 } from "../impressoras";
 import type { Aba } from "../tabs";
 import botoes from "./Botao.module.css";
@@ -31,9 +42,15 @@ interface Props {
   aba: Aba | null;
   impressoras: readonly Impressora[];
   avisos: readonly Aviso[];
+  /** A gravacao do modelo que falhou: aparece junto da impressora afetada. */
+  falhaAoGravar: Aviso | null;
   lendo: boolean;
+  /** Escolhas ainda sendo gravadas, por nome de fila. */
+  gravacoes: ReadonlyMap<string, Modelo>;
   aoAtualizar: () => void;
   aoAlternar: (impressora: string) => void;
+  aoEscolherModelo: (fila: string, modelo: Modelo) => void;
+  aoPedirSubstituicao: (fila: string, modelo: Modelo) => void;
   aoDefinirLote: (tamanho: number) => void;
   aoCalibrar: (fila: string) => void;
 }
@@ -42,9 +59,13 @@ export function Sidebar({
   aba,
   impressoras,
   avisos,
+  falhaAoGravar,
   lendo,
+  gravacoes,
   aoAtualizar,
   aoAlternar,
+  aoEscolherModelo,
+  aoPedirSubstituicao,
   aoDefinirLote,
   aoCalibrar,
 }: Props) {
@@ -52,6 +73,11 @@ export function Sidebar({
   const marcadas = aba?.impressorasMarcadas ?? [];
   const botao = estadoDoBotao(impressorasValidas(marcadas, impressoras).length);
   const idBotao = useId();
+  const idNotaDoModelo = useId();
+  const idDaLinhaComFalha = linhaDaFalha(falhaAoGravar, impressoras);
+  const haSeletor = impressoras.some(
+    (impressora) => estadoDoSeletor(impressora, undefined) !== null,
+  );
 
   return (
     <aside id={ID_LATERAL} className={styles.lateral} aria-labelledby="titulo-lateral">
@@ -92,7 +118,7 @@ export function Sidebar({
         >
           {lendo ? t("lateral.atualizando") : ""}
         </div>
-        {avisos.map((aviso) => (
+        {avisosDoTopo(avisos, falhaAoGravar, impressoras).map((aviso) => (
           <p key={`${aviso.codigo}-${aviso.detalhe ?? ""}`} className={styles.aviso} role="alert">
             <CircleAlert size={12} className={styles.iconeAviso} aria-hidden="true" />
             <AvisoTexto aviso={aviso} />
@@ -109,11 +135,21 @@ export function Sidebar({
               marcada={marcadas.includes(impressora.id)}
               desabilitada={aba === null}
               idExplicacao={aba === null ? idExplicacao : undefined}
+              idNotaDoModelo={idNotaDoModelo}
+              gravando={impressora.tipo === "fila" ? gravacoes.get(impressora.nome) : undefined}
+              falha={impressora.id === idDaLinhaComFalha ? falhaAoGravar : null}
               aoAlternar={aoAlternar}
+              aoEscolherModelo={aoEscolherModelo}
+              aoPedirSubstituicao={aoPedirSubstituicao}
               aoCalibrar={aoCalibrar}
             />
           ))}
         </ul>
+        {haSeletor && (
+          <p id={idNotaDoModelo} className={styles.notaModelo}>
+            {t("modo.seletor.nota")}
+          </p>
+        )}
       </div>
 
       <div className={styles.rodape}>
@@ -141,7 +177,12 @@ interface PropsLinha {
   marcada: boolean;
   desabilitada: boolean;
   idExplicacao: string | undefined;
+  idNotaDoModelo: string;
+  gravando: Modelo | undefined;
+  falha: Aviso | null;
   aoAlternar: (impressora: string) => void;
+  aoEscolherModelo: (fila: string, modelo: Modelo) => void;
+  aoPedirSubstituicao: (fila: string, modelo: Modelo) => void;
   aoCalibrar: (fila: string) => void;
 }
 
@@ -157,30 +198,66 @@ function LinhaImpressora({
   marcada,
   desabilitada,
   idExplicacao,
+  idNotaDoModelo,
+  gravando,
+  falha,
   aoAlternar,
+  aoEscolherModelo,
+  aoPedirSubstituicao,
   aoCalibrar,
 }: PropsLinha) {
+  const linha = useRef<HTMLLIElement>(null);
+  const [decorridoDaGravacao, setDecorridoDaGravacao] = useState(0);
   const idCaixa = useId();
   const idModo = useId();
   const idFace = useId();
   const nome = nomeDeExibicao(impressora);
   const estado = textoDoEstado(impressora);
-  const modo = textosDoModo(impressora);
+  const seletor = estadoDoSeletor(impressora, gravando);
+  const modelo = eModelo(impressora.modo) ? nomeDoModelo(impressora.modo) : null;
+  const face = modelo === null ? null : t("modo.entrada");
   const classes = [styles.linha];
   if (marcada) classes.push(styles.marcada);
   if (desabilitada) classes.push(styles.inerte);
+  if (falha !== null) classes.push(styles.comFalha);
   const classesDoEstado = [styles.estado];
   if (impressora.nivel === "atencao" || impressora.nivel === "problema") {
     classesDoEstado.push(styles.estadoDestaque);
   }
+  const modoEmTexto = seletor === null && (modelo !== null || impressora.modo === "desconhecido");
   const descricao = [
     idExplicacao,
-    modo !== null || impressora.modo === "desconhecido" ? idModo : undefined,
-    modo !== null ? idFace : undefined,
+    modoEmTexto ? idModo : undefined,
+    face !== null ? idFace : undefined,
   ];
+  const tituloDoModelo =
+    modelo !== null && face !== null
+      ? t(impressora.tipo === "simulada" ? "modo.simulada.titulo" : "modo.perfil.titulo", {
+          modo: modelo,
+          face,
+        })
+      : undefined;
+
+  useEffect(() => {
+    if (gravando === undefined) return undefined;
+    const prazo = window.setTimeout(
+      () => setDecorridoDaGravacao(ESPERA_DO_INDICADOR_MS),
+      ESPERA_DO_INDICADOR_MS,
+    );
+    return () => {
+      window.clearTimeout(prazo);
+      setDecorridoDaGravacao(0);
+    };
+  }, [gravando]);
+  const gravacaoDemorada = indicaGravacao(gravando, decorridoDaGravacao);
+
+  // A lista pode estar rolada para longe: quem escolheu precisa ver a falha sem perder o foco.
+  useEffect(() => {
+    if (falha !== null) linha.current?.scrollIntoView({ block: "nearest" });
+  }, [falha]);
 
   return (
-    <li className={classes.join(" ")}>
+    <li ref={linha} className={classes.join(" ")}>
       <label className={styles.alvo} title={desabilitada ? t("lateral.semDocumento") : undefined}>
         <input
           id={idCaixa}
@@ -195,19 +272,71 @@ function LinhaImpressora({
       </label>
       {/* Duas linhas independentes: o texto do modo nao tira largura do nome por causa da face. */}
       <div className={styles.textos}>
-        <div className={styles.fileira}>
+        <div
+          className={`${styles.fileira} ${styles.fileiraDoNome} ${seletor !== null ? styles.fileiraComSeletor : ""}`}
+        >
           <label htmlFor={idCaixa} className={styles.nome} title={nome}>
             {nome}
           </label>
-          {impressora.modo === "sem_perfil" && (
-            <button
-              type="button"
-              className={`${botoes.botao} ${botoes.secundario} ${botoes.pequeno} ${styles.calibrar}`}
-              title={t("modo.calibrar.titulo")}
-              onClick={() => aoCalibrar(impressora.nome)}
-            >
-              {t("modo.calibrar")}
-            </button>
+          {seletor !== null && (
+            <span className={styles.seletorCaixa}>
+              {/* Nao usa `disabled` ao gravar: o foco de quem usa o teclado ficaria perdido. */}
+              <select
+                className={styles.seletor}
+                value={seletor.valor}
+                title={gravacaoDemorada ? t("modo.seletor.gravando") : seletor.titulo}
+                aria-label={t("modo.seletor.rotulo", { nome })}
+                aria-describedby={idNotaDoModelo}
+                aria-busy={gravando !== undefined}
+                onKeyDown={(evento) => {
+                  if (teclaAbreALista(evento.key) && abrirListaPeloTeclado(evento.currentTarget)) {
+                    evento.preventDefault();
+                  }
+                }}
+                onChange={(evento) => {
+                  const escolha = interpretarEscolha(evento.target.value);
+                  // A opcao escolhida some com a lista: o foco volta daqui quando o dialogo fechar.
+                  if (escolha.acao === "calibrar") {
+                    evento.target.focus();
+                    aoCalibrar(impressora.nome);
+                  }
+                  if (escolha.acao !== "gravar") return;
+                  if (pedeConfirmacao(impressora.modo, gravando)) {
+                    evento.target.focus();
+                    aoPedirSubstituicao(impressora.nome, escolha.modelo);
+                  } else {
+                    aoEscolherModelo(impressora.nome, escolha.modelo);
+                  }
+                }}
+              >
+                {seletor.opcoes.map((opcao) => (
+                  <Fragment key={opcao.valor}>
+                    {opcao.divisorAntes === true && <hr className={styles.divisorSeletor} />}
+                    <option
+                      value={opcao.valor}
+                      disabled={opcao.soEstado}
+                      hidden={opcao.soEstado}
+                      // O ponteiro leva o foco junto: a lista nunca mostra dois itens ativos.
+                      onPointerMove={(evento) => evento.currentTarget.focus()}
+                    >
+                      {opcao.rotulo}
+                    </option>
+                  </Fragment>
+                ))}
+              </select>
+              {gravacaoDemorada ? (
+                <LoaderCircle
+                  size={12}
+                  className={`${styles.indicadorGravacao} ${styles.girando}`}
+                  aria-hidden="true"
+                />
+              ) : (
+                <ChevronDown size={10} className={styles.setaSeletor} aria-hidden="true" />
+              )}
+              <span role="status" className={styles.ocultoVisual}>
+                {gravacaoDemorada ? t("modo.seletor.gravando") : ""}
+              </span>
+            </span>
           )}
           {impressora.modo === "desconhecido" && (
             <span id={idModo} className={styles.modoDesconhecido} title={t("modo.desconhecido.titulo")}>
@@ -215,13 +344,13 @@ function LinhaImpressora({
               <span>{t("modo.desconhecido")}</span>
             </span>
           )}
-          {modo !== null && (
-            <span id={idModo} className={styles.modoNome} title={modo.titulo}>
-              {modo.nome}
+          {seletor === null && modelo !== null && (
+            <span id={idModo} className={styles.modoNome} title={tituloDoModelo}>
+              {modelo}
             </span>
           )}
         </div>
-        <div className={styles.fileira}>
+        <div className={`${styles.fileira} ${styles.fileiraDoEstado}`}>
           <label htmlFor={idCaixa} className={classesDoEstado.join(" ")} title={estado}>
             <span
               className={`${styles.ponto} ${CLASSE_DO_NIVEL[impressora.nivel]}`}
@@ -231,34 +360,21 @@ function LinhaImpressora({
               {estado}
             </span>
           </label>
-          {modo !== null && (
-            <span id={idFace} className={styles.modoFace} title={modo.titulo}>
-              {modo.face}
+          {face !== null && (
+            <span id={idFace} className={styles.modoFace} title={tituloDoModelo}>
+              {face}
             </span>
           )}
         </div>
       </div>
+      {falha !== null && (
+        <p className={`${styles.aviso} ${styles.avisoNaLinha}`} role="alert">
+          <CircleAlert size={12} className={styles.iconeAviso} aria-hidden="true" />
+          <AvisoTexto aviso={falha} />
+        </p>
+      )}
     </li>
   );
-}
-
-const TEXTOS_DO_MODO: Partial<Record<Modo, { nome: Chave; face: Chave }>> = {
-  traseira: { nome: "modo.traseira", face: "modo.traseira.face" },
-  gaveta: { nome: "modo.gaveta", face: "modo.gaveta.face" },
-};
-
-function textosDoModo(impressora: Impressora) {
-  const chaves = TEXTOS_DO_MODO[impressora.modo];
-  if (!chaves) return null;
-  const partes = { modo: t(chaves.nome), face: t(chaves.face) };
-  return {
-    nome: partes.modo,
-    face: partes.face,
-    titulo:
-      impressora.tipo === "simulada"
-        ? t("modo.simulada.titulo", partes)
-        : t("modo.perfil.titulo", partes),
-  };
 }
 
 function AvisoTexto({ aviso }: { aviso: Aviso }) {

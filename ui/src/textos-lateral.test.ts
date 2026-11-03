@@ -4,6 +4,25 @@ import { nomeDeExibicao, textoDoAviso, type Impressora } from "./impressoras";
 
 const IDIOMAS: readonly Idioma[] = ["pt-BR", "en"];
 
+describe("texto dos modelos", () => {
+  it.each(IDIOMAS)("%s diz que o modelo e ponto de partida a conferir com folhas", (idioma) => {
+    expect(traduzir(idioma, "modo.seletor.nota")).toMatch(idioma === "en" ? /2 or 3 sheets/ : /2 ou 3 folhas/);
+  });
+
+  it("os nomes dos modelos nao trazem marca", () => {
+    expect(traduzir("pt-BR", "modo.jato")).toBe("Jato de tinta");
+    expect(traduzir("pt-BR", "modo.laser")).toBe("Laser");
+    expect(traduzir("en", "modo.jato")).toBe("Inkjet");
+    expect(traduzir("en", "modo.laser")).toBe("Laser");
+  });
+
+  it.each(IDIOMAS)("%s diz qual fila nao gravou e o que fazer", (idioma) => {
+    const texto = textoDoAviso({ codigo: "modelo_nao_gravado", detalhe: "Sala" }, idioma);
+    expect(texto).toContain("Sala");
+    expect(texto).toMatch(idioma === "en" ? /try again\.$/ : /tente de novo\.$/);
+  });
+});
+
 describe("avisos de perfil dizem como sair do problema", () => {
   it.each([
     ["perfis_invalido", "pt-BR", /Restaure uma cópia ou remova o arquivo e calibre de novo/],
@@ -36,15 +55,28 @@ describe("vocabulario da interface", () => {
     expect(encontrados).toEqual([]);
   });
 
-  it("o ingles usa Tray no modo e no nome simulado", () => {
-    expect(traduzir("en", "modo.gaveta")).toBe("Tray ↓");
+  it.each(IDIOMAS)("%s diz perfil, e nao modo, ao falar da configuracao da impressora", (idioma) => {
+    const palavra = idioma === "en" ? /\bmodes?\b/i : /\bmodos?\b/i;
+    const encontrados = Object.entries(traducoes[idioma])
+      .filter(
+        ([chave, texto]) =>
+          (chave.startsWith("calibrar.") ||
+            chave.startsWith("aviso.perfis_") ||
+            chave === "modo.desconhecido.titulo") &&
+          palavra.test(texto),
+      )
+      .map(([chave]) => chave);
+    expect(encontrados).toEqual([]);
+  });
+
+  it("o ingles usa Tray no nome simulado", () => {
     const simulada: Impressora = {
       id: "simulada:gaveta",
       nome: "Simulada — Gaveta",
       tipo: "simulada",
       nivel: "pronta",
       condicoes: [],
-      modo: "gaveta",
+      modo: "laser",
     };
     expect(nomeDeExibicao(simulada, "en")).toBe("Simulated — Tray");
     expect(JSON.stringify(traducoes.en)).not.toMatch(/drawer/i);

@@ -4,9 +4,11 @@
 
 use crate::calibrar::{caminho_perfis, carregar_perfis, MSG_RESPOSTA_INVALIDA};
 use crate::geracao::{self, Documento, LoteDoPlano};
+use crate::imprimir::{aviso_de_modelo_nao_medido, frases_de_recolocacao_do_modelo};
 use crate::{listar, ImpressoraVirtual};
-use plots_core::{FormatoPapel, OrdemPassadas, Papel, TOLERANCIA_PAPEL_MM};
+use plots_core::{FormatoPapel, ModeloImpressora, OrdemPassadas, Papel, TOLERANCIA_PAPEL_MM};
 use plots_print::job::{Backend, ErroJob, EstadoJob, Job};
+use plots_print::Mecanica;
 use plots_windows::Fila;
 use std::fmt::Display;
 use std::io::{BufRead, Write};
@@ -72,6 +74,8 @@ struct Espera {
 struct Destino<'a> {
     fila: &'a str,
     gesto_texto: Option<&'a str>,
+    /// Modelo do perfil salvo, que manda no gesto e não foi medido na máquina.
+    modelo: Option<ModeloImpressora>,
 }
 
 /// Executa o envio real: nada é enviado sem a resposta do usuário.
@@ -94,7 +98,7 @@ pub(crate) fn executar(
     let lidos = carregar_perfis(&caminho_perfis(pedido.perfis.clone())?)?;
     let perfil = lidos.obter(&pedido.nome).ok_or_else(|| {
         format!(
-            "a impressora '{0}' não tem perfil salvo; rode 'plots calibrar {0} --saida DIRETORIO' antes",
+            "a impressora '{0}' não tem perfil salvo; rode 'plots perfil {0} --modelo jato|laser' ou 'plots calibrar {0} --saida DIRETORIO' antes",
             pedido.nome
         )
     })?;
@@ -123,6 +127,7 @@ pub(crate) fn executar(
     let destino = Destino {
         fila: &pedido.nome,
         gesto_texto: perfil.gesto_texto.as_deref(),
+        modelo: perfil.modelo,
     };
     enviar_com_o_sistema(&pedido, &fila, documento, lotes, &destino, entrada, saida)
 }
@@ -245,6 +250,9 @@ where
     B: Backend + DescreveFalha,
     B::Erro: Display,
 {
+    if let Some(modelo) = destino.modelo {
+        writeln!(saida, "{}", aviso_de_modelo_nao_medido(modelo)).map_err(|e| e.to_string())?;
+    }
     let total = lotes.len();
     let para_o_job = lotes.iter().map(|item| item.lote.clone()).collect();
     let mut job = Job::novo(backend, para_o_job).map_err(|erro| texto_do_job(&erro))?;
@@ -288,14 +296,7 @@ where
         )
         .map_err(|e| e.to_string())?;
         writeln!(saida, "  {FRASE_ESPERAR_FOLHA}").map_err(|e| e.to_string())?;
-        writeln!(
-            saida,
-            "  Pegue o maço como saiu, não embaralhe, e recoloque do mesmo jeito que na calibração."
-        )
-        .map_err(|e| e.to_string())?;
-        if let Some(texto) = destino.gesto_texto {
-            writeln!(saida, "  {texto}").map_err(|e| e.to_string())?;
-        }
+        escrever_recolocacao(destino, saida)?;
         writeln!(saida, "  Verso: {}", listar(&lote.passada2)).map_err(|e| e.to_string())?;
         let pergunta = format!("Enviar o verso do lote {numero} para {fila}? (s/n): ");
         if !confirmar(entrada, saida, &pergunta)? {
@@ -321,7 +322,32 @@ where
         saida,
         "\nOs trabalhos dos {total} lote(s) terminaram ou saíram da fila do spooler. Confira as folhas depois que a última sair."
     )
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    if destino
+        .modelo
+        .is_some_and(|modelo| !Mecanica::do_modelo(modelo).saida_face_impressa_para_cima)
+    {
+        writeln!(saida, "Na gaveta, vire o maço antes de ler as folhas.")
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Com modelo, o gesto é o dele; sem modelo, vale o que foi feito na calibração.
+fn escrever_recolocacao(destino: &Destino<'_>, saida: &mut impl Write) -> Result<(), String> {
+    if let Some(modelo) = destino.modelo {
+        let (lado, virada) = frases_de_recolocacao_do_modelo(modelo);
+        return writeln!(saida, "  {lado}\n  {virada}").map_err(|e| e.to_string());
+    }
+    writeln!(
+        saida,
+        "  Pegue o maço como saiu, não embaralhe, e recoloque do mesmo jeito que na calibração."
+    )
+    .map_err(|e| e.to_string())?;
+    if let Some(texto) = destino.gesto_texto {
+        writeln!(saida, "  {texto}").map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 fn escrever_aguardando(saida: &mut impl Write, passada: &str, numero: usize) -> Result<(), String> {
@@ -659,6 +685,7 @@ mod testes {
             respostas,
             erro_ao_enviar,
             consultas,
+            None,
         )
     }
 
@@ -668,6 +695,7 @@ mod testes {
         respostas: &[Leitura],
         erro_ao_enviar: Option<&'static str>,
         consultas: u32,
+        modelo: Option<ModeloImpressora>,
     ) -> Rodada {
         let eventos = Rc::new(RefCell::new(Vec::new()));
         let backend = Falso {
@@ -690,6 +718,7 @@ mod testes {
         let destino = Destino {
             fila: "Fila de Teste",
             gesto_texto: Some("Vire o maço."),
+            modelo,
         };
         let espera = Espera {
             intervalo: Duration::ZERO,
@@ -748,6 +777,42 @@ mod testes {
             .saida
             .contains("Enviar o verso do lote 2 para Fila de Teste? (s/n)"));
         assert!(rodada.saida.contains("Vire o maço."));
+    }
+
+    #[test]
+    fn com_modelo_o_gesto_e_o_do_modelo_e_avisa_que_nao_foi_medido() {
+        let casos = [
+            (
+                ModeloImpressora::JatoDeTinta,
+                "Vire o maço pela borda de cima, como um bloco de notas.",
+                false,
+            ),
+            (ModeloImpressora::Laser, "Não vire o maço.", true),
+        ];
+        for (modelo, virada, vira_para_ler) in casos {
+            let rodada = rodar_documento(&[A4, A4], "s\ns\n", &[], None, 10, Some(modelo));
+            rodada.resultado.unwrap();
+            let saida = &rodada.saida;
+            assert!(saida.contains("não foi medido nesta máquina"), "{saida}");
+            assert!(saida.contains("com a face impressa para baixo."), "{saida}");
+            assert!(saida.contains(virada), "{saida}");
+            assert!(!saida.contains("na calibração"), "{saida}");
+            assert!(!saida.contains("Vire o maço.\n"), "{saida}");
+            assert_eq!(
+                saida.contains("Na gaveta, vire o maço"),
+                vira_para_ler,
+                "{saida}"
+            );
+        }
+    }
+
+    #[test]
+    fn sem_modelo_o_envio_continua_falando_da_calibracao() {
+        let rodada = rodar(2, "s\ns\n");
+        rodada.resultado.unwrap();
+        assert!(rodada.saida.contains("do mesmo jeito que na calibração."));
+        assert!(!rodada.saida.contains("não foi medido"));
+        assert!(!rodada.saida.contains("Na gaveta,"));
     }
 
     #[test]
@@ -861,7 +926,7 @@ mod testes {
     #[test]
     fn cabecalho_diz_o_papel_e_a_troca_vem_antes_da_pergunta() {
         let dimensoes = [A4, A4, A5, A5];
-        let rodada = rodar_documento(&dimensoes, "s\ns\ns\ns\n", &[], None, 10);
+        let rodada = rodar_documento(&dimensoes, "s\ns\ns\ns\n", &[], None, 10, None);
         rodada.resultado.unwrap();
         let saida = &rodada.saida;
         let cabecalho_1 = saida.find("Lote 1 de 2: 1 folha(s), papel A4").unwrap();
@@ -879,7 +944,7 @@ mod testes {
     #[test]
     fn mesmo_papel_nao_pede_troca_nem_quando_a_orientacao_muda() {
         let dimensoes = [A4, A4, A4_DEITADO, A4_DEITADO];
-        let rodada = rodar_documento(&dimensoes, "s\ns\ns\ns\n", &[], None, 10);
+        let rodada = rodar_documento(&dimensoes, "s\ns\ns\ns\n", &[], None, 10, None);
         rodada.resultado.unwrap();
         assert!(!rodada.saida.contains("Troque o papel"), "{}", rodada.saida);
     }
@@ -892,7 +957,7 @@ mod testes {
             DimensoesPagina::new(120.0, 170.0),
             DimensoesPagina::new(120.0, 170.0),
         ];
-        let rodada = rodar_documento(&dimensoes, "s\ns\ns\ns\n", &[], None, 10);
+        let rodada = rodar_documento(&dimensoes, "s\ns\ns\ns\n", &[], None, 10, None);
         rodada.resultado.unwrap();
         assert!(
             rodada.saida.contains("papel 100 × 150 mm"),

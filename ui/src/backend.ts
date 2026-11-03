@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { t } from "./i18n";
-import type { ListaImpressoras } from "./impressoras";
+import type { ListaImpressoras, Modelo } from "./impressoras";
 import type { LoteCaminhos } from "./lote";
 import type { Documento } from "./tabs";
 
@@ -17,6 +17,11 @@ export function contarPaginas(caminho: string): Promise<number> {
 /** So le as filas e os perfis; nada e enviado nem alterado. */
 export function listarImpressoras(): Promise<ListaImpressoras> {
   return invoke<ListaImpressoras>("listar_impressoras");
+}
+
+/** Grava no arquivo de perfis o perfil pronto do modelo; a recusa traz um aviso. */
+export function definirModelo(fila: string, modelo: Modelo): Promise<void> {
+  return invoke<void>("definir_modelo", { fila, modelo });
 }
 
 export function caminhosIniciais(): Promise<LoteCaminhos> {

@@ -3,7 +3,7 @@
 //! As pilhas são representadas de baixo para cima. A mecânica é independente
 //! do perfil que gerou a ordem das páginas; deve ser calibrada para cada máquina.
 
-use plots_core::Pagina;
+use plots_core::{GestoRecolocar, ModeloImpressora, Pagina, ViradaMaco};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Marca {
@@ -64,6 +64,14 @@ impl Mecanica {
             giro_segunda_passada: false,
         }
     }
+
+    /// Mecânica do tipo de máquina que o modelo representa.
+    pub const fn do_modelo(modelo: ModeloImpressora) -> Self {
+        match modelo {
+            ModeloImpressora::JatoDeTinta => Self::traseira(),
+            ModeloImpressora::Laser => Self::gaveta(),
+        }
+    }
 }
 
 /// Operações feitas no maço antes de devolvê-lo à entrada. Virar um maço
@@ -88,6 +96,20 @@ impl Recolocacao {
             inverter_ordem: false,
             girar_180: true,
             retirar_folhas: 0,
+        }
+    }
+}
+
+impl From<GestoRecolocar> for Recolocacao {
+    /// A borda que entra primeiro não muda a ordem nem a face das folhas no simulador.
+    fn from(gesto: GestoRecolocar) -> Self {
+        match gesto.virada {
+            ViradaMaco::NaoVirar => Self::default(),
+            ViradaMaco::PelaLateral => Self {
+                virar_maco: true,
+                ..Self::default()
+            },
+            ViradaMaco::PelaBordaDeCima => Self::virada_pela_borda_de_cima(),
         }
     }
 }
@@ -1186,12 +1208,12 @@ mod tests {
 
     /// Perfil da laser: frente inversa, verso direto e sem giro.
     fn perfil_laser() -> PerfilImpressora {
-        perfil_de(true, false, false)
+        ModeloImpressora::Laser.perfil()
     }
 
     /// Perfil do jato de tinta: frente e verso inversos, com o verso girado.
     fn perfil_jato() -> PerfilImpressora {
-        perfil_de(true, true, true)
+        ModeloImpressora::JatoDeTinta.perfil()
     }
 
     /// Virada pela borda de cima: virar o maço e girar cada folha em 180°.
@@ -1292,6 +1314,77 @@ mod tests {
             sobreimpressao: None,
         }];
         assert!(!lote_correto(&pilha, 1, 1, 2));
+    }
+
+    /// Passa as 6 páginas pelo simulador do modelo, na sequência que o modelo manda enviar.
+    fn seis_paginas_do_modelo(
+        modelo: ModeloImpressora,
+        frente: [usize; 3],
+        verso: [usize; 3],
+        verso_girado: bool,
+    ) {
+        let lotes = plots_core::plano_documento(
+            6,
+            3,
+            plots_core::OrdemPassadas::ParesPrimeiro,
+            modelo.perfil(),
+        )
+        .unwrap();
+        let [lote] = lotes.as_slice() else {
+            panic!("deveria sair um lote só");
+        };
+        let enviadas = |paginas: &[Pagina]| -> Vec<(usize, bool)> {
+            paginas
+                .iter()
+                .map(|pagina| (pagina.numero.unwrap(), pagina.girar_180))
+                .collect()
+        };
+        assert_eq!(enviadas(&lote.passada1), frente.map(|n| (n, false)));
+        assert_eq!(enviadas(&lote.passada2), verso.map(|n| (n, verso_girado)));
+
+        let mut sim = Simulador::novo(Mecanica::do_modelo(modelo));
+        sim.imprimir_frente(&lote.passada1).unwrap();
+        sim.recolocar(modelo.gesto().into()).unwrap();
+        sim.imprimir_verso(&lote.passada2).unwrap();
+        let pares = [(Some(1), Some(2)), (Some(3), Some(4)), (Some(5), Some(6))];
+        let veredictos = conferir_folhas(&sim.folhas_para_leitura(), &pares);
+        assert!(
+            veredictos.iter().all(|v| matches!(v, Veredito::Certa)),
+            "{modelo:?}: {veredictos:?}"
+        );
+    }
+
+    #[test]
+    fn jato_de_tinta_entrega_seis_paginas_certas_no_simulador() {
+        seis_paginas_do_modelo(ModeloImpressora::JatoDeTinta, [6, 4, 2], [5, 3, 1], true);
+    }
+
+    #[test]
+    fn laser_entrega_seis_paginas_certas_no_simulador() {
+        seis_paginas_do_modelo(ModeloImpressora::Laser, [6, 4, 2], [1, 3, 5], false);
+    }
+
+    #[test]
+    fn cada_virada_do_gesto_vira_a_recolocacao_do_simulador() {
+        let gesto = |virada| GestoRecolocar {
+            virada,
+            ..GestoRecolocar::default()
+        };
+        assert_eq!(
+            Recolocacao::from(gesto(ViradaMaco::NaoVirar)),
+            Recolocacao::default()
+        );
+        assert_eq!(
+            Recolocacao::from(gesto(ViradaMaco::PelaLateral)),
+            Recolocacao {
+                virar_maco: true,
+                ..Recolocacao::default()
+            }
+        );
+        assert_eq!(
+            Recolocacao::from(gesto(ViradaMaco::PelaBordaDeCima)),
+            Recolocacao::virada_pela_borda_de_cima()
+        );
     }
 
     #[test]

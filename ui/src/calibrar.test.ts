@@ -8,7 +8,7 @@ describe("comando de calibrar para o PowerShell", () => {
   });
 
   it.each([
-    ["Canon G3110", ".\\plots-cli calibrar 'Canon G3110' --saida ."],
+    ["Jato Sala 3", ".\\plots-cli calibrar 'Jato Sala 3' --saida ."],
     ["Custo $HOME", ".\\plots-cli calibrar 'Custo $HOME' --saida ."],
     ["Sala `n 3", ".\\plots-cli calibrar 'Sala `n 3' --saida ."],
     ["\\\\srv\\Laser 1", ".\\plots-cli calibrar '\\\\srv\\Laser 1' --saida ."],
@@ -23,7 +23,7 @@ describe("comando de calibrar para o PowerShell", () => {
   });
 
   it("aspas duplas passam sem interpretacao e dobradas", () => {
-    expect(comandoDeCalibrar('HP "Sala 2"')).toBe('.\\plots-cli --% calibrar "HP ""Sala 2""" --saida .');
+    expect(comandoDeCalibrar('Laser "Sala 2"')).toBe('.\\plots-cli --% calibrar "Laser ""Sala 2""" --saida .');
   });
 
   it("uma aspa dupla no nome nao abre espaco para outro comando", () => {

@@ -1,13 +1,16 @@
 //! Lista de impressoras da barra lateral: filas do sistema, modo de cada uma e impressoras simuladas.
 //!
-//! Este modulo so le. Nenhuma pagina e enviada e nenhuma fila ou arquivo de perfis e alterado.
+//! Nenhuma pagina e enviada e nenhuma fila e alterada. O arquivo de perfis so muda quando o
+//! usuario escolhe um modelo, com a gravacao atomica de `plots-perfis`.
 
-use plots_perfis::{ErroPerfis, Perfis};
+use plots_core::ModeloImpressora;
+use plots_perfis::{EntradaPerfil, ErroPerfis, Perfis};
 use plots_windows::{Condicao, ErroFilas, Fila};
 use serde::Serialize;
 use std::collections::HashSet;
 use std::ffi::OsString;
 use std::path::PathBuf;
+use std::sync::{Mutex, PoisonError};
 
 /// Variavel que aponta outro arquivo de perfis no lugar do arquivo do usuario.
 pub const VARIAVEL_PERFIS: &str = "PLOTS_PERFIS";
@@ -23,14 +26,16 @@ pub enum Tipo {
     Simulada,
 }
 
-/// De onde a impressora tira o modo de papel.
+/// O que se sabe sobre a configuracao da impressora.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Modo {
-    /// Face para cima: a frente sai da ultima pagina para a primeira.
-    Traseira,
-    /// Face para baixo: a frente sai da primeira pagina para a ultima.
-    Gaveta,
+    /// Perfil pronto do jato de tinta.
+    Jato,
+    /// Perfil pronto da laser.
+    Laser,
+    /// Perfil salvo sem modelo: os valores nao dizem de que tipo a maquina e.
+    Personalizado,
     /// Os perfis foram lidos e nenhum tem o nome exato desta fila.
     SemPerfil,
     /// Os perfis nao puderam ser lidos: nao se sabe se a fila tem perfil.
@@ -76,6 +81,7 @@ pub enum CodigoAviso {
     PerfisGrande,
     PerfisInvalido,
     PerfisVersao,
+    ModeloNaoGravado,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -92,6 +98,46 @@ pub struct Aviso {
 pub struct ListaImpressoras {
     pub impressoras: Vec<Impressora>,
     pub avisos: Vec<Aviso>,
+}
+
+/// Uma gravacao por vez: duas escolhas seguidas nao podem ler o mesmo arquivo e perder uma delas.
+static GRAVACAO_DE_MODELO: Mutex<()> = Mutex::new(());
+
+/// Grava o perfil pronto do modelo no arquivo de perfis do sistema. Se falhar, nada muda.
+pub fn definir_modelo(fila: &str, modelo: &str) -> Result<(), Aviso> {
+    let caminho = caminho_dos_perfis(std::env::var_os(VARIAVEL_PERFIS));
+    gravar_modelo(caminho, fila, modelo)
+}
+
+fn gravar_modelo(
+    caminho: Result<PathBuf, ErroPerfis>,
+    fila: &str,
+    codigo: &str,
+) -> Result<(), Aviso> {
+    let (Some(modelo), false) = (ModeloImpressora::de_codigo(codigo), fila.trim().is_empty())
+    else {
+        return Err(falha_ao_gravar(fila));
+    };
+    let _vez = GRAVACAO_DE_MODELO
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    let aviso = |erro: ErroPerfis| Aviso {
+        caminho: caminho_de_perfis(&erro),
+        ..falha_ao_gravar(fila)
+    };
+    let caminho = caminho.map_err(aviso)?;
+    let mut perfis = plots_perfis::carregar(&caminho).map_err(aviso)?;
+    perfis.definir_modelo(fila, modelo);
+    plots_perfis::salvar(&caminho, &perfis).map_err(aviso)
+}
+
+/// Aviso de que o modelo desta fila nao foi gravado.
+pub fn falha_ao_gravar(fila: &str) -> Aviso {
+    Aviso {
+        codigo: CodigoAviso::ModeloNaoGravado,
+        detalhe: Some(fila.to_owned()),
+        caminho: None,
+    }
 }
 
 /// Le as filas e os perfis do sistema. Uma falha em qualquer um vira aviso.
@@ -150,12 +196,12 @@ pub fn montar(
     impressoras.push(simulada(
         "simulada:traseira",
         NOME_SIMULADA_TRASEIRA,
-        Modo::Traseira,
+        Modo::Jato,
     ));
     impressoras.push(simulada(
         "simulada:gaveta",
         NOME_SIMULADA_GAVETA,
-        Modo::Gaveta,
+        Modo::Laser,
     ));
     ListaImpressoras {
         impressoras,
@@ -179,8 +225,7 @@ fn impressora_da_fila(fila: &Fila, perfis: Option<&Perfis>) -> Impressora {
         None => Modo::Desconhecido,
         Some(perfis) => match perfis.obter(&fila.nome) {
             None => Modo::SemPerfil,
-            Some(entrada) if entrada.perfil.passada1_inversa => Modo::Traseira,
-            Some(_) => Modo::Gaveta,
+            Some(entrada) => modo_da_entrada(entrada),
         },
     };
     let mut nivel = Nivel::Pronta;
@@ -197,6 +242,15 @@ fn impressora_da_fila(fila: &Fila, perfis: Option<&Perfis>) -> Impressora {
         nivel,
         condicoes,
         modo,
+    }
+}
+
+/// O modo vem so do campo `modelo`: os valores do perfil nao dizem de que tipo a maquina e.
+fn modo_da_entrada(entrada: &EntradaPerfil) -> Modo {
+    match entrada.modelo {
+        Some(ModeloImpressora::JatoDeTinta) => Modo::Jato,
+        Some(ModeloImpressora::Laser) => Modo::Laser,
+        None => Modo::Personalizado,
     }
 }
 
@@ -292,7 +346,6 @@ fn ler_condicao(condicao: &Condicao) -> (CondicaoLida, Nivel) {
 mod testes {
     use super::*;
     use plots_core::PerfilImpressora;
-    use plots_perfis::EntradaPerfil;
     use plots_windows::Estado;
     use std::path::Path;
 
@@ -356,9 +409,9 @@ mod testes {
     fn simuladas_tem_o_modo_fixo_que_o_nome_diz() {
         let lista = montar(Ok(Vec::new()), Ok(Perfis::new()));
         assert_eq!(lista.impressoras.len(), 2);
-        assert_eq!(lista.impressoras[0].modo, Modo::Traseira);
+        assert_eq!(lista.impressoras[0].modo, Modo::Jato);
         assert_eq!(lista.impressoras[0].tipo, Tipo::Simulada);
-        assert_eq!(lista.impressoras[1].modo, Modo::Gaveta);
+        assert_eq!(lista.impressoras[1].modo, Modo::Laser);
         assert_eq!(lista.impressoras[1].tipo, Tipo::Simulada);
     }
 
@@ -378,7 +431,7 @@ mod testes {
         assert_eq!(
             modos,
             [
-                Modo::Traseira,
+                Modo::Personalizado,
                 Modo::SemPerfil,
                 Modo::SemPerfil,
                 Modo::SemPerfil
@@ -387,11 +440,120 @@ mod testes {
     }
 
     #[test]
-    fn o_perfil_salvo_implica_o_modo_pela_primeira_passada() {
+    fn perfil_sem_modelo_e_personalizado_seja_qual_for_a_primeira_passada() {
         let perfis = perfis_de(&[("Cima", true), ("Baixo", false)]);
         let lista = montar(Ok(vec![fila("Cima", 0), fila("Baixo", 0)]), Ok(perfis));
-        assert_eq!(lista.impressoras[0].modo, Modo::Traseira);
-        assert_eq!(lista.impressoras[1].modo, Modo::Gaveta);
+        assert_eq!(lista.impressoras[0].modo, Modo::Personalizado);
+        assert_eq!(lista.impressoras[1].modo, Modo::Personalizado);
+    }
+
+    #[test]
+    fn frente_invertida_sozinha_nao_diz_qual_e_o_modo() {
+        let perfis = perfis_de(&[("Fila", true)]);
+        let lista = montar(Ok(vec![fila("Fila", 0)]), Ok(perfis));
+        assert_ne!(lista.impressoras[0].modo, Modo::Jato);
+    }
+
+    #[test]
+    fn o_modo_vem_do_modelo_salvo_mesmo_com_a_frente_invertida_nos_dois() {
+        let mut perfis = Perfis::new();
+        perfis.definir_modelo("Jato", ModeloImpressora::JatoDeTinta);
+        perfis.definir_modelo("Laser", ModeloImpressora::Laser);
+        let lista = montar(Ok(vec![fila("Jato", 0), fila("Laser", 0)]), Ok(perfis));
+        assert_eq!(lista.impressoras[0].modo, Modo::Jato);
+        assert_eq!(lista.impressoras[1].modo, Modo::Laser);
+    }
+
+    /// Pasta temporaria exclusiva do teste, removida ao fim.
+    struct Pasta(PathBuf);
+
+    impl Pasta {
+        fn nova(nome: &str) -> Self {
+            let caminho =
+                std::env::temp_dir().join(format!("plots-app-teste-{nome}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&caminho);
+            std::fs::create_dir_all(&caminho).unwrap();
+            Self(caminho)
+        }
+    }
+
+    impl Drop for Pasta {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn gravar_modelo_mantem_o_apelido_e_aparece_na_lista() {
+        let pasta = Pasta::nova("gravar");
+        let caminho = pasta.0.join("perfis.toml");
+        let mut perfis = Perfis::new();
+        perfis.inserir(
+            "Fila",
+            EntradaPerfil {
+                apelido: Some("Sala".to_owned()),
+                ..EntradaPerfil::default()
+            },
+        );
+        plots_perfis::salvar(&caminho, &perfis).unwrap();
+        gravar_modelo(Ok(caminho.clone()), "Fila", "laser").unwrap();
+        gravar_modelo(Ok(caminho.clone()), "Nova", "jato").unwrap();
+        let lidos = plots_perfis::carregar(&caminho).unwrap();
+        assert_eq!(
+            lidos.obter("Fila").unwrap().apelido.as_deref(),
+            Some("Sala")
+        );
+        let lista = montar(Ok(vec![fila("Fila", 0), fila("Nova", 0)]), Ok(lidos));
+        assert_eq!(lista.impressoras[0].modo, Modo::Laser);
+        assert_eq!(lista.impressoras[1].modo, Modo::Jato);
+    }
+
+    #[test]
+    fn falha_ao_gravar_diz_a_fila_e_o_arquivo_e_nao_muda_nada() {
+        let pasta = Pasta::nova("falha");
+        // A pasta do arquivo e um arquivo: nao ha como criar nada ali dentro.
+        let bloqueio = pasta.0.join("bloqueio");
+        std::fs::write(&bloqueio, "x").unwrap();
+        let caminho = bloqueio.join("perfis.toml");
+        let aviso = gravar_modelo(Ok(caminho.clone()), "Fila", "jato").unwrap_err();
+        assert_eq!(aviso.codigo, CodigoAviso::ModeloNaoGravado);
+        assert_eq!(aviso.detalhe.as_deref(), Some("Fila"));
+        assert_eq!(aviso.caminho, Some(caminho.display().to_string()));
+        assert_eq!(std::fs::read_to_string(&bloqueio).unwrap(), "x");
+    }
+
+    #[test]
+    fn arquivo_danificado_nao_e_sobrescrito_pela_escolha_do_modelo() {
+        let pasta = Pasta::nova("danificado");
+        let caminho = pasta.0.join("perfis.toml");
+        std::fs::write(&caminho, "nada = = =").unwrap();
+        let aviso = gravar_modelo(Ok(caminho.clone()), "Fila", "jato").unwrap_err();
+        assert_eq!(aviso.codigo, CodigoAviso::ModeloNaoGravado);
+        assert_eq!(std::fs::read_to_string(&caminho).unwrap(), "nada = = =");
+    }
+
+    #[test]
+    fn modelo_desconhecido_ou_fila_sem_nome_nao_tocam_no_arquivo() {
+        let pasta = Pasta::nova("recusas");
+        let caminho = pasta.0.join("perfis.toml");
+        for (fila, codigo) in [
+            ("Fila", "matricial"),
+            ("Fila", ""),
+            ("", "jato"),
+            ("  ", "laser"),
+        ] {
+            let aviso = gravar_modelo(Ok(caminho.clone()), fila, codigo).unwrap_err();
+            assert_eq!(aviso.codigo, CodigoAviso::ModeloNaoGravado);
+            assert!(!caminho.exists());
+        }
+    }
+
+    #[test]
+    fn sem_pasta_do_usuario_a_escolha_vira_aviso_sem_caminho() {
+        let aviso =
+            gravar_modelo(Err(ErroPerfis::PastaUsuarioIndisponivel), "Fila", "jato").unwrap_err();
+        assert_eq!(aviso.codigo, CodigoAviso::ModeloNaoGravado);
+        assert_eq!(aviso.caminho, None);
     }
 
     #[test]
@@ -399,7 +561,7 @@ mod testes {
         let lista = montar(Ok(vec![fila("Laser", 0)]), Err(falha_de_toml()));
         assert_eq!(lista.impressoras.len(), 3);
         assert_eq!(lista.impressoras[0].modo, Modo::Desconhecido);
-        assert_eq!(lista.impressoras[1].modo, Modo::Traseira);
+        assert_eq!(lista.impressoras[1].modo, Modo::Jato);
         assert_eq!(
             lista.avisos,
             [Aviso {

@@ -3,7 +3,7 @@
 
 use crate::calibrar;
 use crate::ImpressoraVirtual;
-use plots_perfis::Perfis;
+use plots_perfis::{EntradaPerfil, Perfis};
 use plots_windows::{Condicao, Estado, Fila};
 use std::io::Write;
 use std::path::PathBuf;
@@ -71,13 +71,16 @@ pub(crate) fn formatar_listagem(filas: &[Fila], perfis: &Perfis) -> String {
 
 fn bloco_da_fila(fila: &Fila, perfis: &Perfis) -> String {
     let padrao = if fila.padrao { "sim" } else { "não" };
-    let perfil = if perfis.obter(&fila.nome).is_some() {
-        "sim".to_string()
-    } else {
-        format!(
-            "não; calibre com plots calibrar \"{}\" --saida DIRETORIO",
+    let perfil = match perfis.obter(&fila.nome) {
+        Some(EntradaPerfil {
+            modelo: Some(modelo),
+            ..
+        }) => format!("sim, modelo {}", crate::nome_do_modelo(*modelo)),
+        Some(_) => "sim".to_string(),
+        None => format!(
+            "não; calibre com plots calibrar \"{0}\" --saida DIRETORIO ou use plots perfil \"{0}\" --modelo jato|laser",
             fila.nome
-        )
+        ),
     };
     let porta = if fila.porta.is_empty() {
         "(não informada)"
@@ -143,7 +146,7 @@ pub(crate) fn rotulo_da_condicao(condicao: &Condicao) -> String {
 #[cfg(test)]
 mod testes {
     use super::*;
-    use plots_perfis::EntradaPerfil;
+    use plots_core::ModeloImpressora;
 
     fn fila(nome: &str, bits: u32, padrao: bool) -> Fila {
         Fila {
@@ -178,8 +181,30 @@ mod testes {
         let texto = formatar_listagem(&filas, &Perfis::new());
         assert!(texto.contains("  padrão: não\n"));
         assert!(texto.contains(
-            "  perfil salvo: não; calibre com plots calibrar \"Laser Gaveta\" --saida DIRETORIO\n"
+            "  perfil salvo: não; calibre com plots calibrar \"Laser Gaveta\" --saida DIRETORIO ou use plots perfil \"Laser Gaveta\" --modelo jato|laser\n"
         ));
+    }
+
+    #[test]
+    fn fila_com_modelo_mostra_o_modelo_e_sem_modelo_nao_inventa() {
+        let filas = [
+            fila("A", 0, false),
+            fila("B", 0, false),
+            fila("C", 0, false),
+        ];
+        let mut perfis = com_perfil("C");
+        perfis.definir_modelo("A", ModeloImpressora::JatoDeTinta);
+        perfis.definir_modelo("B", ModeloImpressora::Laser);
+        let texto = formatar_listagem(&filas, &perfis);
+        assert!(
+            texto.contains("  perfil salvo: sim, modelo Jato de tinta\n"),
+            "{texto}"
+        );
+        assert!(
+            texto.contains("  perfil salvo: sim, modelo Laser\n"),
+            "{texto}"
+        );
+        assert!(texto.contains("  perfil salvo: sim\n"), "{texto}");
     }
 
     #[test]

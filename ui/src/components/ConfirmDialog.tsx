@@ -43,7 +43,8 @@ export function ConfirmDialog({ conteudo, aoCancelar, aoConfirmar }: Props) {
           onCloseAutoFocus={(evento) => {
             // Sem um gatilho do proprio dialogo, o foco cairia na pagina ao fechar.
             evento.preventDefault();
-            const voltar = !confirmado.current && origem.current;
+            const voltar =
+              (!confirmado.current || ultimo.current?.focoNaOrigemAoConfirmar) && origem.current;
             confirmado.current = false;
             // A origem pode ter sumido ou nem ser um controle, como em um pedido vindo do sistema.
             if (voltar && voltar.isConnected && voltar !== document.body) voltar.focus();
@@ -52,11 +53,13 @@ export function ConfirmDialog({ conteudo, aoCancelar, aoConfirmar }: Props) {
         >
           {visivel && (
             <>
-              <Dialog.Title className={styles.titulo}>{t(visivel.titulo)}</Dialog.Title>
+              <Dialog.Title className={styles.titulo}>{t(visivel.titulo, visivel.parametros)}</Dialog.Title>
               <Dialog.Description asChild>
                 <div ref={corpo} className={styles.corpo}>
                   <p className={styles.texto}>{t(visivel.texto, visivel.parametros)}</p>
-                  <p className={styles.texto}>{t(visivel.consequencia)}</p>
+                  {visivel.consequencia !== null && (
+                    <p className={styles.texto}>{t(visivel.consequencia)}</p>
+                  )}
                 </div>
               </Dialog.Description>
               <div className={styles.rodape}>

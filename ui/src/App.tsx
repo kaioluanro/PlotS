@@ -9,6 +9,7 @@ import {
   avisarPedidoDeFechamentoRecebido,
   caminhosIniciais,
   contarPaginas,
+  definirModelo,
   escolherArquivo,
   limitarLote,
   listarImpressoras,
@@ -18,10 +19,21 @@ import { ConfirmDialog } from "./components/ConfirmDialog";
 import { DocumentArea, ID_AREA_DOCUMENTO } from "./components/DocumentArea";
 import { ID_LATERAL, Sidebar } from "./components/Sidebar";
 import { focarAbaAtiva, TitleBar } from "./components/TitleBar";
-import { conteudoDaConfirmacao } from "./confirmacao";
+import {
+  conteudoDaConfirmacao,
+  conteudoDaSubstituicao,
+  type PedidoDeSubstituicao,
+} from "./confirmacao";
 import { mensagemDeErro } from "./erros";
 import { t } from "./i18n";
-import { liberaMenuDeContexto, type ListaImpressoras } from "./impressoras";
+import {
+  comModeloGravado,
+  gravarEscolha,
+  liberaMenuDeContexto,
+  type Aviso,
+  type ListaImpressoras,
+  type Modelo,
+} from "./impressoras";
 import { abrirLote, type LoteCaminhos } from "./lote";
 import {
   decidirFechamentoJanela,
@@ -43,11 +55,15 @@ export function App() {
   const [filaACalibrar, setFilaACalibrar] = useState<string | null>(null);
   const [lista, setLista] = useState<ListaImpressoras>({ impressoras: [], avisos: [] });
   const [lendoLista, setLendoLista] = useState(true);
+  const [gravacoes, setGravacoes] = useState<ReadonlyMap<string, Modelo>>(new Map());
+  const [falhaAoGravar, setFalhaAoGravar] = useState<Aviso | null>(null);
+  const [substituicao, setSubstituicao] = useState<PedidoDeSubstituicao | null>(null);
+  const filasGravando = useRef(new Set<string>());
   const ultimaLeitura = useRef(0);
   const contagensPedidas = useRef(new Set<number>());
   const filaDeContagens = useRef<Promise<void>>(Promise.resolve());
   // Qualquer dialogo aberto impede que atalhos e arrastos ajam por tras dele.
-  const confirmando = confirmacao !== null || filaACalibrar !== null;
+  const confirmando = confirmacao !== null || filaACalibrar !== null || substituicao !== null;
   const abaAtiva = estado.abas.find((aba) => aba.id === estado.ativa) ?? null;
   const idAtiva = estado.ativa;
 
@@ -107,6 +123,29 @@ export function App() {
   useEffect(() => {
     atualizarLista();
   }, [atualizarLista]);
+
+  const aoEscolherModelo = useCallback(
+    (fila: string, modelo: Modelo) => {
+      // Uma gravacao por fila: a ordem de duas escolhas seguidas nao fica por conta do disco.
+      if (filasGravando.current.has(fila)) return;
+      filasGravando.current.add(fila);
+      setFalhaAoGravar(null);
+      setGravacoes((atuais) => new Map(atuais).set(fila, modelo));
+      void gravarEscolha(fila, modelo, definirModelo).then((resposta) => {
+        filasGravando.current.delete(fila);
+        setGravacoes((atuais) => {
+          const restantes = new Map(atuais);
+          restantes.delete(fila);
+          return restantes;
+        });
+        if (resposta.gravado) setLista((atual) => comModeloGravado(atual, fila, modelo));
+        else setFalhaAoGravar(resposta.aviso);
+        // Em qualquer caso a linha termina mostrando o que o arquivo diz.
+        atualizarLista();
+      });
+    },
+    [atualizarLista],
+  );
 
   // Uma contagem por vez: varios PDFs grandes abertos juntos nao disputam a memoria.
   const abas = estado.abas;
@@ -295,8 +334,15 @@ export function App() {
             aba={abaAtiva}
             impressoras={lista.impressoras}
             avisos={lista.avisos}
+            falhaAoGravar={falhaAoGravar}
             lendo={lendoLista}
-            aoAtualizar={atualizarLista}
+            gravacoes={gravacoes}
+            aoAtualizar={() => {
+              setFalhaAoGravar(null);
+              atualizarLista();
+            }}
+            aoEscolherModelo={aoEscolherModelo}
+            aoPedirSubstituicao={(fila, modelo) => setSubstituicao({ fila, modelo })}
             aoAlternar={aoAlternarImpressora}
             aoDefinirLote={aoDefinirLote}
             aoCalibrar={setFilaACalibrar}
@@ -317,6 +363,17 @@ export function App() {
         conteudo={confirmacao}
         aoCancelar={() => despachar({ tipo: "cancelar_fechamento" })}
         aoConfirmar={aoConfirmar}
+      />
+      {/* O pedido de fechar a janela passa na frente: dois dialogos nunca ficam empilhados. */}
+      <ConfirmDialog
+        conteudo={
+          confirmacao === null && substituicao !== null ? conteudoDaSubstituicao(substituicao) : null
+        }
+        aoCancelar={() => setSubstituicao(null)}
+        aoConfirmar={() => {
+          if (substituicao !== null) aoEscolherModelo(substituicao.fila, substituicao.modelo);
+          setSubstituicao(null);
+        }}
       />
     </div>
   );

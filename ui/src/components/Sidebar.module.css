@@ -137,6 +137,20 @@
   border-radius: var(--radius-sm);
 }
 
+/* Dentro do item da lista, logo abaixo da linha da impressora que nao gravou. */
+.comFalha {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+/* Mais justo que o aviso do topo: linha e aviso cabem juntos na lista da janela minima. */
+.avisoNaLinha {
+  flex: 0 0 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 4px 8px;
+}
+
 .iconeAviso {
   flex-shrink: 0;
   margin-top: 2px;
@@ -350,9 +364,167 @@
   cursor: default;
 }
 
-.calibrar {
+/* Na mesma fileira do nome enquanto couberem; o seletor desce quando o nome ficaria estreito. */
+.fileiraDoNome {
+  flex-wrap: wrap;
+  row-gap: 2px;
+  margin-bottom: 4px;
+}
+
+/* A face desce para a proxima linha antes de apertar um estado longo. */
+.fileiraDoEstado {
+  flex-wrap: wrap;
+  row-gap: 0;
+}
+
+.fileiraDoEstado .estado {
+  flex: 1 1 auto;
+  max-width: 100%;
+}
+
+.fileiraDoNome .nome {
+  flex-basis: 88px;
+}
+
+/* O nome ocupa o que precisa: se nao couber em uma linha ao lado do seletor, o seletor desce. */
+.fileiraComSeletor .nome {
+  flex: 1 1 auto;
+}
+
+/* Largura fixa: trocar de modelo nao muda a altura da linha nem o lugar do seletor. */
+.seletorCaixa {
+  position: relative;
+  display: inline-flex;
   flex-shrink: 0;
+  width: 108px;
+}
+
+.seletor {
+  width: 100%;
+  min-height: 24px;
+  padding: 0 20px 0 8px;
+  overflow: hidden;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 22px;
   white-space: nowrap;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  appearance: none;
+  transition:
+    background-color var(--anim-fast) ease,
+    border-color var(--anim-fast) ease;
+}
+
+.seletor:hover {
+  background: var(--panel-hover);
+  border-color: var(--border-control-hover);
+}
+
+.seletor option {
+  color: var(--fg);
+  background: var(--bg-elevated);
+}
+
+.divisorSeletor {
+  height: 0;
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+/* Onde o navegador permite, a lista aberta segue a norma; nos outros, fica a lista do sistema. */
+@supports (appearance: base-select) {
+  .seletor,
+  .seletor::picker(select) {
+    appearance: base-select;
+  }
+
+  .seletor::picker-icon {
+    display: none;
+  }
+
+  .seletor::picker(select) {
+    margin: 4px 0;
+    padding: 4px;
+    color: var(--fg);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    animation: listaEntra 120ms var(--ease-out-fluid);
+  }
+
+  .seletor option {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+    padding: 0 8px;
+    font-size: 12px;
+    font-weight: 400;
+    background: transparent;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+
+  .seletor option[hidden] {
+    display: none;
+  }
+
+  /* O ponteiro move o foco para a opcao: o item ativo e sempre um so. */
+  .seletor option:focus {
+    background: var(--panel-hover);
+  }
+
+  .seletor option:focus-visible {
+    outline-offset: -2px;
+  }
+
+  .seletor option:checked {
+    font-weight: 500;
+  }
+}
+
+@keyframes listaEntra {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seletor::picker(select) {
+    animation: none;
+  }
+}
+
+.setaSeletor {
+  position: absolute;
+  top: 7px;
+  right: 6px;
+  color: var(--fg-muted);
+  pointer-events: none;
+}
+
+/* No lugar da seta: 2 px maior em cada eixo, centrado no mesmo ponto. */
+.indicadorGravacao {
+  position: absolute;
+  top: 6px;
+  right: 5px;
+  color: var(--fg-muted);
+  pointer-events: none;
+}
+
+.notaModelo {
+  margin: 4px 0 0;
+  padding: 2px 8px 4px;
+  color: var(--fg-muted);
+  font-size: 10px;
+  line-height: 14px;
 }
 
 .rodape {
@@ -480,6 +652,33 @@
 
   .aviso {
     border-color: CanvasText;
+  }
+
+  .seletor,
+  .seletor:hover {
+    color: ButtonText;
+    background: ButtonFace;
+    border-color: ButtonText;
+  }
+
+  .setaSeletor,
+  .indicadorGravacao {
+    color: ButtonText;
+  }
+
+  .divisorSeletor {
+    border-top-color: CanvasText;
+  }
+
+  .seletor::picker(select) {
+    border-color: CanvasText;
+  }
+
+  /* Sem o ajuste, o sistema pinta um fundo proprio atras do texto e ele fica ilegivel. */
+  .seletor option:focus {
+    color: HighlightText;
+    background: Highlight;
+    forced-color-adjust: none;
   }
 
   .campoLote:disabled {

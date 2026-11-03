@@ -3,8 +3,8 @@
 use crate::calibrar::{caminho_perfis, carregar_perfis};
 use crate::enviar::{Pedido, MSG_SEM_SIMULAR};
 use crate::geracao::{self, Documento, Opcoes};
-use crate::{listar, relatar_folhas, ImpressoraVirtual};
-use plots_core::{plano_documento, Lote, OrdemPassadas, PerfilImpressora};
+use crate::{listar, nome_do_modelo, relatar_folhas, ImpressoraVirtual};
+use plots_core::{plano_documento, Lote, ModeloImpressora, OrdemPassadas, PerfilImpressora};
 use plots_print::job::{EstadoJob, Job, SimBackend};
 use plots_print::{conferir_folhas, Mecanica, Recolocacao, Simulador, Veredito};
 use std::io::{BufRead, Write};
@@ -21,8 +21,10 @@ struct Fila {
     mecanica: Mecanica,
     /// Gesto de recolocação da fila: o do modelo, ou o registrado no perfil salvo.
     gesto: Recolocacao,
-    /// `true` quando a mecânica foi escolhida para ser coerente com um perfil salvo.
+    /// `true` quando a mecânica foi escolhida para ser coerente com um perfil salvo sem modelo.
     de_perfil_salvo: bool,
+    /// Modelo do perfil salvo, que não foi medido na máquina.
+    modelo: Option<ModeloImpressora>,
     /// Texto do gesto guardado no perfil salvo, mostrado na linha seguinte à frase.
     gesto_texto: Option<String>,
 }
@@ -144,6 +146,9 @@ pub(crate) fn executar(
         )
         .map_err(|e| e.to_string())?;
     }
+    if let Some(modelo) = fila.modelo {
+        writeln!(saida, "{}", aviso_de_modelo_nao_medido(modelo)).map_err(|e| e.to_string())?;
+    }
     geracao::escrever_avisos(&documento, &plano, ordem, saida)?;
     writeln!(
         saida,
@@ -256,6 +261,23 @@ fn conduzir_lotes(
     Ok(())
 }
 
+/// Aviso de que o perfil pronto veio do modelo, sem nenhuma medição naquela máquina.
+pub(crate) fn aviso_de_modelo_nao_medido(modelo: ModeloImpressora) -> String {
+    format!(
+        "Modelo {}: não foi medido nesta máquina. É um ponto de partida; confira com 2 ou 3 folhas.",
+        nome_do_modelo(modelo)
+    )
+}
+
+/// As duas linhas da recolocação de um modelo: o lado que entra e como virar.
+pub(crate) fn frases_de_recolocacao_do_modelo(modelo: ModeloImpressora) -> (String, &'static str) {
+    let gesto = Recolocacao::from(modelo.gesto());
+    (
+        gesto_de_recolocacao(Mecanica::do_modelo(modelo), gesto),
+        texto_do_gesto(gesto),
+    )
+}
+
 /// Frase fixa do gesto de recolocação, com o lado conforme a saída da impressora.
 fn gesto_de_recolocacao(mecanica: Mecanica, gesto: Recolocacao) -> String {
     let lado = if face_impressa_para_cima_na_entrada(mecanica, gesto) {
@@ -287,10 +309,7 @@ fn texto_do_gesto(gesto: Recolocacao) -> &'static str {
 
 /// Gesto de recolocação registrado no perfil salvo.
 fn gesto_do_perfil(perfil: &PerfilImpressora) -> Recolocacao {
-    Recolocacao {
-        virar_maco: perfil.gesto_recolocar.virar_maco,
-        ..Recolocacao::default()
-    }
+    perfil.gesto_recolocar.into()
 }
 
 /// Resolve o nome da impressora: simuladas têm perfil embutido; outras leem o perfil salvo.
@@ -306,6 +325,7 @@ fn resolver_fila(
             mecanica: virtual_.mecanica(),
             gesto: virtual_.gesto(),
             de_perfil_salvo: false,
+            modelo: None,
             gesto_texto: None,
         });
     }
@@ -313,9 +333,20 @@ fn resolver_fila(
     let lidos = carregar_perfis(&caminho)?;
     let entrada = lidos.obter(nome).ok_or_else(|| {
         format!(
-            "a impressora '{nome}' não tem perfil salvo; rode 'plots calibrar {nome} --saida DIRETORIO' antes"
+            "a impressora '{nome}' não tem perfil salvo; rode 'plots perfil {nome} --modelo jato|laser' ou 'plots calibrar {nome} --saida DIRETORIO' antes"
         )
     })?;
+    if let Some(modelo) = entrada.modelo {
+        return Ok(Fila {
+            nome: nome.to_string(),
+            perfil: entrada.perfil,
+            mecanica: Mecanica::do_modelo(modelo),
+            gesto: modelo.gesto().into(),
+            de_perfil_salvo: false,
+            modelo: Some(modelo),
+            gesto_texto: None,
+        });
+    }
     let mecanica = mecanica_coerente(&entrada.perfil, ordem).ok_or_else(|| {
         format!(
             "o perfil salvo de '{nome}' não confere com nenhuma impressora simulada; refaça a calibração com 'plots calibrar {nome} --saida DIRETORIO'"
@@ -327,6 +358,7 @@ fn resolver_fila(
         mecanica,
         gesto: gesto_do_perfil(&entrada.perfil),
         de_perfil_salvo: true,
+        modelo: None,
         gesto_texto: entrada.gesto_texto.clone(),
     })
 }

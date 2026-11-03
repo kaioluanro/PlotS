@@ -48,32 +48,39 @@ const ptBR = {
   "condicao.servidor_offline": "servidor offline",
   "condicao.driver_desatualizado": "driver precisa de atualização",
   "condicao.outro": "outro ({detalhe})",
-  "modo.traseira": "Traseira ↑",
-  "modo.traseira.face": "face para cima",
-  "modo.gaveta": "Gaveta ↓",
-  "modo.gaveta.face": "face para baixo",
+  "modo.jato": "Jato de tinta",
+  "modo.laser": "Laser",
+  "modo.personalizado": "Personalizado",
+  "modo.semPerfil": "Sem perfil",
+  "modo.entrada": "Entrada: impressa para baixo",
   "modo.calibrar": "Calibrar…",
-  "modo.calibrar.titulo": "Esta impressora ainda não tem perfil. Veja como calibrar.",
+  "modo.seletor.rotulo": "Modelo de {nome}",
+  "modo.seletor.nota": "O modelo é um ponto de partida: confira com 2 ou 3 folhas.",
+  "modo.seletor.semPerfil": "Esta impressora ainda não tem perfil. Escolha um modelo ou calibre.",
+  "modo.seletor.personalizado":
+    "Perfil salvo sem modelo. Escolher um modelo substitui os valores deste perfil.",
+  "modo.seletor.gravando": "Gravando modelo…",
   "modo.desconhecido": "Perfil não lido",
   "modo.desconhecido.titulo":
-    "O arquivo de perfis não pôde ser lido, então o modo desta impressora é desconhecido. Veja o aviso na lista.",
-  "modo.perfil.titulo":
-    "{modo} {face}. Definido pelo perfil salvo desta impressora; não muda aqui.",
-  "modo.simulada.titulo": "{modo} {face}. Modo fixo desta impressora simulada.",
+    "O arquivo de perfis não pôde ser lido, então o perfil desta impressora é desconhecido. Veja o aviso na lista.",
+  "modo.perfil.titulo": "{modo}. {face}. Valores prontos do modelo, sem medição nesta impressora.",
+  "modo.simulada.titulo": "{modo}. {face}. Modelo fixo desta impressora simulada.",
   "aviso.filas":
     "Não foi possível ler as filas do Windows. Confira o serviço de impressão e use Atualizar lista.",
   "aviso.filasCodigo":
     "Não foi possível ler as filas do Windows (código {detalhe}). Confira o serviço de impressão e use Atualizar lista.",
   "aviso.perfis_pasta":
-    "O Windows não informou a pasta de configurações deste usuário. O modo das impressoras ficou desconhecido. Entre de novo no Windows e reabra o PlotS.",
+    "O Windows não informou a pasta de configurações deste usuário. O perfil das impressoras ficou desconhecido. Entre de novo no Windows e reabra o PlotS.",
   "aviso.perfis_leitura":
-    "Não foi possível ler o arquivo de perfis. O modo das impressoras ficou desconhecido. Confira a permissão do arquivo e use Atualizar lista.",
+    "Não foi possível ler o arquivo de perfis. O perfil das impressoras ficou desconhecido. Confira a permissão do arquivo e use Atualizar lista.",
   "aviso.perfis_grande":
-    "O arquivo de perfis passa de 1 MB e não foi lido. O modo das impressoras ficou desconhecido. Restaure uma cópia ou remova o arquivo e calibre de novo.",
+    "O arquivo de perfis passa de 1 MB e não foi lido. O perfil das impressoras ficou desconhecido. Restaure uma cópia ou remova o arquivo e calibre de novo.",
   "aviso.perfis_invalido":
-    "O arquivo de perfis está danificado e não foi lido. O modo das impressoras ficou desconhecido. Restaure uma cópia ou remova o arquivo e calibre de novo.",
+    "O arquivo de perfis está danificado e não foi lido. O perfil das impressoras ficou desconhecido. Restaure uma cópia ou remova o arquivo e calibre de novo.",
   "aviso.perfis_versao":
-    "O arquivo de perfis é de uma versão mais nova do PlotS e não foi lido. O modo das impressoras ficou desconhecido. Atualize o PlotS.",
+    "O arquivo de perfis é de uma versão mais nova do PlotS e não foi lido. O perfil das impressoras ficou desconhecido. Atualize o PlotS.",
+  "aviso.modelo_nao_gravado":
+    "Não foi possível gravar o modelo de {detalhe}. O perfil salvo não mudou. Confira a permissão do arquivo de perfis e tente de novo.",
   "aviso.comunicacao": "Não foi possível obter a lista de impressoras. Use Atualizar lista.",
   "folhas.rotulo": "Folhas por lote",
   "folhas.intervalo": "De 1 a 50 folhas em cada lote.",
@@ -87,6 +94,11 @@ const ptBR = {
   "imprimir.frente": "Imprimir frente",
   "imprimir.frenteContagem": "Imprimir frente ({n})",
   "imprimir.indisponivel": "O envio à impressora ainda não está disponível nesta versão.",
+  "substituir.titulo": "Substituir o perfil personalizado de {nome}?",
+  "substituir.texto":
+    "Os valores salvos para esta impressora serão trocados pelos do modelo {modelo}. Para recuperá-los, será preciso calibrar de novo.",
+  "substituir.cancelar": "Cancelar",
+  "substituir.confirmar": "Substituir perfil",
   "calibrar.titulo": "Calibrar {nome}",
   "calibrar.intro": "Esta versão ainda não calibra pela janela. No PowerShell, use:",
   "calibrar.instalacao":
@@ -94,7 +106,7 @@ const ptBR = {
   "calibrar.passos":
     "O comando grava calibracao.pdf na pasta atual e pergunta o que saiu. O PlotS não envia nada à impressora: imprima as 4 páginas pelo programa que preferir.",
   "calibrar.conferir":
-    "O resultado só vale depois de conferido em um lote impresso de verdade. Ao terminar, use Atualizar lista para ver o modo desta impressora.",
+    "O resultado só vale depois de conferido em um lote impresso de verdade. Ao terminar, use Atualizar lista para ver o perfil desta impressora.",
   "calibrar.semComando":
     "O nome desta impressora tem aspas duplas e %, e o PlotS não consegue montar um comando seguro para o PowerShell. Renomeie a impressora nas configurações do Windows e use Atualizar lista.",
   "calibrar.copiar": "Copiar comando",
@@ -191,32 +203,39 @@ const en: Record<Chave, string> = {
   "condicao.servidor_offline": "server offline",
   "condicao.driver_desatualizado": "driver needs an update",
   "condicao.outro": "other ({detalhe})",
-  "modo.traseira": "Rear ↑",
-  "modo.traseira.face": "face up",
-  "modo.gaveta": "Tray ↓",
-  "modo.gaveta.face": "face down",
+  "modo.jato": "Inkjet",
+  "modo.laser": "Laser",
+  "modo.personalizado": "Custom",
+  "modo.semPerfil": "No profile",
+  "modo.entrada": "Feed: printed side down",
   "modo.calibrar": "Calibrate…",
-  "modo.calibrar.titulo": "This printer has no profile yet. See how to calibrate it.",
+  "modo.seletor.rotulo": "Model for {nome}",
+  "modo.seletor.nota": "A model is a starting point: check it with 2 or 3 sheets.",
+  "modo.seletor.semPerfil": "This printer has no profile yet. Choose a model or calibrate.",
+  "modo.seletor.personalizado":
+    "Saved profile with no model. Choosing a model replaces the values of this profile.",
+  "modo.seletor.gravando": "Saving model…",
   "modo.desconhecido": "Profile not read",
   "modo.desconhecido.titulo":
-    "The profiles file could not be read, so the mode of this printer is unknown. See the notice in the list.",
-  "modo.perfil.titulo":
-    "{modo} {face}. Set by the saved profile of this printer; it does not change here.",
-  "modo.simulada.titulo": "{modo} {face}. Fixed mode of this simulated printer.",
+    "The profiles file could not be read, so the profile of this printer is unknown. See the notice in the list.",
+  "modo.perfil.titulo": "{modo}. {face}. Ready-made values of the model, not measured on this printer.",
+  "modo.simulada.titulo": "{modo}. {face}. Fixed model of this simulated printer.",
   "aviso.filas":
     "Could not read the Windows print queues. Check the print service and use Refresh list.",
   "aviso.filasCodigo":
     "Could not read the Windows print queues (code {detalhe}). Check the print service and use Refresh list.",
   "aviso.perfis_pasta":
-    "Windows did not report this user's settings folder. The mode of the printers is unknown. Sign in to Windows again and open PlotS again.",
+    "Windows did not report this user's settings folder. The profile of the printers is unknown. Sign in to Windows again and open PlotS again.",
   "aviso.perfis_leitura":
-    "Could not read the profiles file. The mode of the printers is unknown. Check the file permission and use Refresh list.",
+    "Could not read the profiles file. The profile of the printers is unknown. Check the file permission and use Refresh list.",
   "aviso.perfis_grande":
-    "The profiles file is over 1 MB and was not read. The mode of the printers is unknown. Restore a copy or remove the file and calibrate again.",
+    "The profiles file is over 1 MB and was not read. The profile of the printers is unknown. Restore a copy or remove the file and calibrate again.",
   "aviso.perfis_invalido":
-    "The profiles file is damaged and was not read. The mode of the printers is unknown. Restore a copy or remove the file and calibrate again.",
+    "The profiles file is damaged and was not read. The profile of the printers is unknown. Restore a copy or remove the file and calibrate again.",
   "aviso.perfis_versao":
-    "The profiles file comes from a newer version of PlotS and was not read. The mode of the printers is unknown. Update PlotS.",
+    "The profiles file comes from a newer version of PlotS and was not read. The profile of the printers is unknown. Update PlotS.",
+  "aviso.modelo_nao_gravado":
+    "Could not save the model for {detalhe}. The saved profile did not change. Check the permission of the profiles file and try again.",
   "aviso.comunicacao": "Could not get the list of printers. Use Refresh list.",
   "folhas.rotulo": "Sheets per batch",
   "folhas.intervalo": "From 1 to 50 sheets in each batch.",
@@ -230,6 +249,11 @@ const en: Record<Chave, string> = {
   "imprimir.frente": "Print front",
   "imprimir.frenteContagem": "Print front ({n})",
   "imprimir.indisponivel": "Sending to the printer is not available in this version yet.",
+  "substituir.titulo": "Replace the custom profile of {nome}?",
+  "substituir.texto":
+    "The values saved for this printer will be replaced by those of the {modelo} model. To get them back, you will need to calibrate again.",
+  "substituir.cancelar": "Cancel",
+  "substituir.confirmar": "Replace profile",
   "calibrar.titulo": "Calibrate {nome}",
   "calibrar.intro": "This version cannot calibrate from the window yet. In PowerShell, use:",
   "calibrar.instalacao":
@@ -237,7 +261,7 @@ const en: Record<Chave, string> = {
   "calibrar.passos":
     "The command writes calibracao.pdf in the current folder and asks what came out. PlotS sends nothing to the printer: print the 4 pages from any program you like.",
   "calibrar.conferir":
-    "The result only counts after you check it on a batch that was really printed. When done, use Refresh list to see the mode of this printer.",
+    "The result only counts after you check it on a batch that was really printed. When done, use Refresh list to see the profile of this printer.",
   "calibrar.semComando":
     "This printer's name has double quotes and %, and PlotS cannot build a safe PowerShell command for it. Rename the printer in Windows settings, then use Refresh list.",
   "calibrar.copiar": "Copy command",
