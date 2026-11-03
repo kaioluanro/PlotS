@@ -28,6 +28,7 @@ Requisitos: OK 51 · PARTIAL 33 · MISSING 6 · BUG 0 · N/A 3 (93). Detalhes em
 | [Frente e verso automático](21-frente-e-verso-automatico.md) | — | — | — | — | — | Concluído no código |
 | [Opções de envio e histórico](22-opcoes-de-envio-e-historico.md) | — | — | — | — | — | Concluído no código |
 | [PlotSim](23-plotsim.md) | — | — | — | — | — | Em andamento |
+| [Todas as frentes primeiro](24-frentes-primeiro.md) | — | — | — | — | — | Em andamento |
 
 ## Lotes
 
