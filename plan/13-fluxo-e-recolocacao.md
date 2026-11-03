@@ -1,6 +1,6 @@
 # Fluxo de impressão e recolocação
 
-**Estado:** Em andamento · OK 0 · PARTIAL 2 · MISSING 4 · BUG 0 · N/A 0
+**Estado:** Em andamento · OK 3 · PARTIAL 3 · MISSING 0 · BUG 0 · N/A 0
 
 ## Objetivo
 
@@ -9,12 +9,21 @@ Guiar o usuário do primeiro envio ao verso, com um cartão por impressora.
 ## Plano de implementação
 
 - [x] Estados do job e pausa guiada no terminal
-- [ ] Cartão EM ANDAMENTO com estado, lote e botão do verso
-- [ ] Frase fixa do gesto e figura por impressora
+- [x] Cartão EM ANDAMENTO com estado, lote e botão do verso
+- [x] Frase do gesto por impressora
+- [ ] Figura do gesto por impressora
 - [x] Na gaveta simulada, dizer ao usuário para virar o maço final antes de ler, no CLI
-- [ ] Levar a frase do gesto ao cartão da interface; em fila real, o lado vem da calibração
-- [ ] Botão do verso liberado só com a confirmação do spooler
-- [ ] "Simular verso" no modo simulação
+- [x] Levar a frase do gesto ao cartão da interface; em fila real, o lado vem da calibração
+- [x] Botão do verso liberado só com a confirmação do spooler
+- [x] "Simular verso" no modo simulação
+
+## Decisões
+
+- **Frase do gesto (`256e8ce`):** segue a ordem física, porque quem lê em ordem e age a cada linha perderia o lote com a frase antiga: esperar a última folha, virar ou não virar, "Depois, sem mudar a ordem das folhas, coloque na entrada com a face impressa para {cima|baixo}.", clicar em "Imprimir verso". Vale para o cartão e para o CLI. Substitui a frase fixa da especificação abaixo.
+- **Reimprimir** em fila real pede confirmação. Se o cancelamento falhar, a frente não é reenviada e o cartão manda conferir a fila do Windows.
+- **Fechar com trabalho em andamento:** para de acompanhar sem apagar nada da fila.
+- **Pendente:** figura do gesto; não rolar a lista até o cartão com o ponteiro sobre ela; o CLI ainda diz "1 de 1 folhas"; `src-tauri` usa `plots_print` pelo reexport de `plots-windows`; `leitura_pdf.rs` repete o limite de leitura de `documento.rs`.
+- **Não verificado:** impressora real; o que o spooler faz com trabalho parcial quando a janela fecha no meio do envio; cancelamento com spooler real (só backend falso); fechar a aba durante a preparação no app (coberto por teste).
 
 ## Pronto quando
 
@@ -28,12 +37,12 @@ Fluxo completo sem terminal, com impressoras avançando de forma independente.
 
 | ID | Requisito | Situação |
 |---|---|---|
-| PS-A003 | `gesto_recolocar` com texto e figura para o usuário | MISSING |
-| PS-A011 | Mostrar o gesto de recolocação e esperar "Imprimir verso" antes da passada 2 | PARTIAL |
-| PS-A012 | Cartão com a frase fixa e a figura do gesto | MISSING |
-| PS-A015 | "Imprimir frente" envia para cada impressora a ordem do seu perfil | MISSING |
-| PS-A016 | Botão do verso libera só depois que o spooler confirma a frente | PARTIAL |
-| PS-A035 | Cartão EM ANDAMENTO com "Simular verso" | MISSING |
+| PS-A003 | `gesto_recolocar` com texto e figura para o usuário | PARTIAL |
+| PS-A011 | Mostrar o gesto de recolocação e esperar "Imprimir verso" antes da passada 2 | OK |
+| PS-A012 | Cartão com a frase fixa e a figura do gesto | PARTIAL |
+| PS-A015 | "Imprimir frente" envia para cada impressora a ordem do seu perfil | PARTIAL |
+| PS-A016 | Botão do verso libera só depois que o spooler confirma a frente | OK |
+| PS-A035 | Cartão EM ANDAMENTO com "Simular verso" | OK |
 
 ## Especificação
 

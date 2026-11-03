@@ -34,6 +34,8 @@ Lateral de 240 px e altura mínima de 420 px, com a linha de impressora e "Impri
 - **Teclado:** com a lista fechada, Enter, as setas, Home, End, PageUp e PageDown abrem a lista em vez de trocar o valor. Na lista do sistema, as teclas de andar gravariam a cada passo e abririam "Calibrar…". Na lista própria, Esc não grava; na lista do sistema, que é só a reserva, o navegador recebe as teclas e o Esc depois de andar nas opções entrega a opção em que parou, sem que a página veja a tecla; sobre um perfil personalizado, isso abre a confirmação, e nada é gravado sem ela. O ponteiro sobre uma opção move o foco para ela, para que só um item fique ativo.
 - **Resumo do lote:** conta folhas de duas páginas, como `plano_documento`. Ainda ignora a divisão por tamanho de papel de `plano_lotes_por_papel`, então um PDF com papéis misturados pode resultar em mais lotes que o resumo.
 
+**Exceção à altura mínima (`256e8ce`):** em até 560 px de altura, com cartão na tela, a linha de lote e o resumo somem, e o rodapé inteiro some quando todas as marcadas estão ocupadas, para o gesto e o botão caberem. Com impressora livre marcada, o rodapé fica.
+
 ## Pronto quando
 
 Trocar de aba troca a seleção, e o modelo escolhido define o perfil inteiro da impressora.

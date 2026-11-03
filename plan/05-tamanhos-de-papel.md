@@ -1,6 +1,6 @@
 # Tamanhos de papel
 
-**Estado:** Em andamento · OK 5 · PARTIAL 2 · MISSING 1 · BUG 0 · N/A 0
+**Estado:** Em andamento · OK 6 · PARTIAL 1 · MISSING 1 · BUG 0 · N/A 0
 
 ## Objetivo
 
@@ -30,7 +30,7 @@ Documento com tamanhos misturados imprime em lotes separados, com aviso de troca
 | PS-A054 | Reconhecer A4, A5, Carta, Ofício, Legal, com tolerância de 2 mm | OK |
 | PS-A055 | Formato "Outro" com `DMPAPER_USER` | PARTIAL (126ac26) |
 | PS-A056 | Documento com tamanhos misturados dividido em lotes por tamanho | OK |
-| PS-A057 | Cartão avisa a troca de papel | PARTIAL (126ac26) |
+| PS-A057 | Cartão avisa a troca de papel | OK |
 | PS-A058 | Frente e verso de tamanhos diferentes são recusados antes de imprimir | OK |
 | PS-A059 | Frente e verso da mesma folha com mesma orientação (retrato e paisagem) | OK (882ba68) |
 | PS-A060 | Opção "Ajustar ao papel" (imprimir Carta em A4) | MISSING |

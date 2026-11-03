@@ -27,7 +27,7 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | --- | --- | --- | --- | --- |
 | PS-A001 | Visão geral | Enviar as passadas à impressora real pelo spooler, sem driver manual | PARTIAL (126ac26) | `plots imprimir` envia ao spooler (sem impressora real; conferido só na fila de PDF do Windows). |
 | PS-A002 | Perfis | Perfil com os 4 parâmetros: `passada1_inversa`, `passada2_inversa`, `verso_girar_180`, `gesto_recolocar` | OK | `plots-core/src/lib.rs:59-66` (`PerfilImpressora`). |
-| PS-A003 | Perfis | `gesto_recolocar` com texto e figura para o usuário | MISSING | Só `GestoRecolocar { virar_maco, borda_primeiro }` (lib.rs:42-57). Texto e figura dependem da UI (Fase 4). |
+| PS-A003 | Perfis | `gesto_recolocar` com texto e figura para o usuário | PARTIAL (`256e8ce`) | Texto do gesto no cartão e no CLI, pelo mesmo código. Falta a figura. |
 | PS-A004 | Perfis | Jato (traseira) inverte a passada 1; laser (gaveta) não | OK | `plots-cli/src/lib.rs:27-33`. Execução: traseira "Passada 1: 4, 2"; gaveta "Passada 1: 2, 4". |
 | PS-A005 | Perfis | `passada2_inversa` e `verso_girar_180` ficam "a calibrar", sem presunção | PARTIAL | `plots-cli/src/lib.rs:30`: a traseira já pré-define `passada2_inversa = true`. Não há calibração que confirme isso. |
 | PS-A006 | Algoritmo | Total ímpar recebe página em branco no fim, que entra na passada das pares | OK | `plots-core/src/lib.rs:147-148` e `185-191`; teste `uma_folha_tem_frente_par_vazia_e_verso_impar` (lib.rs:512). Execução: 5 páginas, lote 2 traseira, "Passada 1: branca" no lote 2. |
@@ -35,14 +35,14 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A008 | Algoritmo | Aplicar inversão e giro de 180 graus (`/Rotate 180` no verso) | OK | `plots-core/src/lib.rs:197-207` e `449-459`; `plots-pdf/src/lib.rs:188-191`. Verificado: traseira com 5 páginas gera passada 1 "BRANCA, P4, P2" e passada 2 "P5, P3, P1", todos com rot=0. |
 | PS-A009 | Algoritmo | Função pura `plano_lote(paginas, perfil) -> (Vec<Pagina>, Vec<Pagina>)`, com testes | PARTIAL | A função não existe com esse nome (grep sem resultado). Equivalentes: `plano_documento` (`plots-core/src/lib.rs:135`, retorna `Vec<Lote>`) e `plano_lotes_por_papel` (lib.rs:357). Testes unitários existem. |
 | PS-A010 | Algoritmo | Gerar `passada1.pdf` e `passada2.pdf` temporários com lopdf | PARTIAL | Gerados como `lote-NNNN-passada-N.pdf` (`plots-cli/src/lib.rs:278-284`), persistentes, não temporários. Nome diverge da especificação. |
-| PS-A011 | Algoritmo | Mostrar o gesto de recolocação e esperar "Imprimir verso" antes da passada 2 | PARTIAL | Só no CLI, com `--guiado` (`plots-cli/src/lib.rs:172-186`). Não há cartão nem confirmação na UI. |
-| PS-A012 | Gesto único | Cartão com a frase fixa e a figura do gesto | MISSING | Fase 4 (sem UI). |
+| PS-A011 | Algoritmo | Mostrar o gesto de recolocação e esperar "Imprimir verso" antes da passada 2 | OK (`256e8ce`) | Cartão mostra o gesto e espera "Imprimir verso"; conferido no app com as duas simuladas. |
+| PS-A012 | Gesto único | Cartão com a frase fixa e a figura do gesto | PARTIAL (`256e8ce`) | Cartão com a frase do gesto. Falta a figura. |
 | PS-A013 | Fluxo | Abrir PDF (arrastar, "Abrir com") e escolher o intervalo de páginas | MISSING | Fase 4. CLI só aceita o arquivo inteiro (`gerar-pdf`, `plots-cli/src/lib.rs:225-258`). |
 | PS-A014 | Fluxo | Marcar impressoras e tamanho do lote (padrão 10 folhas) | OK (f6e3433) | Caixas por aba e campo de lote com padrão 10, de 1 a 50. |
-| PS-A015 | Fluxo | "Imprimir frente" envia para cada impressora a ordem do seu perfil | MISSING | Sem spooler. Só simulação. |
-| PS-A016 | Fluxo | Botão do verso libera só depois que o spooler confirma a frente | PARTIAL | Lógica no núcleo: `plots-print/src/job.rs:112-145` (só `Concluido` libera; `EmAndamento` e `Falhou` não). Teste `pendencia_e_falha_nao_liberam_verso` (job.rs:268-277). O `SimBackend` responde sempre `Concluido` (job.rs:193-195), então não testa spooler real. |
+| PS-A015 | Fluxo | "Imprimir frente" envia para cada impressora a ordem do seu perfil | PARTIAL (`256e8ce`) | Envio pela janela conferido nas simuladas e na fila de PDF; sem impressora real. |
+| PS-A016 | Fluxo | Botão do verso libera só depois que o spooler confirma a frente | OK (`256e8ce`) | Verso só libera com a confirmação do `Job`; o texto avisa que isso não garante que o papel saiu. |
 | PS-A017 | Fluxo | Folha de controle opcional no canto do verso | MISSING | Sem ocorrência no código. |
-| PS-A018 | Fluxo | "Reimprimir lote" refaz só aquele lote | PARTIAL | `Job::reiniciar_lote` (`job.rs:76-83`) e `Simulador::cancelar_lote` (`plots-print/src/lib.rs:144-155`). Nenhum comando no CLI nem na UI. |
+| PS-A018 | Fluxo | "Reimprimir lote" refaz só aquele lote | OK (`256e8ce`) | "Reimprimir lote" no cartão, com confirmação em fila real; falha ao cancelar não reenvia. |
 | PS-A019 | Interface | Janela sem menus; barra superior única (ícone, botão da lateral, abas, "+", controles) | OK (353f54d) | Barra sem menus, medidas conferidas no app. |
 | PS-A020 | Interface | Splash 480×300, carregamento até 10 s, depois a janela principal | PARTIAL | `bd50a56`: janela, tempos e avisos no app real. Falta a imagem definitiva de 960×600. |
 | PS-A021 | Interface | Barra lateral de impressoras com caixa de seleção e seletor de modo (Traseira, Gaveta, "Calibrar…") | OK (826b726) | Lista real com caixa, estado e seletor de modelo: Jato de tinta, Laser e Calibrar. |
@@ -53,13 +53,13 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A026 | Interface | Tokens da norma de estilo, tema escuro, foco visível, ESC fecha diálogos, sem emoji, `aria-live` para o estado | PARTIAL (f6e3433) | Estado com ponto e texto e `aria-live` na lateral; falta o cartão de impressão. |
 | PS-A027 | Interface | Textos em pt-BR e en via `t()` | OK (353f54d) | `t()` em pt-BR e en nesta tela. |
 | PS-A028 | Modo simulação | Rodar o fluxo inteiro sem impressora (`simular`) | OK | `plots-cli/src/lib.rs:51-223`. Testes `plots-cli/tests/cli.rs:8-43` e `94-149`. Execução verificada. |
-| PS-A029 | Modo simulação | Chave "Simular impressão" por documento; botão vira "Simular frente"; selo SIMULAÇÃO | MISSING | Fase 4. |
+| PS-A029 | Modo simulação | Chave "Simular impressão" por documento; botão vira "Simular frente"; selo SIMULAÇÃO | PARTIAL (`256e8ce`) | Botão "Simular frente" e selo SIMULAÇÃO valem por impressora simulada. Não há chave por documento. |
 | PS-A030 | Modo simulação | Duas impressoras virtuais "Simulada — Traseira" e "Simulada — Gaveta", com outras combinações possíveis | PARTIAL | Nomes e perfis em `plots-cli/src/lib.rs:27-47`, só acessíveis via `--impressora`. Não aparecem como filas e não há como criar outra combinação. |
 | PS-A031 | Modo simulação | `SimBackend` implementa o mesmo trait dos backends reais | OK | Trait `Backend` em `plots-print/src/job.rs:19-25`; impl em `job.rs:180-208`. |
 | PS-A032 | Modo simulação | Modelo físico: folha `{frente, verso, girada}`, pilha de saída, gesto como operação | OK | `plots-print/src/lib.rs:8-24` (`Folha`), `66-72` (`Recolocacao`), `190-215` (`recolocar`). |
 | PS-A033 | Modo simulação | "Simular erro": recolocar sem virar, girado, ou com uma folha a menos | OK (cf22592) | O núcleo suporta (`Recolocacao`, `retirar_folhas`, `inverter_ordem`, `girar_180`, teste `falta_de_folha_permite_cancelar_e_reimprimir_lote`, lib.rs:593). O CLI sempre usa `virar_maco: true` (`plots-cli/src/lib.rs:187-190`) e não expõe a opção. |
 | PS-A034 | Modo simulação | Vista por lote com passada 1, pilha, passada 2 e folhas finais marcadas certo/errado ("3 de 3 folhas corretas") | PARTIAL | CLI com certa/errada por folha e "N de M folhas corretas" (cf22592); falta a vista na interface. O CLI imprime as listas (`plots-cli/src/lib.rs:155-220`). Não há marcação certo/errado nem contagem. |
-| PS-A035 | Modo simulação | Cartão EM ANDAMENTO com "Simular verso" | MISSING | Fase 4. |
+| PS-A035 | Modo simulação | Cartão EM ANDAMENTO com "Simular verso" | OK (`256e8ce`) | Cartão EM ANDAMENTO com "Simular verso" e resultado da simulação. |
 | PS-A036 | Modo simulação | Exportar `passada1.pdf` e `passada2.pdf` para abrir no Firefox | PARTIAL | `gerar-pdf` gera os PDFs (`plots-cli/src/lib.rs:225-310`). Nomes diferentes. Abertura no Firefox não verificada. |
 | PS-A037 | Modo simulação | Exportar PDF de folhas finais (frente e verso lado a lado) | OK (6baa24a) | `gerar-pdf --folhas-finais`, conferido com PyMuPDF; sem conferência no Firefox. |
 | PS-A038 | Modo simulação | Modelo com `proptest`: 8 perfis, 1 a 200 páginas, lotes de 1 a 50 folhas, maço final 1\|2, 3\|4 | OK (6baa24a) | proptest com tabela fixa de 8 perfis; só traseira e gaveta correspondem às impressoras simuladas, e o modelo da gaveta será revisto. |
@@ -81,7 +81,7 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A054 | Papel | Reconhecer A4, A5, Carta, Ofício, Legal, com tolerância de 2 mm | OK | `plots-core/src/lib.rs:297-328`. Testes `reconhece_formatos_orientacao_e_personalizado_com_tolerancia` (lib.rs:624) e `valida_par_frente_verso...` (lib.rs:655). Verificado: `tolerancia-par.pdf` (598×844) aceito. |
 | PS-A055 | Papel | Formato "Outro" com `DMPAPER_USER` | PARTIAL (126ac26) | Medidas personalizadas pelo `DEVMODE`, com conferência (sem impressora real; conferido só na fila de PDF do Windows). |
 | PS-A056 | Papel | Documento com tamanhos misturados dividido em lotes por tamanho | OK | `plots-core/src/lib.rs:357-462`. Verificado: `mistura-papel.pdf` gera lote 1 A4 e lote 2 A5 (`BRANCA` com 420×595). |
-| PS-A057 | Papel | Cartão avisa a troca de papel | PARTIAL (126ac26) | CLI avisa a troca de papel antes da pergunta; falta o cartão. |
+| PS-A057 | Papel | Cartão avisa a troca de papel | OK (`256e8ce`) | Cartão e CLI avisam a troca de papel. |
 | PS-A058 | Papel | Frente e verso de tamanhos diferentes são recusados antes de imprimir | OK | `plots-core/src/lib.rs:385-397`. Verificado: `personalizado-par.pdf` (595×842 + 200×300) sai com "as páginas 1 e 2 têm tamanhos incompatíveis para a mesma folha", exit 2. Teste `rejeita_paginas_de_tamanhos_incompativeis_na_mesma_folha` (`plots-cli/tests/cli.rs:260-281`). |
 | PS-A059 | Papel | Frente e verso da mesma folha com mesma orientação (retrato e paisagem) | OK (882ba68) | Ver BUG-1. Orientação diferente é aceita sem aviso. Decisão do usuário: bloquear ou só avisar. |
 | PS-A060 | Papel | Opção "Ajustar ao papel" (imprimir Carta em A4) | MISSING | Não existe no código. |

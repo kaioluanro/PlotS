@@ -1,6 +1,6 @@
 # Acabamento e instalador
 
-**Estado:** Em andamento · OK 0 · PARTIAL 1 · MISSING 2 · BUG 0 · N/A 0
+**Estado:** Em andamento · OK 1 · PARTIAL 0 · MISSING 2 · BUG 0 · N/A 0
 
 ## Objetivo
 
@@ -29,7 +29,7 @@ Todas as funcionalidades anteriores.
 | ID | Requisito | Situação |
 |---|---|---|
 | PS-A017 | Folha de controle opcional no canto do verso | MISSING |
-| PS-A018 | "Reimprimir lote" refaz só aquele lote | PARTIAL |
+| PS-A018 | "Reimprimir lote" refaz só aquele lote | OK |
 | PS-A081 | Instalador (tauri bundle), reimprimir lote, folha de controle, histórico | MISSING |
 
 ## Especificação

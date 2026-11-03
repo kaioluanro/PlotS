@@ -1,6 +1,6 @@
 # Modo simulação
 
-**Estado:** Em andamento · OK 7 · PARTIAL 2 · MISSING 1 · BUG 0 · N/A 1
+**Estado:** Em andamento · OK 7 · PARTIAL 3 · MISSING 0 · BUG 0 · N/A 1
 
 ## Objetivo
 
@@ -32,7 +32,7 @@ Maço final 1|2, 3|4… sem folha de cabeça para baixo em todos os perfis, e fl
 | ID | Requisito | Situação |
 |---|---|---|
 | PS-A028 | Rodar o fluxo inteiro sem impressora (`simular`) | OK |
-| PS-A029 | Chave "Simular impressão" por documento; botão vira "Simular frente"; selo SIMULAÇÃO | MISSING |
+| PS-A029 | Chave "Simular impressão" por documento; botão vira "Simular frente"; selo SIMULAÇÃO | PARTIAL |
 | PS-A030 | Duas impressoras virtuais "Simulada — Traseira" e "Simulada — Gaveta", com outras combinações possíveis | PARTIAL |
 | PS-A031 | `SimBackend` implementa o mesmo trait dos backends reais | OK |
 | PS-A032 | Modelo físico: folha `{frente, verso, girada}`, pilha de saída, gesto como operação | OK |
