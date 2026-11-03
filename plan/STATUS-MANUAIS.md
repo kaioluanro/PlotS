@@ -59,10 +59,11 @@ Requisitos: OK 51 · PARTIAL 33 · MISSING 6 · BUG 0 · N/A 3 (93). Detalhes em
 | preferencias-driver | `ec46630` | concluído no código; janela real aberta e fechada, sem clicar em OK |
 | frente-e-verso-automatico | `0a8f451` | concluído no código; simulada e fila sem duas faces, sem envio real em duas faces nem papel |
 | opcoes-de-envio | `1ad3307` | concluído no código; simuladas e fila de PDF, sem impressora real |
+| laser-verso-girado | `364774d` | concluído; modelo físico e fila de PDF, sem papel |
 
 **Próximo:**
 
-1. Integrar a correção da laser e as filas do PlotSim. Depois, as fases 4 a 6 do PlotSim (`23-plotsim`).
+1. Integrar as filas do PlotSim e a calibração pela janela (`04-calibracao`). Depois, as fases 4 a 6 do PlotSim (`23-plotsim`).
 2. Revisar as linhas desatualizadas de `AUDIT-PlotS.md`, gerar o instalador final e fazer o teste do usuário.
 
 Depois da primeira versão: impressora virtual, Linux e macOS, divisão por velocidade (`15-multiplas-impressoras`) e medir se o Graphify economiza tokens, com 3 perguntas respondidas com e sem ele.

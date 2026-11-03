@@ -22,7 +22,7 @@ Os testes físicos ficam para quando houver impressora. Até lá, duas impressor
 | Imprime na face voltada para | cima | cima |
 | Gesto | vira pela borda de cima, como bloco de notas | **não vira**: recoloca como saiu |
 | Frente | da última para a primeira (6, 4, 2) | da última para a primeira (6, 4, 2) |
-| Verso | da última para a primeira (5, 3, 1), **girado 180°** | da primeira para a última (1, 3, 5), sem giro |
+| Verso | da última para a primeira (5, 3, 1), **girado 180°** | da primeira para a última (1, 3, 5), **girado 180°** (`364774d`) |
 | Face impressa na entrada | para baixo | para baixo |
 | Para ler o maço final | como saiu | vira o maço |
 
@@ -43,7 +43,8 @@ Conforme a p. 33 do manual da série HL-1210W, nesta laser o maço volta à band
 - [x] O perfil salvo guarda o modelo, e a barra lateral deixou de deduzi-lo de `passada1_inversa` (826b726)
 - [x] Perfil salvo expressa a virada pela borda de cima (826b726)
 - [ ] Confirmar com um lote de 2 ou 3 folhas, quando houver impressora
-- [ ] **Laser: o PlotSim indica verso de cabeça para baixo (`f1afcee`, ver `23-plotsim`).** No mesmo teste, ver qual extremidade do maço entra primeiro: o modelo só distingue borda curta de longa, não cabeça de pé, e nem a frase nem a figura dizem isso. Se o lado errado deixar os versos de cabeça para baixo, a frase e a seta da figura precisam dizer qual borda entra
+- [x] **Laser: verso girado 180°, sem girar o maço (`364774d`).** O PlotSim acusou verso de cabeça para baixo, e o usuário confirmou o percurso da folha.
+- [ ] No mesmo teste, ver qual extremidade do maço entra primeiro: o modelo só distingue borda curta de longa, não cabeça de pé, e nem a frase nem a figura dizem isso. Se o lado errado deixar os versos de cabeça para baixo, a frase e a seta da figura precisam dizer qual borda entra
 
 ## Modelo físico
 
