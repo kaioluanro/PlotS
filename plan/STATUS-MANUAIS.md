@@ -25,7 +25,8 @@ Requisitos: OK 51 · PARTIAL 33 · MISSING 6 · BUG 0 · N/A 3 (93). Detalhes em
 | [Linux e macOS](18-linux-e-macos.md) | 0 | 0 | 1 | 0 | 0 | Não iniciado |
 | [Modelos de impressora](19-modelos-de-impressora.md) | — | — | — | — | — | Em andamento |
 | [Preferências do driver](20-preferencias-do-driver.md) | — | — | — | — | — | Em andamento |
-| [Frente e verso automático](21-frente-e-verso-automatico.md) | — | — | — | — | — | Em andamento |
+| [Frente e verso automático](21-frente-e-verso-automatico.md) | — | — | — | — | — | Em pausa |
+| [Opções de envio e histórico](22-opcoes-de-envio-e-historico.md) | — | — | — | — | — | Em pausa |
 
 ## Lotes
 
@@ -56,7 +57,14 @@ Requisitos: OK 51 · PARTIAL 33 · MISSING 6 · BUG 0 · N/A 3 (93). Detalhes em
 | varias-impressoras | `62d51a4` | concluído; simuladas, fila real só até a confirmação, sem papel |
 | preferencias-driver | `ec46630` | concluído no código; janela real aberta e fechada, sem clicar em OK |
 
-**Próximo:** frente e verso automático (`21-frente-e-verso-automatico`).
+**Em pausa desde 2026-11-03, a pedido do usuário.** Para retomar:
+
+1. Terminar `frente-e-verso-automatico`, em `.claude/worktrees/agent-ad400bccd5da910a8`, brief `briefs/brief-frente-e-verso-automatico.md`.
+2. Terminar `opcoes-de-envio`, em `.claude/worktrees/agent-aee1132e4889c433b`, brief `briefs/brief-opcoes-de-envio.md`, mais o tempo de impressão e o aviso de compensação do plano `22-opcoes-de-envio-e-historico`. Trabalho parcial.
+3. Revisar e integrar os dois, com CI completo no `master`. Os dois wips estão sem CI e sem revisão.
+4. Revisar as linhas desatualizadas de `AUDIT-PlotS.md`, gerar o instalador final e fazer o teste do usuário.
+
+Depois da primeira versão: impressora virtual, Linux e macOS, divisão por velocidade (`15-multiplas-impressoras`) e medir se o Graphify economiza tokens, com 3 perguntas respondidas com e sem ele.
 
 ## Bloqueado ou dependente do usuário
 

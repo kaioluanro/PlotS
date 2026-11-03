@@ -94,7 +94,7 @@ Não entram no binário; repetir a checagem do grafo ao montar o instalador.
 - **Risco residual das fontes do PDFium:** a `pdfium.dll` contém ChromeSansMM e ChromeSerifMM, publicadas pelo PDFium sob BSD, com a nota de 1990-1994 da Adobe mantida nos dados. O BSD do PDFium não prova a cadeia de direitos entre Adobe, Foxit e Google. O uso do pacote é decisão do usuário; o assunto volta se o PlotS passar a ser vendido.
 - **Ainda não lidos:** termos do WebView2 Runtime, que o instalador baixa da Microsoft se faltar; contrato do Visual Studio da máquina de build, pelo CRT estático.
 - **Executável:** sem caminhos da máquina, conferido por busca de bytes; "Kaio Luan" fica no recurso de versão, por escolha. Os briefs antigos em `plan/briefs/` trazem caminhos locais: decidir antes de abrir o repositório.
-- **Nome do projeto:** busca de anterioridade de "PlotS". A licença do PlotS é MIT (`LICENSE`), por decisão do usuário em 2026-11-02; as dependências continuam sob as próprias licenças.
+- **Nome do projeto:** sem busca de anterioridade de "PlotS", por decisão do usuário em 2026-11-03. A licença do PlotS é MIT (`LICENSE`), por decisão do usuário em 2026-11-02; as dependências continuam sob as próprias licenças.
 - **Linux:** `gtk`, `webkit2gtk` e `soup3` estão no lock; conferir as licenças das bibliotecas do sistema ao empacotar (plano `18-linux-e-macos`).
 
 ## Ativos

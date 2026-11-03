@@ -1,6 +1,6 @@
 # Frente e verso automático
 
-**Estado:** Em andamento.
+**Estado:** Em pausa, com trabalho parcial em worktree, sem CI nem revisão (ver `STATUS-MANUAIS.md`).
 
 ## Objetivo
 

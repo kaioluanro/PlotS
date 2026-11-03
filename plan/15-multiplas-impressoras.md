@@ -24,6 +24,10 @@ Enviar o mesmo documento a várias impressoras, cada uma com o próprio perfil.
 - **Pendente, menor:** fio de 1 px sob a faixa do nome presa; poucos pixels de rolagem nos campos do rodapé com erro no nome de grupo; nome de grupo longo cortado sem reticências; hover de botão secundário no tema claro, token comum.
 - **Não verificado:** papel e impressora real; divisão em fila real, que só chegou à confirmação; três impressoras até o fim, só com dados de teste; todas ocupadas em outra aba, só teste de unidade; título de Reimprimir em divisão e `todosConferem` na tela; cores forçadas na faixa; leitor de tela real.
 
+## Depois da primeira versão
+
+- **Divisão por velocidade:** dar mais lotes à impressora mais rápida, com a velocidade medida no histórico (`22-opcoes-de-envio-e-historico`). Começar só com medidas de impressoras reais. Hoje os lotes são repartidos igualmente, em rodízio, e a confirmação apenas avisa da diferença. A confirmação e a lista de junção precisam mostrar a repartição antes do envio, e cada página continua saindo exatamente uma vez.
+
 ## Pronto quando
 
 Duas impressoras avançam de forma independente e entregam o mesmo maço.

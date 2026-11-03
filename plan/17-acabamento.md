@@ -13,7 +13,7 @@ Deixar o programa pronto para outra pessoa usar.
 - [ ] Folha de controle opcional
 - [x] Instalador com `tauri bundle` (`1a1f6d7`), gerado por `node scripts/empacotar.mjs`
 - [x] Avisos de terceiros, gerados dos arquivos de licença de cada crate
-- [ ] Busca do nome no INPI e USPTO
+- Busca do nome no INPI e USPTO: não será feita, por decisão do usuário em 2026-11-03
 - [ ] Executar o instalador em máquina ou conta de teste: instalação, atalhos, "Abrir com", desinstalação, permanência dos perfis, baixa do WebView2 Runtime
 - [x] Dizer na documentação onde os perfis ficam e como apagá-los, porque a pasta Roaming pode acompanhar perfis móveis
 
