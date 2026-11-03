@@ -48,6 +48,7 @@ import type { Aba } from "../tabs";
 import { BlocoIntervalo } from "./BlocoIntervalo";
 import botoes from "./Botao.module.css";
 import { CartaoImpressao } from "./CartaoImpressao";
+import { LinhaRolagemAdiada } from "./LinhaRolagemAdiada";
 import styles from "./Sidebar.module.css";
 
 export const ID_LATERAL = "barra-lateral";
@@ -206,6 +207,8 @@ export function Sidebar({
           </p>
         )}
       </div>
+
+      <LinhaRolagemAdiada />
 
       <div className={styles.rodape}>
         <BlocoIntervalo

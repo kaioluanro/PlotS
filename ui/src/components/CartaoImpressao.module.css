@@ -7,6 +7,8 @@
   background: var(--bg-sunken);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+  scroll-margin-top: 8px;
+  scroll-margin-bottom: 8px;
 }
 
 .topo {
@@ -101,10 +103,12 @@
 
 .frase,
 .fraseForte,
-.fraseRessalva {
+.fraseRessalva,
+.fraseGesto,
+.fraseAcao {
   margin: 0;
-  font-size: 11px;
-  line-height: 15px;
+  font-size: 12px;
+  line-height: 16px;
 }
 
 /* Contexto e o que o cartao explica; a ressalva da fila fica abaixo, em tom mais discreto. */
@@ -118,15 +122,29 @@
 
 .fraseForte {
   color: var(--fg);
+  font-weight: 600;
 }
 
-/* A acao que o usuario precisa fazer agora: a linha mais forte do cartao. */
-.fraseAcao {
-  margin: 0;
+/* O gesto e o que nao pode dar errado: e a linha mais forte do cartao que espera. */
+.fraseGesto {
   color: var(--fg);
-  font-size: 12px;
   font-weight: 600;
-  line-height: 16px;
+}
+
+/* O que fazer em seguida: a cor do texto basta, porque o botao logo abaixo ja chama a atencao. */
+.fraseAcao {
+  color: var(--fg);
+  font-weight: 400;
+}
+
+/* Texto de fora, de qualquer tamanho: duas linhas no cartao e o inteiro no titulo. */
+.fraseLimitada {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .resultado {

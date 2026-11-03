@@ -14,7 +14,7 @@ use crate::raster::{
     ponto_da_pagina_em_branco, Dispositivo, PlanoPagina,
 };
 use crate::spooler::{ContextoFila, DocumentoAberto, Impressora};
-use crate::trabalho::traduzir_status;
+use crate::trabalho::{motivo_e_mensagem, trabalho_terminou, traduzir_com_fila};
 use crate::Fila;
 use pdfium_render::prelude::{
     PdfBitmapFormat, PdfColor, PdfDocument, PdfPageRenderRotation, PdfRenderConfig, Pdfium,
@@ -22,7 +22,7 @@ use pdfium_render::prelude::{
 };
 use plots_core::{DimensoesPagina, Pagina};
 use plots_pdf::PdfOrigem;
-use plots_print::fluxo::DescreveFalha;
+use plots_print::fluxo::{CondicaoDoAviso, DescreveFalha};
 use plots_print::job::{Backend, EstadoEnvio, Passada};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -68,6 +68,8 @@ pub struct BackendWindows {
     arquivo: Option<PathBuf>,
     ultimo_status: Option<u32>,
     motivo: Option<String>,
+    condicao: Option<CondicaoDoAviso>,
+    mensagem_do_driver: Option<String>,
     /// O trabalho atual foi visto fora da fila.
     saiu_da_fila: bool,
 }
@@ -108,6 +110,8 @@ impl BackendWindows {
             arquivo: None,
             ultimo_status: None,
             motivo: None,
+            condicao: None,
+            mensagem_do_driver: None,
             saiu_da_fila: false,
         })
     }
@@ -240,6 +244,12 @@ impl DescreveFalha for BackendWindows {
     fn motivo(&self) -> Option<String> {
         self.motivo_atual().map(str::to_string)
     }
+    fn condicao(&self) -> Option<CondicaoDoAviso> {
+        self.condicao
+    }
+    fn mensagem_do_driver(&self) -> Option<String> {
+        self.mensagem_do_driver.clone()
+    }
     fn trabalho_saiu_da_fila(&self) -> bool {
         self.saiu_da_fila()
     }
@@ -257,6 +267,8 @@ impl Backend for BackendWindows {
         self.arquivo = None;
         self.ultimo_status = None;
         self.motivo = None;
+        self.condicao = None;
+        self.mensagem_do_driver = None;
         self.saiu_da_fila = false;
 
         let papel = papel_da_passada(paginas, &self.dimensoes)?;
@@ -311,14 +323,17 @@ impl Backend for BackendWindows {
             return Ok(EstadoEnvio::Concluido);
         };
         self.ultimo_status = Some(leitura.status);
-        let situacao = traduzir_status(leitura.status);
-        self.motivo = situacao.motivo.map(|motivo| {
-            if leitura.texto.is_empty() {
-                motivo
-            } else {
-                format!("{motivo} ({})", leitura.texto)
-            }
-        });
+        let fila = if trabalho_terminou(leitura.status) {
+            None
+        } else {
+            self.impressora.ler_estado()
+        };
+        let situacao = traduzir_com_fila(leitura.status, fila.as_ref());
+        self.condicao = situacao.condicao;
+        let (motivo, mensagem) =
+            motivo_e_mensagem(situacao.estado, situacao.motivo, &leitura.texto);
+        self.motivo = motivo;
+        self.mensagem_do_driver = mensagem;
         Ok(situacao.estado)
     }
 

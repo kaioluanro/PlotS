@@ -3,6 +3,7 @@
 //! trabalha: nunca devem rodar na thread de uma interface.
 
 use crate::erro::ErroEnvio;
+use crate::estado::Estado;
 use crate::papel::{
     conferir_devmode, AjustePapel, CampoLido, LeituraDevmode, DMPAPER_USER, ESCALA_REAL,
     ORIENTACAO_RETRATO, UMA_COPIA, UMA_POR_FOLHA,
@@ -23,8 +24,8 @@ use windows::Win32::Graphics::Gdi::{
     SRCCOPY, VERTRES,
 };
 use windows::Win32::Graphics::Printing::{
-    ClosePrinter, DocumentPropertiesW, GetJobW, OpenPrinterW, SetJobW, JOB_CONTROL_DELETE,
-    JOB_INFO_2W, PRINTER_HANDLE,
+    ClosePrinter, DocumentPropertiesW, GetJobW, GetPrinterW, OpenPrinterW, SetJobW,
+    JOB_CONTROL_DELETE, JOB_INFO_2W, PRINTER_HANDLE, PRINTER_INFO_2W,
 };
 use windows::Win32::Storage::Xps::{AbortDoc, EndDoc, EndPage, StartDocW, StartPage, DOCINFOW};
 
@@ -138,6 +139,20 @@ impl Impressora {
             }
         })?;
         buffer.as_deref().map(decodificar_trabalho).transpose()
+    }
+
+    /// Estado atual da fila. `None` quando não deu para ler: quem não sabe o estado não dá alarme,
+    /// e a consulta do trabalho continua valendo sozinha.
+    pub(crate) fn ler_estado(&self) -> Option<Estado> {
+        let buffer = ler_com_repeticao(|destino, pedido| {
+            // Garantia: `destino`, quando há, é um slice vivo e exclusivo cujo tamanho vai junto
+            // na chamada, e o sistema escreve no máximo esse número de bytes; `pedido` é uma
+            // referência válida. `self.handle` é válido enquanto `self` existe.
+            unsafe { GetPrinterW(self.handle, NIVEL_INFO_2, destino, pedido) }
+                .map_err(|erro| erro.code())
+        })
+        .ok()??;
+        decodificar_estado_da_fila(&buffer)
     }
 
     /// Quantos trabalhos há na fila. Só os testes de envio precisam disso, para conferir que
@@ -274,6 +289,16 @@ fn decodificar_trabalho(buffer: &[u8]) -> Result<LeituraTrabalho, ErroEnvio> {
         status: info.Status,
         texto,
     })
+}
+
+/// Lê só os dois campos inteiros do registro da fila. Buffer menor que o registro é `None`.
+fn decodificar_estado_da_fila(buffer: &[u8]) -> Option<Estado> {
+    let bytes = buffer.get(..std::mem::size_of::<PRINTER_INFO_2W>())?;
+    // Garantia: `bytes` tem exatamente o tamanho do registro. `read_unaligned` não exige
+    // alinhamento; os campos são inteiros ou ponteiros brutos e nenhum é desreferenciado aqui.
+    let info: PRINTER_INFO_2W =
+        unsafe { std::ptr::read_unaligned(bytes.as_ptr().cast::<PRINTER_INFO_2W>()) };
+    Some(Estado::de_status_e_atributos(info.Status, info.Attributes))
 }
 
 /// Bloco do `DEVMODE` com os dados privados do driver depois da parte pública. Fica em `u64`
@@ -572,10 +597,28 @@ impl Drop for DocumentoAberto<'_> {
 #[cfg(test)]
 mod testes {
     use super::*;
+    use crate::estado::Condicao;
     use windows::Win32::Foundation::ERROR_ACCESS_DENIED;
     use windows::Win32::Graphics::Gdi::{
         DEVMODEW_0_0, DEVMODE_DUPLEX, DMCOLLATE_TRUE, DMDUP_VERTICAL,
     };
+
+    #[test]
+    fn estado_da_fila_vem_do_registro_e_buffer_curto_nao_vira_alarme() {
+        let info = PRINTER_INFO_2W {
+            Status: 0x8,
+            Attributes: 0x400,
+            ..Default::default()
+        };
+        let tamanho = std::mem::size_of::<PRINTER_INFO_2W>();
+        // Garantia: o registro é local e vive durante o uso; só seus bytes são lidos.
+        let bytes =
+            unsafe { std::slice::from_raw_parts(std::ptr::from_ref(&info).cast::<u8>(), tamanho) };
+        let estado = decodificar_estado_da_fila(bytes).unwrap();
+        assert_eq!(estado.condicoes(), &[Condicao::Offline, Condicao::Atolada]);
+        assert_eq!(decodificar_estado_da_fila(&bytes[..tamanho - 1]), None);
+        assert_eq!(decodificar_estado_da_fila(&[]), None);
+    }
 
     /// Buffer como o driver devolveria: `dmSize` com a parte pública inteira e valores "errados"
     /// em tudo que o envio precisa forçar.

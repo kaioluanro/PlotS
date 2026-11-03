@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { Fragment, useEffect, useRef } from "react";
 import {
   acoesDoCartao,
   alinhamentoDoCartao,
@@ -16,9 +16,11 @@ import {
   type Comando,
   type PapelDaLinha,
 } from "../cartoes";
+import { desenhoDoCartao, posicaoDoCartao, rolarAteOCartao } from "../cartoes-gesto";
 import { t } from "../i18n";
 import botoes from "./Botao.module.css";
 import styles from "./CartaoImpressao.module.css";
+import { FiguraGesto } from "./FiguraGesto";
 
 const CLASSE_DO_TOM = {
   ativo: styles.pontoAtivo,
@@ -36,9 +38,19 @@ function rolagemDoCartao(elemento: HTMLElement): HTMLElement | null {
   return null;
 }
 
+/** O cartao ja saiu da pagina: o foco fica na lista, sem pular para o comeco da janela. */
+function focarALista(lista: HTMLElement | null): void {
+  if (lista === null) return;
+  if (!lista.hasAttribute("tabindex")) lista.tabIndex = -1;
+  // A lista encosta nas bordas da lateral: o anel fica para dentro, para aparecer inteiro.
+  lista.style.outlineOffset = "-2px";
+  lista.focus({ preventScroll: true });
+}
+
 const CLASSE_DO_PAPEL = {
   acao: styles.fraseAcao,
   ressalva: styles.fraseRessalva,
+  gesto: styles.fraseGesto,
   contexto: styles.frase,
 } as const satisfies Record<PapelDaLinha, string | undefined>;
 
@@ -57,15 +69,38 @@ export function CartaoImpressao({ cartao, aoComandar, aoPedirCancelar, aoDispens
   const linhas = linhasDoCartao(cartao);
   const raiz = useRef<HTMLElement>(null);
   const pedeAcao = cartaoPedeAcao(cartao);
+  const desenho = desenhoDoCartao(cartao);
   // Quando o cartao passa a pedir algo, a lista desce ate ele; o foco de quem usa o teclado fica onde esta.
   useEffect(() => {
     const elemento = raiz.current;
     if (!pedeAcao || !elemento) return;
-    // Cartao mais alto que a lista: o topo dele e o que quem le ve primeiro. Se cabe, so desce o necessario.
-    const alturaDaLista = rolagemDoCartao(elemento)?.clientHeight ?? window.innerHeight;
-    elemento.scrollIntoView({
-      block: alinhamentoDoCartao(elemento.offsetHeight, alturaDaLista),
-    });
+    const lista = rolagemDoCartao(elemento);
+    return rolarAteOCartao(
+      lista,
+      () => {
+        // Cartao mais alto que a lista: o topo dele e o que quem le ve primeiro. Se cabe, so desce o necessario.
+        elemento.scrollIntoView({
+          block: alinhamentoDoCartao(elemento.offsetHeight, lista?.clientHeight ?? window.innerHeight),
+        });
+      },
+      {
+        posicao: () =>
+          lista === null
+            ? "em_vista"
+            : posicaoDoCartao(elemento.getBoundingClientRect(), lista.getBoundingClientRect()),
+        // Quem pediu pela linha fixa pode estar no teclado: o foco vai ao cartao, nunca a um botao
+        // dele, para um Enter repetido nao mandar o verso nem refazer o lote.
+        focar: () => {
+          if (!elemento.isConnected) {
+            focarALista(lista);
+            return;
+          }
+          elemento.focus({ preventScroll: true });
+          // Foco fora de vista nao serve: a lista anda so o necessario para mostrar o cartao.
+          elemento.scrollIntoView({ block: "nearest" });
+        },
+      },
+    );
   }, [pedeAcao, cartao.estado.tipo]);
   const classeDoBotao = `${botoes.botao} ${botoes.secundario} ${styles.botaoDoCartao}`;
   const dados = [
@@ -73,9 +108,11 @@ export function CartaoImpressao({ cartao, aoComandar, aoPedirCancelar, aoDispens
     cartao.papel ? nomeDoPapel(cartao.papel) : null,
   ].filter((parte) => parte !== null);
   const problema = cartao.estado.tipo === "erro" || cartao.estado.tipo === "aviso";
+  // A figura fica logo antes da frase que ela ilustra.
+  const inicioDoGesto = desenho === null ? -1 : linhas.findIndex((linha) => linha.papel === "gesto");
 
   return (
-    <article ref={raiz} className={styles.cartao} aria-label={nome}>
+    <article ref={raiz} className={styles.cartao} aria-label={nome} tabIndex={-1}>
       <div className={styles.topo}>
         <span className={styles.nome} title={nome}>
           {nome}
@@ -98,14 +135,20 @@ export function CartaoImpressao({ cartao, aoComandar, aoPedirCancelar, aoDispens
       )}
       <div className={styles.frases} aria-live="polite">
         {linhas.map((linha, indice) => (
-          <p
-            key={`${indice}-${linha.texto}`}
-            className={
-              problema && linha.papel === "contexto" ? styles.fraseForte : CLASSE_DO_PAPEL[linha.papel]
-            }
-          >
-            {linha.texto}
-          </p>
+          <Fragment key={`${indice}-${linha.texto}`}>
+            {desenho !== null && indice === inicioDoGesto && <FiguraGesto desenho={desenho} />}
+            <p
+              className={[
+                problema && linha.papel === "contexto" ? styles.fraseForte : CLASSE_DO_PAPEL[linha.papel],
+                linha.limitada ? styles.fraseLimitada : undefined,
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              title={linha.limitada ? linha.texto : undefined}
+            >
+              {linha.texto}
+            </p>
+          </Fragment>
         ))}
       </div>
       {resultado !== null && <p className={styles.resultado}>{resultado}</p>}
@@ -130,15 +173,6 @@ export function CartaoImpressao({ cartao, aoComandar, aoPedirCancelar, aoDispens
             {rotuloDoVerso(cartao)}
           </button>
         )}
-        {acoes.reimprimir && (
-          <button
-            type="button"
-            className={classeDoBotao}
-            onClick={() => aoComandar(cartao, "reimprimir")}
-          >
-            {t("cartao.reimprimir")}
-          </button>
-        )}
         {acoes.continuar && (
           <button
             type="button"
@@ -146,6 +180,15 @@ export function CartaoImpressao({ cartao, aoComandar, aoPedirCancelar, aoDispens
             onClick={() => aoComandar(cartao, "continuar_esperando")}
           >
             {t("cartao.continuar")}
+          </button>
+        )}
+        {acoes.reimprimir && (
+          <button
+            type="button"
+            className={classeDoBotao}
+            onClick={() => aoComandar(cartao, "reimprimir")}
+          >
+            {t("cartao.reimprimir")}
           </button>
         )}
         {acoes.cancelar && (

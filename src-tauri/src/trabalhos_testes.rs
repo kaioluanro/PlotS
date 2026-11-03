@@ -18,6 +18,10 @@ impl ParaMotivo for String {
 enum Leitura {
     Estado(EstadoEnvio),
     Aviso(&'static str),
+    /// Os bits do trabalho e da fila, traduzidos como no envio real.
+    Spooler(u32, u32),
+    /// Sem papel na fila, com o texto que o driver mandou.
+    ComMensagem(&'static str),
     Erro,
     Quebra,
 }
@@ -28,6 +32,8 @@ struct Falso {
     cancelados: Arc<Mutex<u32>>,
     leituras: VecDeque<Leitura>,
     motivo: Option<String>,
+    condicao: Option<CondicaoDoAviso>,
+    mensagem: Option<String>,
     recusa_ao_enviar: bool,
     recusa_ao_cancelar: bool,
 }
@@ -46,6 +52,8 @@ impl Backend for Falso {
     }
     fn consultar(&mut self) -> Result<EstadoEnvio, String> {
         self.motivo = None;
+        self.condicao = None;
+        self.mensagem = None;
         match self
             .leituras
             .pop_front()
@@ -58,6 +66,19 @@ impl Backend for Falso {
             Leitura::Estado(estado) => Ok(estado),
             Leitura::Aviso(motivo) => {
                 self.motivo = Some(motivo.to_string());
+                Ok(EstadoEnvio::EmAndamento)
+            }
+            Leitura::Spooler(trabalho, fila) => {
+                let estado_da_fila = plots_windows::Estado::de_bits(fila);
+                let situacao = plots_windows::traduzir_com_fila(trabalho, Some(&estado_da_fila));
+                self.motivo = situacao.motivo;
+                self.condicao = situacao.condicao;
+                Ok(situacao.estado)
+            }
+            Leitura::ComMensagem(mensagem) => {
+                self.motivo = Some("a impressora está sem papel".to_string());
+                self.condicao = Some(CondicaoDoAviso::SemPapel);
+                self.mensagem = Some(mensagem.to_string());
                 Ok(EstadoEnvio::EmAndamento)
             }
             Leitura::Erro => Err("a fila não respondeu".to_string()),
@@ -79,6 +100,12 @@ impl Backend for Falso {
 impl DescreveFalha for Falso {
     fn motivo(&self) -> Option<String> {
         self.motivo.clone()
+    }
+    fn condicao(&self) -> Option<CondicaoDoAviso> {
+        self.condicao
+    }
+    fn mensagem_do_driver(&self) -> Option<String> {
+        self.mensagem.clone()
     }
     fn trabalho_saiu_da_fila(&self) -> bool {
         false
@@ -163,6 +190,8 @@ impl Cena {
             cancelados: Arc::clone(&self.cancelados),
             leituras: leituras.iter().copied().collect(),
             motivo: None,
+            condicao: None,
+            mensagem: None,
             recusa_ao_enviar,
             recusa_ao_cancelar,
         }
@@ -368,7 +397,7 @@ fn aviso_mostra_o_motivo_continuar_nao_toca_na_fila_e_cancelar_tira_de_la() {
 #[test]
 fn aviso_que_se_resolve_sozinho_volta_a_imprimindo() {
     let cena = Cena::nova();
-    let mut leituras = vec![Leitura::Aviso("a impressora está offline")];
+    let mut leituras = vec![Leitura::Aviso("a impressora não responde")];
     leituras.extend([Leitura::Estado(EstadoEnvio::EmAndamento); 3]);
     cena.iniciar("a", &leituras, &[A4; 2]);
     cena.esperar("a", aguardando);
@@ -610,9 +639,14 @@ fn estado_do_cartao_chega_a_interface_com_os_nomes_que_ela_espera() {
     let cartao = identidade("a").cartao(EstadoCartao::Aviso {
         passada: PassadaDoCartao::Verso,
         motivo: Motivo::novo("fila", "x"),
+        mensagem_do_driver: Some("Bandeja 2".to_string()),
         respondido: false,
     });
     let texto = serde_json_de(&cartao);
+    assert!(
+        texto.contains(r#""mensagemDoDriver":"Bandeja 2""#),
+        "{texto}"
+    );
     assert!(texto.contains(r#""tipo":"aviso""#), "{texto}");
     assert!(texto.contains(r#""passada":"verso""#), "{texto}");
     assert!(texto.contains(r#""viraParaLer":false"#), "{texto}");
@@ -655,6 +689,148 @@ fn motivos_da_fila_tem_traducao_na_interface() {
             assert!(cartoes.contains(parte), "sem traducao: {parte}");
         }
     }
+    for fila in [FILA_SEM_PAPEL, FILA_ATOLADA, FILA_OFFLINE] {
+        let estado = plots_windows::Estado::de_bits(fila);
+        let motivo = plots_windows::traduzir_com_fila(0x10, Some(&estado))
+            .motivo
+            .unwrap();
+        assert!(cartoes.contains(motivo.as_str()), "sem traducao: {motivo}");
+    }
+}
+
+/// Bits de estado da fila, como o spooler os informa.
+const FILA_SEM_PAPEL: u32 = 0x10;
+const FILA_ATOLADA: u32 = 0x8;
+const FILA_OFFLINE: u32 = 0x80;
+
+/// Cada condicao chega como aviso, com a frase dela, e o verso nao sai enquanto ela durar. Quando
+/// passa, o cartao volta a imprimindo e o verso so libera com a confirmacao da fila.
+#[test]
+fn cada_condicao_do_spooler_vira_o_seu_aviso_some_ao_passar_e_nao_libera_o_verso() {
+    for (fila, frase, codigo) in [
+        (FILA_SEM_PAPEL, "a impressora está sem papel", "sem_papel"),
+        (FILA_ATOLADA, "o papel atolou na impressora", "atolado"),
+        (FILA_OFFLINE, "a impressora não responde", "sem_resposta"),
+    ] {
+        let cena = Cena::nova();
+        let mut leituras = vec![Leitura::Spooler(0x10, fila); 100];
+        leituras.extend([Leitura::Spooler(0x10, 0); 100]);
+        leituras.push(Leitura::Spooler(0x1000, fila));
+        cena.iniciar("a", &leituras, &[A4; 2]);
+        let aviso = cena.esperar("a", |estado| matches!(estado, EstadoCartao::Aviso { .. }));
+        let EstadoCartao::Aviso {
+            motivo, passada, ..
+        } = aviso.estado
+        else {
+            panic!("{aviso:?}");
+        };
+        assert_eq!(motivo.texto, frase);
+        assert_eq!(motivo.codigo, codigo);
+        assert_eq!(passada, PassadaDoCartao::Frente);
+        cena.comandar("a", Comando::EnviarVerso);
+        cena.esperar("a", aguardando);
+        assert_eq!(cena.enviados(), [Passada::Frente], "{frase}");
+        let estados: Vec<EstadoCartao> =
+            cena.cartoes_de("a").into_iter().map(|c| c.estado).collect();
+        let fim_do_aviso = estados
+            .iter()
+            .rposition(|estado| matches!(estado, EstadoCartao::Aviso { .. }))
+            .unwrap();
+        assert!(
+            matches!(
+                estados.get(fim_do_aviso + 1),
+                Some(EstadoCartao::Imprimindo { .. })
+            ),
+            "{frase}: {estados:?}"
+        );
+        cena.comandar("a", Comando::Cancelar);
+        esperar_fim(&cena, "a");
+    }
+}
+
+/// A mensagem do driver chega em campo proprio, com o motivo intacto. Se so ela muda, o cartao
+/// atualiza a linha e nao desfaz o "continuar esperando".
+#[test]
+fn mensagem_do_driver_vem_em_campo_proprio_e_mudar_nao_desfaz_a_resposta() {
+    let cena = Cena::nova();
+    let mut leituras = vec![Leitura::ComMensagem("Bandeja 2 vazia"); 300];
+    leituras.extend([Leitura::ComMensagem("Bandeja 3 vazia"); 5_000]);
+    cena.iniciar("a", &leituras, &[A4; 2]);
+    let aviso = cena.esperar("a", |estado| matches!(estado, EstadoCartao::Aviso { .. }));
+    let EstadoCartao::Aviso {
+        motivo,
+        mensagem_do_driver,
+        ..
+    } = aviso.estado
+    else {
+        panic!("{aviso:?}");
+    };
+    assert_eq!(motivo.texto, "a impressora está sem papel");
+    assert_eq!(motivo.codigo, "sem_papel");
+    assert_eq!(mensagem_do_driver.as_deref(), Some("Bandeja 2 vazia"));
+    cena.comandar("a", Comando::ContinuarEsperando);
+    cena.esperar("a", |estado| {
+        matches!(
+            estado,
+            EstadoCartao::Aviso {
+                mensagem_do_driver: Some(mensagem),
+                respondido: true,
+                ..
+            } if mensagem == "Bandeja 3 vazia"
+        )
+    });
+    cena.comandar("a", Comando::Cancelar);
+    esperar_fim(&cena, "a");
+}
+
+/// Sem texto do driver, o campo vai vazio: a interface nao mostra a linha.
+#[test]
+fn aviso_sem_mensagem_do_driver_vai_com_o_campo_vazio() {
+    let cena = Cena::nova();
+    cena.iniciar("a", &[Leitura::Aviso("sem papel"); 5_000], &[A4; 2]);
+    let aviso = cena.esperar("a", |estado| matches!(estado, EstadoCartao::Aviso { .. }));
+    assert!(matches!(
+        aviso.estado,
+        EstadoCartao::Aviso {
+            mensagem_do_driver: None,
+            ..
+        }
+    ));
+    cena.comandar("a", Comando::Cancelar);
+    esperar_fim(&cena, "a");
+}
+
+/// Pedido de atencao nao tem orientacao propria: continua como frase da fila.
+#[test]
+fn aviso_sem_condicao_conhecida_segue_com_o_codigo_generico_da_fila() {
+    let cena = Cena::nova();
+    cena.iniciar("a", &[Leitura::Spooler(0x400, 0); 5_000], &[A4; 2]);
+    let aviso = cena.esperar("a", |estado| matches!(estado, EstadoCartao::Aviso { .. }));
+    let EstadoCartao::Aviso { motivo, .. } = aviso.estado else {
+        panic!("{aviso:?}");
+    };
+    assert_eq!(motivo.codigo, "fila");
+    cena.comandar("a", Comando::Cancelar);
+    esperar_fim(&cena, "a");
+}
+
+/// A fila com bit generico ou desconhecido nao mexe no cartao: ele segue imprimindo ate confirmar.
+#[test]
+fn estado_desconhecido_da_fila_nao_vira_aviso() {
+    let cena = Cena::nova();
+    let leituras: Vec<Leitura> = [0x2, 0x40, 0x0080_0000, 0x0800_0000]
+        .into_iter()
+        .map(|fila| Leitura::Spooler(0x10, fila))
+        .collect();
+    cena.iniciar("a", &leituras, &[A4; 2]);
+    cena.esperar("a", aguardando);
+    let houve_aviso = cena
+        .cartoes_de("a")
+        .iter()
+        .any(|cartao| matches!(cartao.estado, EstadoCartao::Aviso { .. }));
+    assert!(!houve_aviso);
+    cena.comandar("a", Comando::Cancelar);
+    esperar_fim(&cena, "a");
 }
 
 fn ler_comando(texto: &str) -> Result<Comando, serde::de::value::Error> {
@@ -803,6 +979,17 @@ impl PdfDeTeste {
         Self {
             pasta,
             caminho: caminho.to_string_lossy().into_owned(),
+        }
+    }
+}
+
+impl Cena {
+    /// O envio acontece logo depois de o cartao mudar: espera a contagem em vez de adivinhar.
+    fn esperar_envios(&self, quantos: usize) {
+        let inicio = Instant::now();
+        while self.enviados().len() < quantos {
+            assert!(inicio.elapsed() < PRAZO, "enviados: {:?}", self.enviados());
+            std::thread::sleep(Duration::from_millis(2));
         }
     }
 }
@@ -1048,4 +1235,67 @@ fn envio_real_mede_a_face_em_branco_pelo_fim_do_trecho() {
     assert_eq!(dimensoes_do_envio(medidas.clone(), trecho(1, 3)), [A4; 3]);
     assert_eq!(dimensoes_do_envio(medidas.clone(), None), medidas);
     assert_eq!(dimensoes_do_envio(medidas.clone(), trecho(1, 4)), medidas);
+}
+
+#[test]
+fn reimprimir_no_aviso_da_frente_tira_o_trabalho_da_fila_e_envia_a_frente_de_novo() {
+    let cena = Cena::nova();
+    cena.iniciar("a", &[Leitura::Aviso("sem papel"); 5_000], &[A4; 2]);
+    cena.esperar("a", |estado| {
+        matches!(
+            estado,
+            EstadoCartao::Aviso {
+                passada: PassadaDoCartao::Frente,
+                ..
+            }
+        )
+    });
+    cena.comandar("a", Comando::Reimprimir);
+    cena.esperar_envios(2);
+    assert_eq!(cena.cancelados(), 1);
+    assert_eq!(cena.enviados(), [Passada::Frente, Passada::Frente]);
+    cena.comandar("a", Comando::Cancelar);
+    esperar_fim(&cena, "a");
+}
+
+#[test]
+fn reimprimir_no_aviso_do_verso_refaz_o_lote_desde_a_frente() {
+    let cena = Cena::nova();
+    let mut leituras = vec![Leitura::Estado(EstadoEnvio::Concluido)];
+    leituras.extend([Leitura::Aviso("sem papel"); 5_000]);
+    cena.iniciar("a", &leituras, &[A4; 2]);
+    cena.esperar("a", aguardando);
+    cena.comandar("a", Comando::EnviarVerso);
+    cena.esperar("a", |estado| {
+        matches!(
+            estado,
+            EstadoCartao::Aviso {
+                passada: PassadaDoCartao::Verso,
+                ..
+            }
+        )
+    });
+    cena.comandar("a", Comando::Reimprimir);
+    cena.esperar_envios(3);
+    assert_eq!(cena.cancelados(), 1);
+    assert_eq!(
+        cena.enviados(),
+        [Passada::Frente, Passada::Verso, Passada::Frente]
+    );
+    cena.comandar("a", Comando::Cancelar);
+    esperar_fim(&cena, "a");
+}
+
+#[test]
+fn reimprimir_no_aviso_com_cancelamento_recusado_nao_reenvia_a_frente() {
+    let cena = Cena::nova();
+    assert!(cena.iniciar_recusando_cancelamento("a", &[Leitura::Aviso("sem papel"); 5_000]));
+    cena.esperar("a", |estado| matches!(estado, EstadoCartao::Aviso { .. }));
+    cena.comandar("a", Comando::Reimprimir);
+    cena.esperar(
+        "a",
+        |estado| matches!(estado, EstadoCartao::Erro { motivo } if motivo.codigo == "nao_cancelou"),
+    );
+    assert_eq!(cena.enviados(), [Passada::Frente]);
+    assert_eq!(cena.cancelados(), 0);
 }

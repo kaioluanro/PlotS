@@ -1025,7 +1025,8 @@ fn simular_correto_diz_certa_por_folha_e_resultado_do_lote() {
     assert!(texto.contains("3|4: certa"));
     assert!(texto.contains("5|branca: certa"));
     assert!(texto.contains("Resultado do lote: 2 de 2 folhas corretas"));
-    assert!(texto.contains("Resultado do lote: 1 de 1 folhas corretas"));
+    assert!(texto.contains("Resultado do lote: 1 de 1 folha correta"));
+    assert!(!texto.contains("1 de 1 folhas"));
     assert!(!texto.contains("errada"));
 }
 

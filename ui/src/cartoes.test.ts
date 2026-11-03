@@ -432,6 +432,18 @@ describe("motivos", () => {
     ).toBe("The printer is out of paper; the job failed (Paper tray 2).");
   });
 
+  it("papel acabado, atolado e impressora sem resposta sao frases diferentes nos dois idiomas", () => {
+    const casos = [
+      ["a impressora está sem papel", "A impressora está sem papel.", "The printer is out of paper."],
+      ["o papel atolou na impressora", "O papel atolou na impressora.", "The paper is jammed in the printer."],
+      ["a impressora não responde", "A impressora não responde.", "The printer is not responding."],
+    ] as const;
+    for (const [texto, pt, en] of casos) {
+      expect(textoDoMotivo({ codigo: "fila", texto }, "pt-BR")).toBe(pt);
+      expect(textoDoMotivo({ codigo: "fila", texto }, "en")).toBe(en);
+    }
+  });
+
   it("em ingles nao mostra mensagem de envio em portugues", () => {
     const texto = textoDoMotivo({ codigo: "papel", texto: "o driver não aplicou o papel" }, "en");
     expect(texto).toBe("The driver did not accept the paper size of these sheets.");
@@ -771,8 +783,8 @@ describe("frases do cartao nos novos textos", () => {
     expect(linhas.map((linha) => linha.papel)).toEqual([
       "ressalva",
       "contexto",
-      "contexto",
-      "contexto",
+      "gesto",
+      "gesto",
       "acao",
     ]);
   });
@@ -860,12 +872,15 @@ describe("recusas do inicio e reimpressao", () => {
     const pt = conteudoDaReimpressao("Fila A", 2, 4);
     expect(traduzir("pt-BR", pt.titulo, pt.parametros)).toBe("Reimprimir o lote 2 de 4 em Fila A?");
     expect(traduzir("pt-BR", pt.texto)).toBe(
-      "O que restar deste lote sai da fila e a frente é enviada de novo. Coloque papel em branco na entrada.",
+      "O que restar deste lote sai da fila e a frente é enviada de novo. Deixe na entrada só folhas em branco: tire qualquer folha já impressa deste lote.",
     );
     expect(traduzir("pt-BR", pt.manter)).toBe("Voltar");
     expect(traduzir("pt-BR", pt.fechar)).toBe("Reimprimir lote");
     const en = conteudoDaReimpressao("Fila A", 2, 4);
     expect(traduzir("en", en.titulo, en.parametros)).toBe("Reprint batch 2 of 4 on Fila A?");
+    expect(traduzir("en", en.texto)).toBe(
+      "What is left of the batch leaves the queue, and the front is sent again. Leave only blank sheets in the feed: take out any sheet already printed.",
+    );
     expect(traduzir("en", en.manter)).toBe("Cancel");
     expect(traduzir("en", en.fechar)).toBe("Reprint batch");
   });

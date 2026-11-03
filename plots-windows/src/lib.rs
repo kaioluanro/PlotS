@@ -39,7 +39,7 @@ pub use raster::{
     ponto_da_pagina_em_branco, Dispositivo, PlanoPagina, PontoDiscreto, LIMITE_BYTES_PAGINA,
 };
 pub use texto::texto_utf16_le;
-pub use trabalho::{traduzir_status, SituacaoTrabalho};
+pub use trabalho::{traduzir_com_fila, traduzir_status, SituacaoTrabalho};
 
 /// Limite do buffer pedido ao spooler (8 MiB). Acima disso a listagem é recusada.
 pub const LIMITE_BUFFER_BYTES: u32 = 8 * 1024 * 1024;

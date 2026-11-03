@@ -712,7 +712,8 @@ fn saida_da_simulacao_nao_afirma_envio_real_nem_confirmacao_do_spooler() {
         "  Frente simulada: envio e confirmação do spooler foram só simulados; nada foi à impressora."
     ));
     assert_eq!(
-        saida.matches("folhas corretas (na simulação)").count(),
+        saida.matches("folha correta (na simulação)").count()
+            + saida.matches("folhas corretas (na simulação)").count(),
         2,
         "{saida}"
     );

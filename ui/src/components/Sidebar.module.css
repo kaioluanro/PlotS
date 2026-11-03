@@ -68,6 +68,13 @@
   animation: girar 900ms linear infinite;
 }
 
+/* A rotacao continua com movimento reduzido, porque indica atividade. */
+@media (prefers-reduced-motion: reduce) {
+  .girando {
+    animation-duration: 900ms !important;
+  }
+}
+
 @keyframes girar {
   to {
     transform: rotate(360deg);

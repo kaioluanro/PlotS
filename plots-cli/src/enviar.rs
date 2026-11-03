@@ -8,8 +8,9 @@ use crate::imprimir::aviso_de_modelo_nao_medido;
 use crate::{listar, ImpressoraVirtual};
 use plots_core::{ModeloImpressora, OrdemPassadas};
 use plots_print::fluxo::{
-    frases_de_recolocacao_do_modelo, nome_do_papel, vira_para_ler, Condutor, DescreveFalha, Espera,
-    LoteDoFluxo, Passo, FRASE_DA_CALIBRACAO, FRASE_ESPERAR_FOLHA, FRASE_VIRAR_PARA_LER,
+    frases_de_recolocacao_do_modelo, nome_do_papel, vira_para_ler, CondicaoDoAviso, Condutor,
+    DescreveFalha, Espera, LoteDoFluxo, Passo, FRASE_DA_CALIBRACAO, FRASE_ESPERAR_FOLHA,
+    FRASE_VIRAR_PARA_LER,
 };
 use plots_print::job::{Backend, ErroJob};
 use plots_windows::{Fila, RecusaDeFila};
@@ -22,6 +23,7 @@ use std::time::Duration;
 pub(crate) const MSG_SEM_SIMULAR: &str =
     "as impressoras simuladas só existem com --simular; para enviar de verdade, informe uma fila com perfil salvo";
 
+const PASSADA_VERSO: &str = "o verso";
 const PERGUNTA_CANCELAR: &str = "Cancelar o trabalho na fila? (s/n): ";
 const MSG_CANCELADO: &str = "O trabalho foi cancelado ou já tinha saído da fila; folhas já entregues ao dispositivo ainda podem sair. Nada mais será enviado.";
 const MSG_DEIXADO_NA_FILA: &str =
@@ -246,7 +248,7 @@ where
             .map_err(|erro| falha_ao_enviar("o verso", numero, &erro))?;
         escrever_aguardando(saida, "Verso", numero)?;
         let etapa = Etapa {
-            passada: "o verso",
+            passada: PASSADA_VERSO,
             numero,
         };
         aguardar(&mut condutor, &mut dormir, etapa, entrada, saida)?;
@@ -309,12 +311,33 @@ where
     B::Erro: Display,
 {
     let Etapa { passada, numero } = etapa;
+    let mut aviso_aberto = false;
     loop {
         match condutor.consultar() {
-            Passo::EmAndamento => dormir(condutor.intervalo()),
-            Passo::Aviso { motivo, novo } => {
+            Passo::EmAndamento => {
+                if std::mem::take(&mut aviso_aberto) {
+                    writeln!(
+                        saida,
+                        "  O aviso sobre {passada} do lote {numero} passou; o trabalho segue na fila."
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+                dormir(condutor.intervalo());
+            }
+            Passo::Aviso {
+                motivo,
+                condicao,
+                mensagem_do_driver,
+                novo,
+            } => {
+                aviso_aberto = true;
                 if novo {
-                    perguntar_no_aviso(condutor, etapa, &motivo, entrada, saida)?;
+                    let aviso = AvisoDaFila {
+                        motivo: &motivo,
+                        condicao,
+                        mensagem_do_driver: mensagem_do_driver.as_deref(),
+                    };
+                    perguntar_no_aviso(condutor, etapa, &aviso, entrada, saida)?;
                 }
                 dormir(condutor.intervalo());
             }
@@ -350,12 +373,49 @@ where
     }
 }
 
+/// O que dizer em cada condição: na passada de verso, a entrada só tem o maço impresso, e pedir
+/// folhas em branco misturaria papel novo ao lote.
+fn linhas_do_aviso(condicao: CondicaoDoAviso, verso: bool) -> &'static [&'static str] {
+    match (condicao, verso) {
+        (CondicaoDoAviso::SemPapel, false) => &[
+            "A impressora está sem papel.",
+            "Coloque folhas em branco na entrada.",
+        ],
+        (CondicaoDoAviso::SemPapel, true) => &[
+            "A impressora acusa falta de papel.",
+            "Não coloque folhas em branco: na entrada fica só o maço impresso. Confira se ele está encaixado e retome na impressora.",
+            "Se o maço acabou antes do fim, o lote desalinhou: responda s para cancelar e comece de novo com 'plots imprimir'.",
+        ],
+        (CondicaoDoAviso::Atolado, false) => {
+            &[
+                "O papel atolou na impressora.",
+                "Retire a folha presa como indica o manual da impressora.",
+            ]
+        }
+        (CondicaoDoAviso::Atolado, true) => &[
+            "O papel atolou na impressora.",
+            "Retire a folha presa como indica o manual da impressora. O lote pode ter desalinhado: confira antes de seguir.",
+        ],
+        (CondicaoDoAviso::SemResposta, _) => &[
+            "A impressora não responde.",
+            "Confira se ela está ligada e conectada.",
+        ],
+    }
+}
+
+/// O que a fila disse em um aviso.
+struct AvisoDaFila<'a> {
+    motivo: &'a str,
+    condicao: Option<CondicaoDoAviso>,
+    mensagem_do_driver: Option<&'a str>,
+}
+
 /// A impressora espera alguém: mostra o motivo e deixa o usuário escolher. `Ok` quer dizer que a
 /// espera continua; `Err` traz o texto final, com o trabalho cancelado ou deixado na fila.
 fn perguntar_no_aviso<B>(
     condutor: &mut Condutor<B>,
     etapa: Etapa,
-    motivo: &str,
+    aviso: &AvisoDaFila<'_>,
     entrada: &mut impl BufRead,
     saida: &mut impl Write,
 ) -> Result<(), String>
@@ -364,8 +424,21 @@ where
     B::Erro: Display,
 {
     let Etapa { passada, numero } = etapa;
-    writeln!(saida, "  Aviso sobre {passada} do lote {numero}: {motivo}.")
-        .map_err(|e| e.to_string())?;
+    let motivo = aviso.motivo;
+    match aviso.condicao {
+        Some(condicao) => {
+            writeln!(saida, "  Aviso sobre {passada} do lote {numero}:")
+                .map_err(|e| e.to_string())?;
+            for linha in linhas_do_aviso(condicao, passada == PASSADA_VERSO) {
+                writeln!(saida, "  {linha}").map_err(|e| e.to_string())?;
+            }
+        }
+        None => writeln!(saida, "  Aviso sobre {passada} do lote {numero}: {motivo}.")
+            .map_err(|e| e.to_string())?,
+    }
+    if let Some(mensagem) = aviso.mensagem_do_driver {
+        writeln!(saida, "  Mensagem da impressora: {mensagem}").map_err(|e| e.to_string())?;
+    }
     // Sem resposta legível, nada é apagado: o trabalho fica na fila.
     let resposta = perguntar(entrada, saida, PERGUNTA_CANCELAR).unwrap_or(Resposta::FimDaEntrada);
     let desfecho = match resposta {
@@ -506,11 +579,15 @@ mod testes {
         Estado(EstadoEnvio),
         /// Continua em andamento, mas com algo a resolver na impressora.
         Aviso(&'static str),
+        /// Como `Aviso`, com a condição que o backend distinguiu.
+        Condicao(&'static str, CondicaoDoAviso),
+        /// Como `Condicao`, com o texto que o driver mandou.
+        ComMensagem(&'static str, Option<CondicaoDoAviso>, &'static str),
         ErroDeConsulta,
         /// O trabalho saiu da fila, e o arquivo pedido não apareceu.
         SemArquivo,
     }
-    use Leitura::{Aviso, ErroDeConsulta, Estado, SemArquivo};
+    use Leitura::{Aviso, ComMensagem, Condicao, ErroDeConsulta, Estado, SemArquivo};
 
     /// Backend que só registra o que recebeu: nenhum teste daqui alcança uma fila.
     struct Falso {
@@ -518,6 +595,8 @@ mod testes {
         respostas: VecDeque<Leitura>,
         erro_ao_enviar: Option<&'static str>,
         motivo: Option<String>,
+        condicao: Option<CondicaoDoAviso>,
+        mensagem: Option<String>,
         saiu_da_fila: bool,
     }
 
@@ -544,6 +623,8 @@ mod testes {
                 .pop_front()
                 .unwrap_or(Estado(EstadoEnvio::Concluido));
             self.motivo = None;
+            self.condicao = None;
+            self.mensagem = None;
             match leitura {
                 Estado(EstadoEnvio::Falhou) => {
                     self.motivo = Some("o trabalho deu erro".to_string());
@@ -552,6 +633,17 @@ mod testes {
                 Estado(estado) => Ok(estado),
                 Aviso(motivo) => {
                     self.motivo = Some(motivo.to_string());
+                    Ok(EstadoEnvio::EmAndamento)
+                }
+                Condicao(motivo, condicao) => {
+                    self.motivo = Some(motivo.to_string());
+                    self.condicao = Some(condicao);
+                    Ok(EstadoEnvio::EmAndamento)
+                }
+                ComMensagem(motivo, condicao, mensagem) => {
+                    self.motivo = Some(motivo.to_string());
+                    self.condicao = condicao;
+                    self.mensagem = Some(mensagem.to_string());
                     Ok(EstadoEnvio::EmAndamento)
                 }
                 ErroDeConsulta => Err("a fila não respondeu".to_string()),
@@ -570,6 +662,12 @@ mod testes {
     impl DescreveFalha for Falso {
         fn motivo(&self) -> Option<String> {
             self.motivo.clone()
+        }
+        fn condicao(&self) -> Option<CondicaoDoAviso> {
+            self.condicao
+        }
+        fn mensagem_do_driver(&self) -> Option<String> {
+            self.mensagem.clone()
         }
         fn trabalho_saiu_da_fila(&self) -> bool {
             self.saiu_da_fila
@@ -617,6 +715,8 @@ mod testes {
             respostas: respostas.iter().copied().collect(),
             erro_ao_enviar,
             motivo: None,
+            condicao: None,
+            mensagem: None,
             saiu_da_fila: false,
         };
         let lotes = geracao::lotes_do_plano(&geracao::Plano {
@@ -996,6 +1096,171 @@ mod testes {
         assert!(rodada.saida.contains("a impressora está sem papel"));
         assert!(!rodada.eventos.contains(&Evento::Cancelou));
         assert_eq!(envios(&rodada.eventos), [Passada::Frente, Passada::Verso]);
+    }
+
+    #[test]
+    fn aviso_que_passa_e_dito_no_terminal_sem_liberar_o_verso_antes_da_frente() {
+        let leituras = [
+            Aviso("o papel atolou na impressora"),
+            Estado(EstadoEnvio::EmAndamento),
+            Estado(EstadoEnvio::Concluido),
+        ];
+        let rodada = rodar_com(2, "s\nn\nn\n", &leituras, None, 10);
+        assert!(rodada.resultado.is_err());
+        let aviso = rodada.saida.find("o papel atolou").unwrap();
+        let passou = rodada
+            .saida
+            .find("O aviso sobre a frente do lote 1 passou")
+            .unwrap_or_else(|| panic!("{}", rodada.saida));
+        let verso = rodada.saida.find("Enviar o verso").unwrap();
+        assert!(aviso < passou && passou < verso, "{}", rodada.saida);
+        assert_eq!(envios(&rodada.eventos), [Passada::Frente]);
+    }
+
+    #[test]
+    fn cada_condicao_da_fila_vira_a_sua_frase_no_terminal() {
+        for (fila, frase, condicao, forte, instrucao) in [
+            (
+                0x10u32,
+                "a impressora está sem papel",
+                CondicaoDoAviso::SemPapel,
+                "A impressora está sem papel.",
+                "Coloque folhas em branco na entrada.",
+            ),
+            (
+                0x8,
+                "o papel atolou na impressora",
+                CondicaoDoAviso::Atolado,
+                "O papel atolou na impressora.",
+                "Retire a folha presa como indica o manual da impressora.",
+            ),
+            (
+                0x80,
+                "a impressora não responde",
+                CondicaoDoAviso::SemResposta,
+                "A impressora não responde.",
+                "Confira se ela está ligada e conectada.",
+            ),
+        ] {
+            let estado = plots_windows::Estado::de_bits(fila);
+            let situacao = plots_windows::traduzir_com_fila(0x10, Some(&estado));
+            assert_eq!(situacao.motivo.as_deref(), Some(frase));
+            assert_eq!(situacao.condicao, Some(condicao));
+            let rodada = rodar_com(2, "s\nn\ns\n", &[Condicao(frase, condicao)], None, 10);
+            rodada.resultado.unwrap();
+            for esperado in [forte, instrucao, "Aviso sobre a frente do lote 1:"] {
+                assert!(rodada.saida.contains(esperado), "{}", rodada.saida);
+            }
+        }
+    }
+
+    #[test]
+    fn mensagem_do_driver_vem_na_ultima_linha_do_aviso_antes_da_pergunta() {
+        let leituras = [ComMensagem(
+            "o papel atolou na impressora",
+            Some(CondicaoDoAviso::Atolado),
+            "Bandeja 2",
+        )];
+        let rodada = rodar_com(2, "s\nn\ns\n", &leituras, None, 10);
+        rodada.resultado.unwrap();
+        let saida = &rodada.saida;
+        let instrucao = saida.find("como indica o manual da impressora.").unwrap();
+        let mensagem = saida.find("  Mensagem da impressora: Bandeja 2\n").unwrap();
+        let pergunta = saida.find(PERGUNTA_CANCELAR).unwrap();
+        assert!(instrucao < mensagem && mensagem < pergunta, "{saida}");
+    }
+
+    #[test]
+    fn mensagem_do_driver_aparece_tambem_no_pedido_de_atencao() {
+        let leituras = [ComMensagem(
+            "a impressora pede atenção",
+            None,
+            "Tampa aberta",
+        )];
+        let rodada = rodar_com(2, "s\nn\ns\n", &leituras, None, 10);
+        rodada.resultado.unwrap();
+        let saida = &rodada.saida;
+        assert!(saida.contains("a impressora pede atenção."), "{saida}");
+        assert!(
+            saida.contains("  Mensagem da impressora: Tampa aberta\n"),
+            "{saida}"
+        );
+    }
+
+    #[test]
+    fn sem_mensagem_do_driver_a_linha_nao_existe() {
+        let leituras = [Condicao(
+            "a impressora está sem papel",
+            CondicaoDoAviso::SemPapel,
+        )];
+        let rodada = rodar_com(2, "s\nn\ns\n", &leituras, None, 10);
+        rodada.resultado.unwrap();
+        assert!(
+            !rodada.saida.contains("Mensagem da impressora"),
+            "{}",
+            rodada.saida
+        );
+    }
+
+    #[test]
+    fn mudar_so_a_mensagem_do_driver_nao_repete_a_pergunta() {
+        let leituras = [
+            ComMensagem(
+                "a impressora está sem papel",
+                Some(CondicaoDoAviso::SemPapel),
+                "Bandeja 2",
+            ),
+            ComMensagem(
+                "a impressora está sem papel",
+                Some(CondicaoDoAviso::SemPapel),
+                "Bandeja 3",
+            ),
+        ];
+        let rodada = rodar_com(2, "s\nn\ns\n", &leituras, None, 10);
+        rodada.resultado.unwrap();
+        assert_eq!(rodada.saida.matches(PERGUNTA_CANCELAR).count(), 1);
+    }
+
+    #[test]
+    fn sem_papel_no_verso_nao_pede_folhas_em_branco_e_diz_o_que_o_terminal_oferece() {
+        let leituras = [
+            Estado(EstadoEnvio::Concluido),
+            Condicao("a impressora está sem papel", CondicaoDoAviso::SemPapel),
+        ];
+        let rodada = rodar_com(2, "s\ns\nn\n", &leituras, None, 10);
+        rodada.resultado.unwrap();
+        let saida = &rodada.saida;
+        assert!(
+            saida.contains("A impressora acusa falta de papel."),
+            "{saida}"
+        );
+        assert!(saida.contains("Não coloque folhas em branco"), "{saida}");
+        assert!(saida.contains("responda s para cancelar"), "{saida}");
+        assert!(saida.contains("'plots imprimir'"), "{saida}");
+        assert!(!saida.contains("Reimprimir"), "{saida}");
+        assert!(!saida.contains("Coloque folhas em branco"), "{saida}");
+    }
+
+    #[test]
+    fn atolado_no_verso_avisa_que_o_lote_pode_ter_desalinhado_e_na_frente_nao() {
+        let frase = "o papel atolou na impressora";
+        let leituras = [
+            Condicao(frase, CondicaoDoAviso::Atolado),
+            Estado(EstadoEnvio::Concluido),
+            Condicao(frase, CondicaoDoAviso::Atolado),
+        ];
+        let rodada = rodar_com(2, "s\nn\ns\nn\n", &leituras, None, 10);
+        rodada.resultado.unwrap();
+        let saida = &rodada.saida;
+        assert_eq!(
+            saida.matches("O papel atolou na impressora.").count(),
+            2,
+            "{saida}"
+        );
+        assert_eq!(saida.matches("pode ter desalinhado").count(), 1, "{saida}");
+        let verso = saida.find("Aviso sobre o verso").unwrap();
+        let desalinhado = saida.find("pode ter desalinhado").unwrap();
+        assert!(verso < desalinhado, "{saida}");
     }
 
     #[test]

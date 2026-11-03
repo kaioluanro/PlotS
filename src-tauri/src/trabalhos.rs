@@ -12,7 +12,8 @@ use plots_core::{
     OrdemPassadas, Pagina, Papel, PerfilImpressora,
 };
 use plots_windows::plots_print::fluxo::{
-    self, Condutor, DescreveFalha, Espera, Instrucao, Lado, LoteDoFluxo, Passo, SimGuiado, Virada,
+    self, CondicaoDoAviso, Condutor, DescreveFalha, Espera, Instrucao, Lado, LoteDoFluxo, Passo,
+    SimGuiado, Virada,
 };
 use plots_windows::plots_print::job::{Backend, ErroJob, EstadoJob};
 use plots_windows::plots_print::{ErroSimulacao, Mecanica};
@@ -86,6 +87,16 @@ impl ParaMotivo for plots_windows::ErroEnvio {
             | E::SemTrabalho => "sistema",
         };
         Motivo::novo(codigo, self.to_string())
+    }
+}
+
+/// A condicao que a fila distinguiu vira um codigo proprio: a interface decide a orientacao por ele.
+fn codigo_do_aviso(condicao: Option<CondicaoDoAviso>) -> &'static str {
+    match condicao {
+        Some(CondicaoDoAviso::SemPapel) => "sem_papel",
+        Some(CondicaoDoAviso::Atolado) => "atolado",
+        Some(CondicaoDoAviso::SemResposta) => "sem_resposta",
+        None => "fila",
     }
 }
 
@@ -201,6 +212,9 @@ pub enum EstadoCartao {
     Aviso {
         passada: PassadaDoCartao,
         motivo: Motivo,
+        /// O que o proprio driver disse: a interface mostra em linha propria, sem decidir nada por ela.
+        #[serde(rename = "mensagemDoDriver")]
+        mensagem_do_driver: Option<String>,
         respondido: bool,
     },
     Erro {
@@ -208,6 +222,14 @@ pub enum EstadoCartao {
     },
     Concluido,
     Cancelado,
+}
+
+/// O aviso que o cartao esta mostrando.
+#[derive(Debug, Clone)]
+struct AvisoAberto {
+    motivo: Motivo,
+    mensagem_do_driver: Option<String>,
+    respondido: bool,
 }
 
 /// Tudo o que a interface mostra de uma impressora.
@@ -290,7 +312,7 @@ struct Andamento<'a, B: Backend> {
     recolocar: Recolocar,
     vira_para_ler: bool,
     resultado: Option<Resultado>,
-    aviso: Option<(Motivo, bool)>,
+    aviso: Option<AvisoAberto>,
     /// Sem consultas ate o usuario decidir: a fila nao responde ou nao confirmou a tempo.
     parado: bool,
     passada: PassadaDoCartao,
@@ -327,6 +349,17 @@ where
 
     fn publicar_erro(&self, motivo: Motivo) {
         self.publicar(EstadoCartao::Erro { motivo });
+    }
+
+    fn publicar_aviso(&mut self) {
+        if let Some(aviso) = self.aviso.clone() {
+            self.publicar(EstadoCartao::Aviso {
+                passada: self.passada,
+                motivo: aviso.motivo,
+                mensagem_do_driver: aviso.mensagem_do_driver,
+                respondido: aviso.respondido,
+            });
+        }
     }
 
     /// A fila recusou o cancelamento: o trabalho segue la, e o cartao manda conferir o Windows.
@@ -399,7 +432,10 @@ where
             Comando::EnviarVerso if estado == EstadoJob::AguardandoRecolocacao => {
                 self.enviar(PassadaDoCartao::Verso);
             }
-            Comando::Reimprimir if estado == EstadoJob::Erro || self.parado => {
+            // Com aviso, o trabalho ainda esta na fila: refazer o lote comeca por tira-lo de la.
+            Comando::Reimprimir
+                if estado == EstadoJob::Erro || self.parado || self.aviso.is_some() =>
+            {
                 self.aviso = None;
                 self.parado = false;
                 self.passada = PassadaDoCartao::Frente;
@@ -418,14 +454,10 @@ where
             Comando::ContinuarEsperando => {
                 self.condutor.continuar_esperando();
                 self.parado = false;
-                if let Some((motivo, _)) = self.aviso.clone() {
-                    self.aviso = Some((motivo.clone(), true));
-                    self.publicar(EstadoCartao::Aviso {
-                        passada: self.passada,
-                        motivo,
-                        respondido: true,
-                    });
+                if let Some(aviso) = self.aviso.as_mut() {
+                    aviso.respondido = true;
                 }
+                self.publicar_aviso();
             }
             // Fora de ordem nada e enviado: o verso so sai com a frente confirmada pelo trabalho.
             Comando::EnviarFrente | Comando::EnviarVerso | Comando::Reimprimir => {}
@@ -442,15 +474,27 @@ where
                     });
                 }
             }
-            Passo::Aviso { motivo, novo } => {
+            Passo::Aviso {
+                motivo,
+                condicao,
+                mensagem_do_driver,
+                novo,
+            } => {
                 if novo {
-                    let motivo = Motivo::novo("fila", motivo);
-                    self.aviso = Some((motivo.clone(), false));
-                    self.publicar(EstadoCartao::Aviso {
-                        passada: self.passada,
-                        motivo,
+                    self.aviso = Some(AvisoAberto {
+                        motivo: Motivo::novo(codigo_do_aviso(condicao), motivo),
+                        mensagem_do_driver,
                         respondido: false,
                     });
+                    self.publicar_aviso();
+                } else if let Some(aviso) = self
+                    .aviso
+                    .as_mut()
+                    .filter(|aviso| aviso.mensagem_do_driver != mensagem_do_driver)
+                {
+                    // So a mensagem mudou: o cartao atualiza a linha, sem desfazer a resposta.
+                    aviso.mensagem_do_driver = mensagem_do_driver;
+                    self.publicar_aviso();
                 }
             }
             Passo::FrenteConfirmada => {
@@ -491,12 +535,12 @@ where
                     "sem_prazo",
                     "a fila não confirmou a tempo; o trabalho continua na fila",
                 );
-                self.aviso = Some((motivo.clone(), false));
-                self.publicar(EstadoCartao::Aviso {
-                    passada: self.passada,
+                self.aviso = Some(AvisoAberto {
                     motivo,
+                    mensagem_do_driver: None,
                     respondido: false,
                 });
+                self.publicar_aviso();
             }
             Passo::ForaDeOrdem(erro) => {
                 self.parado = true;

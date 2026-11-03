@@ -217,7 +217,7 @@ const ptBR = {
   "cartao.botao.emAndamento": "Em andamento nos cartões acima.",
   "cartao.motivo.ocupada": "A impressora já tem um trabalho em andamento.",
   "cartao.reimprimirDialogo.titulo": "Reimprimir o lote {n} de {total} em {nome}?",
-  "cartao.reimprimirDialogo.texto": "O que restar deste lote sai da fila e a frente é enviada de novo. Coloque papel em branco na entrada.",
+  "cartao.reimprimirDialogo.texto": "O que restar deste lote sai da fila e a frente é enviada de novo. Deixe na entrada só folhas em branco: tire qualquer folha já impressa deste lote.",
   "cartao.verso.simulado": "Verso simulado: nada foi à impressora.",
   "cartao.esperar": "Espere a última folha sair antes de recolocar o maço.",
   "cartao.gesto.cima":
@@ -336,6 +336,24 @@ const ptBR = {
   "intervalo.botao.invalido": "Corrija as páginas para imprimir.",
   "intervalo.envio.varias": "Trecho: páginas {inicio} a {fim} de {total}",
   "intervalo.envio.uma": "Trecho: página {inicio} de {total}",
+
+  "spooler.estado.verifique": "Verifique a impressora",
+  "spooler.semPapel.frente.forte": "A impressora está sem papel.",
+  "spooler.semPapel.frente.instrucao": "Coloque folhas em branco na entrada.",
+  "spooler.semPapel.verso.forte": "A impressora acusa falta de papel.",
+  "spooler.semPapel.verso.instrucao":
+    "Não coloque folhas em branco: na entrada fica só o maço impresso. Confira se ele está encaixado e retome na impressora.",
+  "spooler.semPapel.verso.ressalva":
+    "Se o maço acabou antes do fim, o lote desalinhou: use Reimprimir lote.",
+  "spooler.atolado.forte": "O papel atolou na impressora.",
+  "spooler.atolado.frente.instrucao": "Retire a folha presa como indica o manual da impressora.",
+  "spooler.atolado.verso.instrucao":
+    "Retire a folha presa como indica o manual da impressora. O lote pode ter desalinhado: confira antes de seguir.",
+  "spooler.semResposta.forte": "A impressora não responde.",
+  "spooler.semResposta.instrucao": "Confira se ela está ligada e conectada.",
+  "spooler.mensagemDaImpressora": "Mensagem da impressora: {texto}",
+  "spooler.rolagem.um": "Um cartão pede ação",
+  "spooler.rolagem.varios": "{n} cartões pedem ação",
 } as const;
 
 export type Chave = keyof typeof ptBR;
@@ -554,7 +572,7 @@ const en: Record<Chave, string> = {
   "cartao.botao.emAndamento": "In progress in the cards above.",
   "cartao.motivo.ocupada": "The printer already has a job in progress.",
   "cartao.reimprimirDialogo.titulo": "Reprint batch {n} of {total} on {nome}?",
-  "cartao.reimprimirDialogo.texto": "What is left of the batch leaves the queue, and the front is sent again. Put blank paper in the feed.",
+  "cartao.reimprimirDialogo.texto": "What is left of the batch leaves the queue, and the front is sent again. Leave only blank sheets in the feed: take out any sheet already printed.",
   "cartao.verso.simulado": "Simulated back: nothing went to the printer.",
   "cartao.esperar": "Wait for the last sheet to come out before putting the stack back.",
   "cartao.gesto.cima":
@@ -673,6 +691,24 @@ const en: Record<Chave, string> = {
   "intervalo.botao.invalido": "Fix the pages to print.",
   "intervalo.envio.varias": "Range: pages {inicio} to {fim} of {total}",
   "intervalo.envio.uma": "Range: page {inicio} of {total}",
+
+  "spooler.estado.verifique": "Check the printer",
+  "spooler.semPapel.frente.forte": "The printer is out of paper.",
+  "spooler.semPapel.frente.instrucao": "Add blank sheets to the feed.",
+  "spooler.semPapel.verso.forte": "The printer reports it is out of paper.",
+  "spooler.semPapel.verso.instrucao":
+    "Do not add blank sheets: the feed holds only the printed stack. Check that it is seated, then resume at the printer.",
+  "spooler.semPapel.verso.ressalva":
+    "If the stack ran out early, the batch is misaligned: use Reprint batch.",
+  "spooler.atolado.forte": "The paper is jammed in the printer.",
+  "spooler.atolado.frente.instrucao": "Remove the stuck sheet as the printer manual describes.",
+  "spooler.atolado.verso.instrucao":
+    "Remove the stuck sheet as the printer manual describes. The batch may be misaligned: check it before going on.",
+  "spooler.semResposta.forte": "The printer is not responding.",
+  "spooler.semResposta.instrucao": "Check that it is on and connected.",
+  "spooler.mensagemDaImpressora": "Printer message: {texto}",
+  "spooler.rolagem.um": "A card needs you",
+  "spooler.rolagem.varios": "{n} cards need you",
 };
 
 export const traducoes: Record<Idioma, Record<Chave, string>> = { "pt-BR": ptBR, en };

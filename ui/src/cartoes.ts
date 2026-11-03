@@ -14,7 +14,14 @@ export type EstadoCartao =
   | { tipo: "imprimindo"; passada: Passada }
   | { tipo: "aguardando" }
   | { tipo: "proximo_lote" }
-  | { tipo: "aviso"; passada: Passada; motivo: Motivo; respondido: boolean }
+  | {
+      tipo: "aviso";
+      passada: Passada;
+      motivo: Motivo;
+      /** O que o proprio driver disse, ja limpo pelo backend. Nunca sai de dentro do motivo. */
+      mensagemDoDriver?: string | null;
+      respondido: boolean;
+    }
   | { tipo: "erro"; motivo: Motivo }
   | { tipo: "concluido" }
   | { tipo: "cancelado" };
@@ -324,7 +331,48 @@ export function tomDoCartao(cartao: Cartao): TomDoCartao {
   }
 }
 
+/** O que dizer em uma condicao que o backend distinguiu: a decisao vem do codigo, nunca da frase. */
+interface OrientacaoDoAviso {
+  forte: Chave;
+  instrucao: Chave;
+  ressalva?: Chave;
+}
+
+const SEM_RESPOSTA: OrientacaoDoAviso = {
+  forte: "spooler.semResposta.forte",
+  instrucao: "spooler.semResposta.instrucao",
+};
+
+/** Na passada de verso, a entrada so tem o maco impresso: folha em branco ali desalinha o lote. */
+const ORIENTACOES: ReadonlyMap<string, Readonly<Record<Passada, OrientacaoDoAviso>>> = new Map([
+  [
+    "sem_papel",
+    {
+      frente: {
+        forte: "spooler.semPapel.frente.forte",
+        instrucao: "spooler.semPapel.frente.instrucao",
+      },
+      verso: {
+        forte: "spooler.semPapel.verso.forte",
+        instrucao: "spooler.semPapel.verso.instrucao",
+        ressalva: "spooler.semPapel.verso.ressalva",
+      },
+    },
+  ],
+  [
+    "atolado",
+    {
+      frente: { forte: "spooler.atolado.forte", instrucao: "spooler.atolado.frente.instrucao" },
+      verso: { forte: "spooler.atolado.forte", instrucao: "spooler.atolado.verso.instrucao" },
+    },
+  ],
+  ["sem_resposta", { frente: SEM_RESPOSTA, verso: SEM_RESPOSTA }],
+]);
+
 export function textoDoEstadoDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual): string {
+  if (cartao.estado.tipo === "aviso" && ORIENTACOES.has(cartao.estado.motivo.codigo)) {
+    return traduzir(idioma, "spooler.estado.verifique");
+  }
   const chaves: Record<EstadoCartao["tipo"], Chave> = {
     preparando: "cartao.estado.preparando",
     imprimindo: cartao.simulada ? "cartao.estado.simulando" : "cartao.estado.imprimindo",
@@ -341,7 +389,8 @@ export function textoDoEstadoDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtu
 /** Frases que a fila manda em portugues. O texto do driver, entre parenteses, fica como veio. */
 const MOTIVOS_DA_FILA_EM_INGLES: readonly (readonly [string, string])[] = [
   ["a impressora está sem papel", "the printer is out of paper"],
-  ["a impressora está offline", "the printer is offline"],
+  ["o papel atolou na impressora", "the paper is jammed in the printer"],
+  ["a impressora não responde", "the printer is not responding"],
   ["a impressora pede atenção", "the printer needs attention"],
   ["o trabalho está bloqueado na impressora", "the job is blocked at the printer"],
   ["o trabalho deu erro", "the job failed"],
@@ -449,13 +498,15 @@ export function sequenciaDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual):
 
 /**
  * Papel de cada linha: `acao` diz o que clicar ou fazer; `ressalva` diz o que a fila confirma e o
- * que ela nao garante; `contexto` explica o resto.
+ * que ela nao garante; `gesto` diz o que fazer com o maco; `contexto` explica o resto.
  */
-export type PapelDaLinha = "acao" | "ressalva" | "contexto";
+export type PapelDaLinha = "acao" | "ressalva" | "gesto" | "contexto";
 
 export interface LinhaDoCartao {
   texto: string;
   papel: PapelDaLinha;
+  /** Texto de fora, de tamanho variavel: o cartao limita a altura e guarda o inteiro no titulo. */
+  limitada?: boolean;
 }
 
 /** O que o cartao explica em cada estado, com os termos de quem so sabe o que a fila diz. */
@@ -466,7 +517,7 @@ export function linhasDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual): Li
   const linha = (texto: string, papel: PapelDaLinha): LinhaDoCartao => ({ texto, papel });
   const gesto = (): LinhaDoCartao[] =>
     cartao.recolocar
-      ? frasesDoGesto(cartao.recolocar, idioma).map((texto) => linha(texto, "contexto"))
+      ? frasesDoGesto(cartao.recolocar, idioma).map((texto) => linha(texto, "gesto"))
       : [];
   switch (estado.tipo) {
     case "preparando":
@@ -517,13 +568,21 @@ export function linhasDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual): Li
       );
       return linhas;
     }
-    case "aviso":
-      return estado.respondido
-        ? [
-            linha(textoDoMotivo(estado.motivo, idioma), "contexto"),
-            linha(em("cartao.aviso.seguindo"), "contexto"),
-          ]
+    case "aviso": {
+      const orientacao = ORIENTACOES.get(estado.motivo.codigo)?.[estado.passada];
+      const linhas = orientacao
+        ? [linha(em(orientacao.forte), "contexto"), linha(em(orientacao.instrucao), "acao")]
         : [linha(textoDoMotivo(estado.motivo, idioma), "contexto")];
+      if (orientacao?.ressalva) linhas.push(linha(em(orientacao.ressalva), "ressalva"));
+      if (estado.respondido) linhas.push(linha(em("cartao.aviso.seguindo"), "ressalva"));
+      if (estado.mensagemDoDriver) {
+        linhas.push({
+          ...linha(em("spooler.mensagemDaImpressora", { texto: estado.mensagemDoDriver }), "ressalva"),
+          limitada: true,
+        });
+      }
+      return linhas;
+    }
     case "erro":
       return [linha(textoDoMotivo(estado.motivo, idioma), "contexto")];
     case "concluido": {
@@ -565,7 +624,9 @@ export function acoesDoCartao(cartao: Cartao): AcoesDoCartao {
   const emFrente =
     (estado.tipo === "imprimindo" && estado.passada === "frente") ||
     (estado.tipo === "aviso" && estado.passada === "frente");
-  const emVerso = estado.tipo === "imprimindo" && estado.passada === "verso";
+  const emVerso =
+    (estado.tipo === "imprimindo" && estado.passada === "verso") ||
+    (estado.tipo === "aviso" && estado.passada === "verso");
   const semTrabalho = estado.tipo === "erro" && !cartaoEmAndamento(cartao);
   return {
     frente: estado.tipo === "proximo_lote",
@@ -575,7 +636,8 @@ export function acoesDoCartao(cartao: Cartao): AcoesDoCartao {
     },
     // Sem lote ainda, a preparacao falhou: nao ha o que refazer sem pedir de novo. Thread morta
     // ou recusa ao iniciar tambem nao tem lote para refazer: o caminho e dispensar e imprimir de novo.
-    reimprimir: estado.tipo === "erro" && cartao.total > 0 && !semTrabalho,
+    // Com aviso, o lote pode ter desalinhado em qualquer passada: refazer precisa estar a mao.
+    reimprimir: (estado.tipo === "erro" || estado.tipo === "aviso") && cartao.total > 0 && !semTrabalho,
     continuar: estado.tipo === "aviso" && !estado.respondido,
     cancelar: cartaoEmAndamento(cartao) && estado.tipo !== "preparando",
     dispensar: !cartaoEmAndamento(cartao),

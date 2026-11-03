@@ -441,11 +441,21 @@ pub fn executar_com_io(
         let (corretas, total) = relatar_folhas(saida, &plano.paginas, &pilha)?;
         writeln!(
             saida,
-            "  Resultado do lote: {corretas} de {total} folhas corretas"
+            "  Resultado do lote: {}",
+            contagem_de_corretas(corretas, total)
         )
         .map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// Quantas folhas conferidas saíram certas, com o substantivo concordando com o total.
+pub(crate) fn contagem_de_corretas(corretas: usize, folhas: usize) -> String {
+    if folhas == 1 {
+        format!("{corretas} de 1 folha correta")
+    } else {
+        format!("{corretas} de {folhas} folhas corretas")
+    }
 }
 
 /// Escreve a conferência de cada folha final do lote, de cima para baixo, e devolve

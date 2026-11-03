@@ -3,7 +3,7 @@
 use crate::calibrar::{caminho_perfis, carregar_perfis};
 use crate::enviar::{Pedido, MSG_SEM_SIMULAR};
 use crate::geracao::{self, Documento, Opcoes};
-use crate::{listar, nome_do_modelo, relatar_folhas, ImpressoraVirtual};
+use crate::{contagem_de_corretas, listar, nome_do_modelo, relatar_folhas, ImpressoraVirtual};
 use plots_core::{plano_documento, Lote, ModeloImpressora, OrdemPassadas, PerfilImpressora};
 use plots_print::fluxo::{
     linhas_de_recolocacao, pares_esperados, FRASE_DA_CALIBRACAO, FRASE_VIRAR_PARA_LER,
@@ -242,7 +242,8 @@ fn conduzir_lotes(
         let (corretas, folhas) = relatar_folhas(saida, &lote.paginas, &pilha)?;
         writeln!(
             saida,
-            "  Resultado do lote: {corretas} de {folhas} folhas corretas (na simulação)"
+            "  Resultado do lote: {} (na simulação)",
+            contagem_de_corretas(corretas, folhas)
         )
         .map_err(|e| e.to_string())?;
         if numero < total {

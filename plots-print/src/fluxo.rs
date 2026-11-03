@@ -31,11 +31,29 @@ pub struct Espera {
     pub consultas: u32,
 }
 
+/// Condição da impressora que o backend distingue e que pede uma orientação própria. A orientação
+/// é decidida por este valor, nunca por busca no texto do motivo.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CondicaoDoAviso {
+    SemPapel,
+    Atolado,
+    SemResposta,
+}
+
 /// O que o backend sabe dizer sobre o trabalho, além do estado.
 pub trait DescreveFalha {
     /// Por que o trabalho falhou ou o que a impressora espera que alguém resolva. Vazio quando o
     /// trabalho anda sem problema.
     fn motivo(&self) -> Option<String>;
+    /// A condição mais urgente por trás do motivo, quando ela é uma das que o backend distingue.
+    fn condicao(&self) -> Option<CondicaoDoAviso> {
+        None
+    }
+    /// O que o próprio driver disse sobre o trabalho, já limpo. É entrada de terceiros: vem em campo
+    /// próprio, nunca dentro do motivo, e não decide nada.
+    fn mensagem_do_driver(&self) -> Option<String> {
+        None
+    }
     /// O trabalho já não está na fila, e por isso não há o que apagar nem cancelar.
     fn trabalho_saiu_da_fila(&self) -> bool;
     /// Folhas certas e total do lote recém-terminado, quando o backend consegue conferir.
@@ -213,8 +231,14 @@ pub enum Passo<E> {
     /// Nada a decidir: quem chama espera `intervalo` e consulta de novo.
     EmAndamento,
     /// A impressora espera alguém. `novo` só é verdadeiro na primeira vez de cada motivo: repetir
-    /// a pergunta do mesmo motivo a cada consulta só atrapalharia.
-    Aviso { motivo: String, novo: bool },
+    /// a pergunta do mesmo motivo a cada consulta só atrapalharia. A mensagem do driver pode mudar
+    /// sem que o motivo mude, e isso não reabre a pergunta.
+    Aviso {
+        motivo: String,
+        condicao: Option<CondicaoDoAviso>,
+        mensagem_do_driver: Option<String>,
+        novo: bool,
+    },
     /// A fila confirmou a frente: agora vale a recolocação e o verso.
     FrenteConfirmada,
     /// O verso terminou e ainda há lotes.
@@ -333,7 +357,12 @@ impl<B: Backend + DescreveFalha> Condutor<B> {
                     Some(motivo) => {
                         let novo = self.motivo_apresentado.as_deref() != Some(motivo.as_str());
                         self.motivo_apresentado = Some(motivo.clone());
-                        Passo::Aviso { motivo, novo }
+                        Passo::Aviso {
+                            motivo,
+                            condicao: self.job.backend().condicao(),
+                            mensagem_do_driver: self.job.backend().mensagem_do_driver(),
+                            novo,
+                        }
                     }
                     None => {
                         self.motivo_apresentado = None;
