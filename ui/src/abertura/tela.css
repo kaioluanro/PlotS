@@ -1,0 +1,71 @@
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  overflow: hidden;
+  user-select: none;
+  cursor: default;
+}
+
+.abertura {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.abertura-imagem {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.abertura-nome {
+  font-size: 40px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.abertura-barra {
+  height: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.abertura-barra > span {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: var(--accent);
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform var(--anim-normal) var(--ease-out-fluid);
+}
+
+.abertura-estado {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 10px 24px 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--fg-faint);
+}
+
+.abertura-tempo {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .abertura-barra > span {
+    transition: none;
+  }
+}

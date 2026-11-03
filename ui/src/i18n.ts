@@ -151,6 +151,18 @@ const ptBR = {
     "Não foi possível mostrar o seletor de arquivo. Tente de novo ou arraste o PDF para a janela.",
   "erro.dispensar": "Dispensar aviso",
   "lote.cortado": "Só os primeiros 32 arquivos foram abertos.",
+  "abertura.etapa.impressoras": "Carregando impressoras…",
+  "abertura.etapa.documento": "Abrindo o documento…",
+  "abertura.etapa.componente": "Verificando o componente de impressão…",
+  "abertura.etapa.pronto": "Pronto",
+  "abertura.aviso.componente":
+    "O componente de impressão (pdfium.dll) não foi encontrado. A prévia continua funcionando, mas a impressão pode falhar. Reinstale o PlotS.",
+  "abertura.limite.impressoras":
+    "As impressoras demoraram mais de 10 segundos para responder. Se alguma faltar, use o botão Atualizar lista, ao lado de Impressoras.",
+  "abertura.limite.documento":
+    "O documento demorou mais de 10 segundos para abrir. Se ele não aparecer, use Abrir PDF.",
+  "abertura.limite.componente":
+    "A verificação do componente de impressão demorou mais de 10 segundos. Se a impressão falhar, reinstale o PlotS.",
 } as const;
 
 export type Chave = keyof typeof ptBR;
@@ -303,6 +315,18 @@ const en: Record<Chave, string> = {
   "erro.seletor": "Could not show the file picker. Try again or drag the PDF into the window.",
   "erro.dispensar": "Dismiss message",
   "lote.cortado": "Only the first 32 files were opened.",
+  "abertura.etapa.impressoras": "Loading printers…",
+  "abertura.etapa.documento": "Opening the document…",
+  "abertura.etapa.componente": "Checking the printing component…",
+  "abertura.etapa.pronto": "Ready",
+  "abertura.aviso.componente":
+    "The printing component (pdfium.dll) was not found. The preview still works, but printing may fail. Reinstall PlotS.",
+  "abertura.limite.impressoras":
+    "The printers took more than 10 seconds to respond. If one is missing, use the Refresh list button next to Printers.",
+  "abertura.limite.documento":
+    "The document took more than 10 seconds to open. If it does not appear, use Open PDF.",
+  "abertura.limite.componente":
+    "Checking the printing component took more than 10 seconds. If printing fails, reinstall PlotS.",
 };
 
 export const traducoes: Record<Idioma, Record<Chave, string>> = { "pt-BR": ptBR, en };

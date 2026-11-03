@@ -1,0 +1,88 @@
+/* A janela principal fica invisivel ate o sistema mostra-la; ai entra com um fade curto. */
+html.abertura-oculta {
+  background: var(--bg);
+}
+
+html.abertura-oculta body {
+  opacity: 0;
+}
+
+html.abertura-entrando body {
+  transition: opacity var(--anim-normal) var(--ease-out-fluid);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.abertura-entrando body {
+    transition: none;
+  }
+}
+
+.abertura-avisos {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 120;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: min(420px, calc(100vw - 240px - 32px));
+  padding: 8px 8px 8px 12px;
+  background: var(--bg-elevated);
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.abertura-avisos ul {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.abertura-avisos li {
+  overflow-wrap: anywhere;
+}
+
+.abertura-avisos li + li {
+  margin-top: 8px;
+}
+
+.abertura-avisos > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--status-waiting);
+}
+
+.abertura-avisos button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: -4px 0;
+  padding: 0;
+  background: transparent;
+  color: var(--fg-muted);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--anim-fast),
+    color var(--anim-fast);
+}
+
+.abertura-avisos button:hover {
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+
+.abertura-avisos button:active {
+  transform: scale(0.97);
+}

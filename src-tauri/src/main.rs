@@ -1,11 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod abertura;
 mod documento;
 mod fechamento;
 mod impressoras;
 mod janela;
 mod lote;
 
+use abertura::{Andamento, Passagem};
 use documento::{Documento, ErroDocumento};
 use fechamento::{DecisaoDoPrazo, EsperaDeResposta};
 use impressoras::{Aviso, ListaImpressoras};
@@ -14,7 +16,7 @@ use std::io::Write;
 use std::process::ExitCode;
 use std::sync::{Mutex, PoisonError};
 use std::time::Instant;
-use tauri::{Manager, Runtime, State, Window, WindowEvent};
+use tauri::{AppHandle, Manager, Runtime, State, Window, WindowEvent};
 
 // Assincrono para que um caminho lento, como um compartilhamento de rede fora do ar, nao congele
 // a janela enquanto o sistema responde.
@@ -73,6 +75,20 @@ fn pedido_de_fechamento_recebido(espera: State<'_, Mutex<EsperaDeResposta>>) {
         .ao_receber_resposta();
 }
 
+/// Andamento do carregamento, lido pela tela de abertura.
+#[tauri::command]
+fn andamento_da_abertura(app: AppHandle) -> Andamento {
+    abertura::andamento(&app)
+}
+
+/// A interface montou. Responde quando a janela principal ja foi mostrada, com os avisos.
+#[tauri::command]
+async fn interface_montou(app: AppHandle) -> Passagem {
+    tauri::async_runtime::spawn_blocking(move || abertura::marcar_montou_e_esperar(&app))
+        .await
+        .unwrap_or(Passagem { avisos: Vec::new() })
+}
+
 fn com_espera<R: Runtime, T>(
     janela_atual: &Window<R>,
     acao: impl FnOnce(&mut EsperaDeResposta) -> T,
@@ -114,23 +130,32 @@ fn vigiar_pedido_de_fechamento<R: Runtime>(janela_atual: &Window<R>) {
 fn main() -> ExitCode {
     let resultado = tauri::Builder::default()
         .manage(Mutex::new(EsperaDeResposta::default()))
+        .manage(Mutex::new(abertura::Estado::default()))
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if let Some(principal) = app.get_webview_window("main") {
                 janela::ajustar_minimo(&principal.as_ref().window());
             }
+            abertura::iniciar(app.handle());
             Ok(())
         })
         .on_window_event(|janela_atual, evento| match evento {
-            WindowEvent::ScaleFactorChanged { .. } => janela::ajustar_minimo(janela_atual),
-            WindowEvent::CloseRequested { .. } => vigiar_pedido_de_fechamento(janela_atual),
+            WindowEvent::ScaleFactorChanged { .. } if janela_atual.label() == "main" => {
+                janela::ajustar_minimo(janela_atual)
+            }
+            // A abertura nao tem interface que responda ao pedido, e nao ocupa a vigia.
+            WindowEvent::CloseRequested { .. } if janela_atual.label() != "abertura" => {
+                vigiar_pedido_de_fechamento(janela_atual)
+            }
             _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             abrir_documento,
+            andamento_da_abertura,
             caminhos_iniciais,
             contar_paginas,
             definir_modelo,
+            interface_montou,
             limitar_lote,
             listar_impressoras,
             pedido_de_fechamento_recebido

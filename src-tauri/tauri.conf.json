@@ -10,7 +10,21 @@
   "app": {
     "windows": [
       {
+        "label": "abertura",
+        "title": "PlotS",
+        "url": "abertura.html",
+        "width": 480,
+        "height": 300,
+        "center": true,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "decorations": false,
+        "skipTaskbar": true
+      },
+      {
         "label": "main",
+        "visible": false,
         "title": "PlotS",
         "width": 1280,
         "height": 800,

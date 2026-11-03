@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "abertura",
+  "description": "A tela de abertura so le o andamento do carregamento; nao controla a janela.",
+  "windows": ["abertura"],
+  "permissions": []
+}

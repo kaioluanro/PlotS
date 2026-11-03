@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { avisarMontagem } from "./abertura/passagem";
 import { App } from "./App";
 import { idiomaAtual } from "./i18n";
 import { acompanharTemaDoSistema } from "./theme";
@@ -16,3 +17,5 @@ if (raiz) {
     </StrictMode>,
   );
 }
+
+avisarMontagem();
