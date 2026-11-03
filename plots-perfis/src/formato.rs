@@ -1,10 +1,12 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use plots_core::distribuicao::ModoDistribuicao;
 use plots_core::{BordaEntrada, GestoRecolocar, ModeloImpressora, PerfilImpressora, ViradaMaco};
 use serde::{Deserialize, Serialize};
 
 use crate::erro::ErroPerfis;
+use crate::grupos::{Grupo, GrupoIgnorado};
 use crate::perfis::{EntradaPerfil, Perfis};
 
 /// Versão do formato gravado em `perfis.toml`.
@@ -22,6 +24,49 @@ struct ArquivoPerfis {
     versao: u32,
     #[serde(default)]
     filas: BTreeMap<String, EntradaArquivo>,
+    /// Ausente em arquivos antigos; sem grupos, o arquivo gravado fica igual ao de antes. Valor
+    /// solto: um grupo de formato errado é ignorado sem recusar os perfis.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    grupos: Option<toml::Value>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GrupoArquivo {
+    impressoras: Vec<String>,
+    /// Valor solto: um modo desconhecido vale como espelho, que não reparte nada, sem recusar o
+    /// arquivo inteiro.
+    modo: toml::Value,
+}
+
+const MODO_ESPELHO: &str = "espelho";
+const MODO_DIVISAO: &str = "divisao";
+
+impl From<GrupoArquivo> for Grupo {
+    fn from(grupo: GrupoArquivo) -> Self {
+        Self {
+            impressoras: grupo.impressoras,
+            modo: match grupo.modo.as_str() {
+                Some(MODO_DIVISAO) => ModoDistribuicao::Divisao,
+                _ => ModoDistribuicao::Espelho,
+            },
+        }
+    }
+}
+
+impl From<&Grupo> for GrupoArquivo {
+    fn from(grupo: &Grupo) -> Self {
+        Self {
+            impressoras: grupo.impressoras.clone(),
+            modo: toml::Value::String(
+                match grupo.modo {
+                    ModoDistribuicao::Espelho => MODO_ESPELHO,
+                    ModoDistribuicao::Divisao => MODO_DIVISAO,
+                }
+                .to_owned(),
+            ),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -144,6 +189,48 @@ impl From<&EntradaPerfil> for EntradaArquivo {
     }
 }
 
+/// A chave usada quando `grupos` nem é uma tabela. Nenhum nome válido é vazio, e o valor fica guardado.
+const CHAVE_SEM_TABELA: &str = "";
+
+fn ler_grupos(perfis: &mut Perfis, grupos: Option<toml::Value>) {
+    let tabela = match grupos {
+        None => return,
+        Some(toml::Value::Table(tabela)) => tabela,
+        Some(outro) => {
+            perfis
+                .grupos_ignorados
+                .insert(CHAVE_SEM_TABELA.to_owned(), GrupoIgnorado(outro));
+            return;
+        }
+    };
+    for (nome, valor) in tabela {
+        let aceito = valor
+            .clone()
+            .try_into::<GrupoArquivo>()
+            .ok()
+            .is_some_and(|grupo| perfis.aceitar_grupo_lido(&nome, grupo.into()).is_ok());
+        if !aceito {
+            perfis.grupos_ignorados.insert(nome, GrupoIgnorado(valor));
+        }
+    }
+}
+
+fn escrever_grupos(perfis: &Perfis) -> Result<Option<toml::Value>, ErroPerfis> {
+    let mut tabela = toml::Table::new();
+    for (nome, grupo) in perfis.grupos() {
+        let valor = toml::Value::try_from(GrupoArquivo::from(grupo)).map_err(|erro| {
+            ErroPerfis::Serializacao {
+                detalhe: erro.to_string(),
+            }
+        })?;
+        tabela.insert(nome.to_owned(), valor);
+    }
+    for (nome, ignorado) in &perfis.grupos_ignorados {
+        tabela.insert(nome.clone(), ignorado.0.clone());
+    }
+    Ok((!tabela.is_empty()).then_some(toml::Value::Table(tabela)))
+}
+
 /// Interpreta o texto de `perfis.toml`. Não altera nada em disco.
 pub(crate) fn decodificar(texto: &str, caminho: &Path) -> Result<Perfis, ErroPerfis> {
     let cabecalho: Cabecalho = toml::from_str(texto).map_err(|erro| ErroPerfis::TomlInvalido {
@@ -165,6 +252,7 @@ pub(crate) fn decodificar(texto: &str, caminho: &Path) -> Result<Perfis, ErroPer
     for (fila, entrada) in arquivo.filas {
         perfis.inserir(&fila, entrada.into());
     }
+    ler_grupos(&mut perfis, arquivo.grupos);
     Ok(perfis)
 }
 
@@ -184,6 +272,7 @@ pub(crate) fn codificar(perfis: &Perfis) -> Result<String, ErroPerfis> {
             .filas()
             .map(|(fila, entrada)| (fila.to_owned(), EntradaArquivo::from(entrada)))
             .collect(),
+        grupos: escrever_grupos(perfis)?,
     };
     toml::to_string(&arquivo).map_err(|erro| ErroPerfis::Serializacao {
         detalhe: erro.to_string(),

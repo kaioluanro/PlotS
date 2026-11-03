@@ -7,9 +7,10 @@
 use crate::documento;
 use crate::impressoras;
 use crate::leitura_pdf;
+use plots_core::distribuicao::{distribuir_lotes, ModoDistribuicao};
 use plots_core::{
-    plano_lotes_do_intervalo, DimensoesPagina, FormatoPapel, IntervaloPaginas, ModeloImpressora,
-    OrdemPassadas, Pagina, Papel, PerfilImpressora,
+    plano_lotes_do_intervalo, DimensoesPagina, FormatoPapel, IntervaloPaginas, LotePapel,
+    ModeloImpressora, OrdemPassadas, Pagina, Papel, PerfilImpressora,
 };
 use plots_windows::plots_print::fluxo::{
     self, CondicaoDoAviso, Condutor, DescreveFalha, Espera, Instrucao, Lado, LoteDoFluxo, Passo,
@@ -746,7 +747,12 @@ impl Gerente {
 
 /// A preparacao falhou: nada foi enviado. O cartao mostra o motivo ate o usuario pedir de novo.
 fn recusado(identidade: &Identidade, recados: &Receiver<Recado>, emitir: &Emissor, motivo: Motivo) {
+    // Nada foi enviado e nada resta a acompanhar: a thread acaba, e a impressora fica livre.
+    let sem_trabalho = motivo.codigo == MOTIVO_DOCUMENTO_MUDOU;
     emitir(identidade.cartao(EstadoCartao::Erro { motivo }));
+    if sem_trabalho {
+        return;
+    }
     loop {
         match recados.recv() {
             Ok(Recado::Comando(Comando::Cancelar)) => {
@@ -759,6 +765,68 @@ fn recusado(identidade: &Identidade, recados: &Receiver<Recado>, emitir: &Emisso
     }
 }
 
+/// Como a interface pede que os lotes sejam distribuidos entre as impressoras.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModoDoEnvio {
+    Espelho,
+    Divisao,
+}
+
+impl From<ModoDoEnvio> for ModoDistribuicao {
+    fn from(modo: ModoDoEnvio) -> Self {
+        match modo {
+            ModoDoEnvio::Espelho => Self::Espelho,
+            ModoDoEnvio::Divisao => Self::Divisao,
+        }
+    }
+}
+
+impl From<ModoDistribuicao> for ModoDoEnvio {
+    fn from(modo: ModoDistribuicao) -> Self {
+        match modo {
+            ModoDistribuicao::Espelho => Self::Espelho,
+            ModoDistribuicao::Divisao => Self::Divisao,
+        }
+    }
+}
+
+/// O documento nao e mais o que a confirmacao mostrou; nenhuma pagina saiu.
+pub const MOTIVO_DOCUMENTO_MUDOU: &str = "documento_mudou";
+
+fn documento_mudou() -> Motivo {
+    Motivo::novo(
+        MOTIVO_DOCUMENTO_MUDOU,
+        "o documento mudou depois da confirmação. Nada foi enviado: envie de novo.",
+    )
+}
+
+/// Na divisao, a posicao desta impressora no rodizio, e os lotes e as paginas que foram confirmados.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParteDoEnvio {
+    pub indice: usize,
+    pub impressoras: usize,
+    pub lotes: usize,
+    /// Paginas do documento inteiro, nao so do trecho.
+    pub paginas: usize,
+}
+
+impl ParteDoEnvio {
+    /// Os lotes desta impressora, ja com a ordem do perfil dela. Se o documento mudou depois da
+    /// confirmacao, nada sai: o cartao diria um lote e o maco traria outro.
+    pub fn separar(&self, lotes: Vec<LoteDoFluxo>) -> Result<Vec<LoteDoFluxo>, Motivo> {
+        if lotes.len() != self.lotes {
+            return Err(documento_mudou());
+        }
+        let plano = distribuir_lotes(lotes.len(), self.impressoras, ModoDistribuicao::Divisao)
+            .map_err(|erro| Motivo::novo("sistema", erro.to_string()))?;
+        let atribuicao = plano.get(self.indice).ok_or_else(|| {
+            Motivo::novo("sistema", "a impressora ficou fora da divisão dos lotes")
+        })?;
+        Ok(atribuicao.selecionar(lotes))
+    }
+}
+
 /// O caminho do PDF e o tamanho do lote, ja conferidos. O trecho so e conferido ao ler o PDF,
 /// quando o total de paginas e conhecido; sem trecho, vale o documento inteiro.
 #[derive(Debug, Clone)]
@@ -766,6 +834,7 @@ pub struct Pedido {
     pub caminho: String,
     pub folhas_por_lote: usize,
     pub intervalo: Option<IntervaloPaginas>,
+    pub parte: Option<ParteDoEnvio>,
 }
 
 impl Pedido {
@@ -782,7 +851,14 @@ impl Pedido {
             caminho,
             folhas_por_lote: folhas_por_lote.min(LOTE_MAXIMO),
             intervalo,
+            parte: None,
         })
+    }
+
+    /// O mesmo pedido, restrito aos lotes desta impressora na divisao.
+    pub fn com_parte(mut self, parte: Option<ParteDoEnvio>) -> Self {
+        self.parte = parte;
+        self
     }
 }
 
@@ -821,18 +897,32 @@ fn dimensoes_do_envio(
     dimensoes
 }
 
+/// O plano de cada impressora sai do perfil dela; so depois a divisao fica com os lotes que lhe cabem.
+pub(crate) fn planejar_pedido(
+    dimensoes: &[DimensoesPagina],
+    pedido: &Pedido,
+    perfil: PerfilImpressora,
+) -> Result<Vec<LoteDoFluxo>, Motivo> {
+    if pedido
+        .parte
+        .is_some_and(|parte| parte.paginas != dimensoes.len())
+    {
+        return Err(documento_mudou());
+    }
+    let lotes = planejar(dimensoes, pedido.intervalo, pedido.folhas_por_lote, perfil)?;
+    match pedido.parte {
+        Some(parte) => parte.separar(lotes),
+        None => Ok(lotes),
+    }
+}
+
 /// A impressora simulada le o mesmo PDF e o mesmo plano, mas nada vai a uma fila.
 pub fn preparar_simulada(
     modelo: ModeloImpressora,
     pedido: &Pedido,
 ) -> Result<Preparo<SimGuiado>, Motivo> {
     let lido = leitura_pdf::ler_pdf(&pedido.caminho).map_err(|erro| motivo_do_pdf(&erro))?;
-    let lotes = planejar(
-        &lido.dimensoes,
-        pedido.intervalo,
-        pedido.folhas_por_lote,
-        modelo.perfil(),
-    )?;
+    let lotes = planejar_pedido(&lido.dimensoes, pedido, modelo.perfil())?;
     let backend = SimGuiado::novo(Mecanica::do_modelo(modelo), modelo.gesto().into());
     let condutor =
         Condutor::novo(backend, lotes, ESPERA_SIMULADA).map_err(|erro| motivo_do_job(&erro))?;
@@ -859,12 +949,7 @@ pub fn preparar_fila(
         )
     })?;
     let lido = leitura_pdf::ler_pdf(&pedido.caminho).map_err(|erro| motivo_do_pdf(&erro))?;
-    let lotes = planejar(
-        &lido.dimensoes,
-        pedido.intervalo,
-        pedido.folhas_por_lote,
-        entrada.perfil,
-    )?;
+    let lotes = planejar_pedido(&lido.dimensoes, pedido, entrada.perfil)?;
     let pasta = impressoras::pasta_de_saida_do_sistema();
     let filas =
         plots_windows::listar_filas().map_err(|erro| Motivo::novo("sistema", erro.to_string()))?;
@@ -941,6 +1026,46 @@ pub struct ResumoDoEnvio {
     pub papeis: Vec<PapelDoCartao>,
     pub pares_mistos: Vec<(usize, usize)>,
     pub assinado: bool,
+    /// Na divisao, o que cabe a cada impressora; no espelho, fica vazio.
+    pub divisao: Vec<ParteDoResumo>,
+    /// Paginas do documento inteiro: o envio confere de novo antes de imprimir.
+    pub paginas_do_documento: usize,
+    /// De qual a qual pagina vai cada lote, com os numeros do documento.
+    pub faixas: Vec<FaixaDoLote>,
+}
+
+/// As paginas de um lote; o verso em branco do fim nao conta.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct FaixaDoLote {
+    pub lote: usize,
+    pub inicio: usize,
+    pub fim: usize,
+}
+
+/// Os lotes sao numerados a partir de 1, na ordem do plano. Lote sem pagina numerada nao tem faixa.
+pub fn faixas_dos_lotes(lotes: &[LotePapel]) -> Vec<FaixaDoLote> {
+    lotes
+        .iter()
+        .enumerate()
+        .filter_map(|(indice, lote)| {
+            let numeros = lote.paginas.iter().filter_map(|pagina| *pagina);
+            Some(FaixaDoLote {
+                lote: indice.saturating_add(1),
+                inicio: numeros.clone().min()?,
+                fim: numeros.max()?,
+            })
+        })
+        .collect()
+}
+
+/// Quem imprime quais lotes, numerados como no documento. `vira_para_ler` vazio quer dizer que o
+/// perfil nao afirma: vale o que foi visto na calibracao.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ParteDoResumo {
+    pub impressora: String,
+    pub lotes: Vec<usize>,
+    pub vira_para_ler: Option<bool>,
 }
 
 /// Lotes e papeis nao dependem do perfil: o plano padrao diz quantos sao. Com um trecho, tudo aqui
@@ -978,6 +1103,9 @@ pub fn resumo_do_envio(
         papeis: papeis.into_iter().map(papel_do_cartao).collect(),
         pares_mistos,
         assinado: lido.assinado,
+        divisao: Vec::new(),
+        paginas_do_documento: lido.dimensoes.len(),
+        faixas: faixas_dos_lotes(&lotes),
     })
 }
 

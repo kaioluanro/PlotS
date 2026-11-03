@@ -115,15 +115,14 @@ pub struct ListaImpressoras {
 }
 
 /// Uma gravacao por vez: duas escolhas seguidas nao podem ler o mesmo arquivo e perder uma delas.
-static GRAVACAO_DE_MODELO: Mutex<()> = Mutex::new(());
+pub(crate) static GRAVACAO_DE_PERFIS: Mutex<()> = Mutex::new(());
 
 /// Grava o perfil pronto do modelo no arquivo de perfis do sistema. Se falhar, nada muda.
 pub fn definir_modelo(fila: &str, modelo: &str) -> Result<(), Aviso> {
-    let caminho = caminho_dos_perfis(std::env::var_os(VARIAVEL_PERFIS));
-    gravar_modelo(caminho, fila, modelo)
+    gravar_modelo(caminho_dos_perfis_do_sistema(), fila, modelo)
 }
 
-fn gravar_modelo(
+pub(crate) fn gravar_modelo(
     caminho: Result<PathBuf, ErroPerfis>,
     fila: &str,
     codigo: &str,
@@ -132,7 +131,7 @@ fn gravar_modelo(
     else {
         return Err(falha_ao_gravar(fila));
     };
-    let _vez = GRAVACAO_DE_MODELO
+    let _vez = GRAVACAO_DE_PERFIS
         .lock()
         .unwrap_or_else(PoisonError::into_inner);
     let aviso = |erro: ErroPerfis| Aviso {
@@ -165,8 +164,12 @@ pub fn ler_do_sistema() -> ListaImpressoras {
 
 /// Perfis do arquivo do usuario ou do indicado por `PLOTS_PERFIS`.
 pub fn ler_perfis_do_sistema() -> Result<Perfis, ErroPerfis> {
+    caminho_dos_perfis_do_sistema().and_then(|caminho| plots_perfis::carregar(&caminho))
+}
+
+/// Onde o arquivo de perfis fica neste processo.
+pub(crate) fn caminho_dos_perfis_do_sistema() -> Result<PathBuf, ErroPerfis> {
     caminho_dos_perfis(std::env::var_os(VARIAVEL_PERFIS))
-        .and_then(|caminho| plots_perfis::carregar(&caminho))
 }
 
 /// Pasta de saida configurada no ambiente deste processo.

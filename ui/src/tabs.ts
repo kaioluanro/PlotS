@@ -1,4 +1,12 @@
-import { cartaoEmAndamento, comCartao, ehRecusaDeOcupada, type Cartao } from "./cartoes";
+import {
+  cartaoEmAndamento,
+  comCartao,
+  ehRecusaDeOcupada,
+  lotesSemImprimir,
+  type Cartao,
+  type FaixaDoLote,
+  type PapelDoCartao,
+} from "./cartoes";
 import { limitarAoIntervaloDoLote, LOTE_PADRAO } from "./impressoras";
 import { normalizarRascunho, type RascunhoIntervalo } from "./intervalo";
 
@@ -13,6 +21,33 @@ export type PaginasDaAba =
   | { estado: "conhecido"; total: number }
   | { estado: "recusado"; motivo: string };
 
+/** Espelho: cada impressora imprime tudo. Divisao: os lotes sao repartidos entre elas. */
+export type ModoDistribuicao = "espelho" | "divisao";
+
+/** So quem recebe de fato conta: com menos de duas, o modo nao altera o envio. */
+export function modoDoEnvio(modo: ModoDistribuicao, destinos: number): ModoDistribuicao {
+  return destinos >= 2 ? modo : "espelho";
+}
+
+/** O que cabe a uma impressora na divisao, com os lotes numerados como no documento. */
+export interface ParteDaDivisao {
+  impressora: string;
+  nome: string;
+  lotes: readonly number[];
+  /** As paginas de cada lote, como o backend as planejou. */
+  faixas?: readonly FaixaDoLote[];
+  /** Sem valor, o perfil nao afirma como o maco sai. */
+  viraParaLer: boolean | null;
+  /** O que faltava quando o cartao foi dispensado: a junção continua sabendo depois. */
+  semImprimirAoDispensar?: readonly number[];
+}
+
+export interface DivisaoDoEnvio {
+  partes: readonly ParteDaDivisao[];
+  /** Os papeis do envio, para a linha que resume o que saiu. */
+  papeis?: readonly PapelDoCartao[];
+}
+
 export interface Aba {
   id: number;
   documento: Documento;
@@ -23,6 +58,9 @@ export interface Aba {
   tamanhoLote: number;
   /** De qual a qual pagina, como foi escrito; `null` e o documento inteiro. */
   intervalo: RascunhoIntervalo | null;
+  modo: ModoDistribuicao;
+  /** O ultimo envio em divisao; sem valor, o ultimo foi em espelho. */
+  divisao: DivisaoDoEnvio | null;
   paginas: PaginasDaAba;
   /** Um cartao por impressora; trocar de aba troca a lista, e os trabalhos seguem. */
   cartoes: readonly Cartao[];
@@ -50,6 +88,9 @@ export type AcaoAbas =
   | { tipo: "alternar_impressora"; id: number; impressora: string }
   | { tipo: "definir_lote"; id: number; tamanho: number }
   | { tipo: "definir_intervalo"; id: number; intervalo: RascunhoIntervalo | null }
+  | { tipo: "definir_modo"; id: number; modo: ModoDistribuicao }
+  | { tipo: "aplicar_grupo"; id: number; impressoras: readonly string[]; modo: ModoDistribuicao }
+  | { tipo: "divisao_enviada"; id: number; divisao: DivisaoDoEnvio | null }
   | { tipo: "paginas_contadas"; id: number; total: number }
   | { tipo: "paginas_recusadas"; id: number; motivo: string }
   | { tipo: "cartao"; cartao: Cartao }
@@ -123,6 +164,43 @@ function mudarAba(estado: EstadoAbas, id: number, mudar: (aba: Aba) => Aba): Est
   return { ...estado, abas: estado.abas.map((aba) => (aba.id === id ? mudar(aba) : aba)) };
 }
 
+/**
+ * O backend conta os lotes por impressora; a interface guarda o numero deles no documento. Um
+ * trabalho anterior que ainda corre fica com os numeros que ja tinha, mesmo depois de outro envio.
+ */
+function comLotesDoDocumento(aba: Aba, novo: Cartao): Cartao {
+  const parte = aba.divisao?.partes.find((item) => item.impressora === novo.impressora);
+  if (parte) {
+    return {
+      ...novo,
+      lotesNoDocumento: parte.lotes,
+      ...(parte.faixas ? { faixasNoDocumento: parte.faixas } : {}),
+    };
+  }
+  if (novo.estado.tipo === "preparando") return novo;
+  const anterior = aba.cartoes.find((cartao) => cartao.impressora === novo.impressora);
+  return anterior?.lotesNoDocumento
+    ? {
+        ...novo,
+        lotesNoDocumento: anterior.lotesNoDocumento,
+        ...(anterior.faixasNoDocumento ? { faixasNoDocumento: anterior.faixasNoDocumento } : {}),
+      }
+    : novo;
+}
+
+function divisaoAoDispensar(aba: Aba, impressora: string): DivisaoDoEnvio | null {
+  const cartao = aba.cartoes.find((item) => item.impressora === impressora);
+  if (!aba.divisao || !cartao) return aba.divisao;
+  return {
+    ...aba.divisao,
+    partes: aba.divisao.partes.map((parte) =>
+      parte.impressora === impressora
+        ? { ...parte, semImprimirAoDispensar: lotesSemImprimir(cartao) }
+        : parte,
+    ),
+  };
+}
+
 export function reduzirAbas(estado: EstadoAbas, acao: AcaoAbas): EstadoAbas {
   switch (acao.tipo) {
     case "abrir": {
@@ -134,6 +212,8 @@ export function reduzirAbas(estado: EstadoAbas, acao: AcaoAbas): EstadoAbas {
         impressorasMarcadas: [],
         tamanhoLote: LOTE_PADRAO,
         intervalo: null,
+        modo: "espelho",
+        divisao: null,
         paginas: { estado: "contando" },
         cartoes: [],
       };
@@ -184,6 +264,21 @@ export function reduzirAbas(estado: EstadoAbas, acao: AcaoAbas): EstadoAbas {
           ? { ...aba, intervalo: normalizarRascunho(acao.intervalo, aba.paginas) }
           : aba,
       );
+    case "definir_modo":
+      return mudarAba(estado, acao.id, (aba) => ({ ...aba, modo: acao.modo }));
+    case "aplicar_grupo":
+      return mudarAba(estado, acao.id, (aba) => ({
+        ...aba,
+        impressorasMarcadas: acao.impressoras,
+        modo: acao.modo,
+      }));
+    case "divisao_enviada":
+      // Os numeros e a juncao dependem da divisao em curso: nenhum envio a apaga enquanto ela corre.
+      return mudarAba(estado, acao.id, (aba) =>
+        aba.divisao !== null && aba.cartoes.some(cartaoEmAndamento)
+          ? aba
+          : { ...aba, divisao: acao.divisao },
+      );
     case "paginas_contadas":
       return mudarAba(estado, acao.id, (aba) => ({
         ...aba,
@@ -205,7 +300,7 @@ export function reduzirAbas(estado: EstadoAbas, acao: AcaoAbas): EstadoAbas {
       if (vivo && ehRecusaDeOcupada(acao.cartao)) return estado;
       const depois = mudarAba(estado, id, (aba) => ({
         ...aba,
-        cartoes: comCartao(aba.cartoes, acao.cartao),
+        cartoes: comCartao(aba.cartoes, comLotesDoDocumento(aba, acao.cartao)),
       }));
       const aba = depois.abas.find((candidata) => candidata.id === id);
       // O estado real dos trabalhos decide se ha impressao em andamento nesta aba.
@@ -214,6 +309,7 @@ export function reduzirAbas(estado: EstadoAbas, acao: AcaoAbas): EstadoAbas {
     case "dispensar_cartao": {
       const depois = mudarAba(estado, acao.id, (aba) => ({
         ...aba,
+        divisao: divisaoAoDispensar(aba, acao.impressora),
         cartoes: aba.cartoes.filter((cartao) => cartao.impressora !== acao.impressora),
       }));
       const aba = depois.abas.find((candidata) => candidata.id === acao.id);

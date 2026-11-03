@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 
 use plots_core::{ModeloImpressora, PerfilImpressora};
 
+use crate::grupos::{Grupo, GrupoIgnorado};
+
 /// Perfil salvo para uma fila de impressão.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct EntradaPerfil {
@@ -19,6 +21,10 @@ pub struct EntradaPerfil {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Perfis {
     filas: BTreeMap<String, EntradaPerfil>,
+    /// Seleções salvas, pelo nome: quem lê e grava os perfis leva os grupos junto.
+    pub(crate) grupos: BTreeMap<String, Grupo>,
+    /// O que estava no arquivo e não vale como grupo: não aparece, e volta igual na próxima gravação.
+    pub(crate) grupos_ignorados: BTreeMap<String, GrupoIgnorado>,
 }
 
 impl Perfis {

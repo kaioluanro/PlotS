@@ -1,0 +1,382 @@
+.bloco {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modo {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.rotulo {
+  display: block;
+  padding: 0 0 4px;
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.opcoes {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-md);
+}
+
+/* A marcada se distingue por fundo, anel e sinal de visto, nunca so pela cor. */
+.opcao {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 28px;
+  padding: 0 6px;
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--anim-fast) ease,
+    color var(--anim-fast) ease;
+}
+
+.opcao:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+:global([data-theme='light']) .opcao:hover {
+  background: var(--accent-bg-soft);
+}
+
+.opcao:has(:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.opcaoAtiva,
+.opcaoAtiva:hover,
+:global([data-theme='light']) .opcaoAtiva:hover {
+  color: var(--fg);
+  background: var(--bg-sunken);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+.dica {
+  margin: 4px 0 0;
+  color: var(--fg-muted);
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.grupos {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.linhaGrupo {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.caixaDoGrupo {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  margin-right: 2px;
+}
+
+.seletorGrupo {
+  min-height: 28px;
+}
+
+.caixaDoGrupo .setaGrupo {
+  top: 9px;
+  z-index: 1;
+}
+
+/* Nome longo corre por baixo da seta: este fundo termina o texto antes dela. */
+.caixaDoGrupo::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  width: 19px;
+  background: var(--bg-sunken);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  pointer-events: none;
+  transition: background-color var(--anim-fast) ease;
+}
+
+.caixaDoGrupo:has(select:hover)::after {
+  background: var(--panel-hover);
+}
+
+.caixaDoGrupo:has(:disabled) .setaGrupo {
+  opacity: 0.5;
+}
+
+/* Dois seletores: o botao comum vem de outra folha e nao pode ganhar pela ordem de carga. */
+.grupos .salvarGrupo {
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 6px;
+  font-size: 11px;
+  border-radius: var(--radius-sm);
+}
+
+.seletorGrupo:disabled {
+  color: var(--fg-muted);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.seletorGrupo:disabled:hover {
+  background: var(--bg-sunken);
+  border-color: var(--border-control);
+}
+
+.botaoIcone {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--fg-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--anim-fast) ease,
+    color var(--anim-fast) ease;
+}
+
+.botaoIcone:hover:not(:disabled) {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.botaoIcone:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.botaoIcone:focus-visible {
+  outline-offset: -2px;
+}
+
+.formulario {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* O anel de foco do campo sai 4 px para fora: o rotulo fica acima dele. */
+.formulario .rotulo {
+  padding-bottom: 0;
+}
+
+.formulario .campo {
+  margin-top: 6px;
+}
+
+.campo {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-md);
+}
+
+.campo:hover {
+  border-color: var(--border-control-hover);
+}
+
+.campoInvalido,
+.campoInvalido:hover {
+  border-color: var(--status-offline);
+}
+
+.acoesDoNome {
+  display: flex;
+  gap: 6px;
+}
+
+@media (max-height: 560px) {
+  .formulario {
+    gap: 4px;
+  }
+
+  .formulario .campo {
+    margin-top: 4px;
+  }
+
+  /* Cada linha conta aqui: o anuncio fica so para o leitor de tela. */
+  .anuncio {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
+.acoesDoNome .acao {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 28px;
+  padding: 4px 6px;
+  font-size: 11px;
+  border-radius: var(--radius-sm);
+}
+
+.falha,
+.nota,
+.anuncio {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  color: var(--fg);
+  font-size: 11px;
+  line-height: 15px;
+  overflow-wrap: anywhere;
+}
+
+/* Sem texto, a regiao continua na pagina para o leitor de tela, sem ocupar lugar. */
+.anuncio:empty {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.iconeFalha {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--status-offline-text);
+}
+
+.iconeNota {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--fg-muted);
+}
+
+.juncao {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 4px 10px;
+  padding: 8px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  scroll-margin-top: 4px;
+}
+
+/* A linha do lote no cartao: quem junta os macos procura este numero primeiro. */
+.loteTitulo {
+  margin: 0;
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+
+.loteDetalhe {
+  margin: -6px 0 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 15px;
+  overflow-wrap: anywhere;
+}
+
+.frase,
+.falta {
+  margin: 0;
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 17px;
+  overflow-wrap: anywhere;
+}
+
+.falta {
+  display: flex;
+  gap: 6px;
+  font-weight: 500;
+}
+
+@media (forced-colors: active) {
+  .opcoes {
+    border-color: CanvasText;
+  }
+
+  .opcaoAtiva,
+  .opcaoAtiva:hover {
+    outline: 1px solid CanvasText;
+    outline-offset: -1px;
+  }
+
+  .seletorGrupo:disabled {
+    color: GrayText;
+    border-color: GrayText;
+    opacity: 1;
+  }
+
+  .botaoIcone:disabled {
+    color: GrayText;
+    opacity: 1;
+  }
+
+  .juncao {
+    border-color: CanvasText;
+  }
+
+  .campoInvalido,
+  .campoInvalido:hover {
+    border-color: Highlight;
+  }
+
+  /* O sistema troca os fundos: o contorno e o que mostra foco e ponteiro. */
+  .caixaDoGrupo::after,
+  .caixaDoGrupo:has(select:hover)::after {
+    background: ButtonFace;
+  }
+
+  .opcao:not(.opcaoAtiva):hover,
+  .botaoIcone:hover:not(:disabled) {
+    outline: 1px solid Highlight;
+  }
+
+  .opcao:has(:focus-visible),
+  .opcao:has(:focus-visible):hover {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}

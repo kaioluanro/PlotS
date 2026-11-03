@@ -58,6 +58,17 @@ export interface Cartao {
   resultado: { corretas: number; folhas: number } | null;
   sequencia: { frente: FaceDaSequencia[]; verso: FaceDaSequencia[] } | null;
   viraParaLer: boolean;
+  /** Na divisao, o numero de cada lote desta impressora no documento. */
+  lotesNoDocumento?: readonly number[];
+  /** As paginas desses lotes, como o backend as planejou. */
+  faixasNoDocumento?: readonly FaixaDoLote[];
+}
+
+/** De qual a qual pagina vai um lote, com os numeros do documento. */
+export interface FaixaDoLote {
+  lote: number;
+  inicio: number;
+  fim: number;
 }
 
 export type Comando =
@@ -68,7 +79,11 @@ export type Comando =
   | "continuar_esperando";
 
 /** Motivos de erro que encerram o cartao sem nenhum trabalho na fila para acompanhar. */
-const MOTIVOS_SEM_TRABALHO: ReadonlySet<string> = new Set(["interrompido", "ocupada"]);
+const MOTIVOS_SEM_TRABALHO: ReadonlySet<string> = new Set([
+  "interrompido",
+  "ocupada",
+  "documento_mudou",
+]);
 
 /**
  * Concluido e cancelado acabaram: o resto ainda depende de alguem ou da fila. Um cartao cuja
@@ -190,7 +205,29 @@ export function marcadasTodasOcupadas(
   return naLista.length > 0 && naLista.every((impressora) => ocupadas.has(impressora.id));
 }
 
-function motivoDeFora(
+/**
+ * Na altura curta, o rodape so sai quando nao ha o que fazer nele: a divisao desta aba ainda corre,
+ * ou toda marcada da lista tem trabalho correndo aqui. Marcada ocupada por outra aba, ou cartao
+ * ja encerrado, nao tira o rodape: desmarcar ainda resolve, e o motivo precisa ficar a vista.
+ */
+export function rodapeCedeAoCartao(
+  envio: EstadoDoEnvio,
+  aba: Aba | null,
+  lista: readonly Impressora[],
+  ocupadas: ReadonlySet<string>,
+): boolean {
+  if (aba === null) return false;
+  if (envio.semDestino === true) return true;
+  if (!marcadasTodasOcupadas(lista, aba.impressorasMarcadas, ocupadas)) return false;
+  const emAndamento = new Set(
+    aba.cartoes.filter(cartaoEmAndamento).map((cartao) => cartao.impressora),
+  );
+  return lista
+    .filter((impressora) => aba.impressorasMarcadas.includes(impressora.id))
+    .every((impressora) => emAndamento.has(impressora.id));
+}
+
+export function motivoDeFora(
   impressora: Impressora,
   ocupadas: ReadonlySet<string>,
   idioma: Idioma,
@@ -217,11 +254,13 @@ export interface EstadoDoEnvio {
   motivo: string | null;
   desabilitado: boolean;
   destinos: readonly Impressora[];
+  /** Esta aba ainda corre uma divisao: nada se envia dela ate o fim, e a altura curta tira o rodape da frente. */
+  semDestino?: boolean;
 }
 
 const MAXIMO_DE_NOMES_NO_MOTIVO = 2;
 
-function listaDeFora(motivos: readonly string[], idioma: Idioma): string {
+export function listaDeFora(motivos: readonly string[], idioma: Idioma): string {
   const mostrados = motivos.slice(0, MAXIMO_DE_NOMES_NO_MOTIVO).join(", ");
   const resto = motivos.length - MAXIMO_DE_NOMES_NO_MOTIVO;
   return resto > 0
@@ -296,6 +335,103 @@ export function nomeDoPapel(papel: PapelDoCartao, idioma: Idioma = idiomaAtual):
     largura: papel.larguraMm.toFixed(0),
     altura: papel.alturaMm.toFixed(0),
   });
+}
+
+const LOTES_NUMA_LISTA = 8;
+
+/** Numeros de lote em uma linha; muitos viram o comeco, o fim e a contagem. */
+export function listaDeLotes(lotes: readonly number[], idioma: Idioma = idiomaAtual): string {
+  if (lotes.length <= LOTES_NUMA_LISTA) return lotes.join(", ");
+  return traduzir(idioma, "modo.lotes.resumo", {
+    inicio: lotes.slice(0, LOTES_NUMA_LISTA - 2).join(", "),
+    ultimo: String(lotes.at(-1) ?? ""),
+    n: String(lotes.length),
+  });
+}
+
+/** O que ainda nao terminou nesta impressora, numerado como no documento. */
+export function lotesSemImprimir(cartao: Cartao): readonly number[] {
+  if (cartao.estado.tipo === "concluido") return [];
+  return (cartao.lotesNoDocumento ?? []).slice(Math.max(cartao.lote - 1, 0));
+}
+
+/** O numero do lote atual no documento; sem divisao, ou fora da lista, nao ha. */
+export function loteNoDocumento(cartao: Cartao): number | null {
+  if (cartao.lote < 1) return null;
+  return cartao.lotesNoDocumento?.[cartao.lote - 1] ?? null;
+}
+
+/** As paginas de um lote, com os numeros do documento: "págs. 3–6". */
+export function textoDasPaginas(faixa: FaixaDoLote, idioma: Idioma = idiomaAtual): string {
+  return faixa.inicio === faixa.fim
+    ? traduzir(idioma, "modo.pilha.paginas.uma", { a: String(faixa.inicio) })
+    : traduzir(idioma, "modo.pilha.paginas.varias", {
+        a: String(faixa.inicio),
+        b: String(faixa.fim),
+      });
+}
+
+/** Em "proximo lote", o trabalho ja avancou: o maco a retirar e o do lote anterior a este. */
+function fraseDeRetirar(cartao: Cartao, idioma: Idioma): string | null {
+  const lote = cartao.lotesNoDocumento?.[cartao.lote - 2];
+  const faixa = cartao.faixasNoDocumento?.find((item) => item.lote === lote);
+  if (lote === undefined || faixa === undefined) return null;
+  return traduzir(idioma, "modo.proximo.retirar", {
+    n: String(lote),
+    paginas: textoDasPaginas(faixa, idioma),
+  });
+}
+
+/** Na divisao, as linhas do lote no cartao. Fora dela, ou se a contagem nao bate, nao ha. */
+export interface LinhasDoLote {
+  titulo: string | null;
+  detalhe: string | null;
+  semImprimir: string | null;
+}
+
+function trechoDosLotes(
+  lotes: readonly number[],
+  chaves: { um: Chave; varios: Chave },
+  idioma: Idioma,
+): string {
+  return traduzir(idioma, lotes.length === 1 ? chaves.um : chaves.varios, {
+    lista: listaDeLotes(lotes, idioma),
+  });
+}
+
+/** O numero que vale e o do documento: e por ele que os macos se juntam. */
+export function linhasDoLote(cartao: Cartao, idioma: Idioma = idiomaAtual): LinhasDoLote | null {
+  const lotes = cartao.lotesNoDocumento;
+  // Uma contagem que nao bate com a do envio nao autoriza afirmar numero nenhum.
+  if (!lotes || (cartao.total > 0 && cartao.total !== lotes.length)) return null;
+  const todos = trechoDosLotes(lotes, { um: "modo.lotes.um", varios: "modo.lotes.varios" }, idioma);
+  const { tipo } = cartao.estado;
+  if (tipo === "concluido") return { titulo: todos, detalhe: null, semImprimir: null };
+  const atual = loteNoDocumento(cartao);
+  const titulo =
+    atual === null ? null : traduzir(idioma, "modo.lote.documento", { n: String(atual) });
+  if (tipo === "erro" || tipo === "cancelado") {
+    const semImprimir = trechoDosLotes(
+      lotesSemImprimir(cartao),
+      { um: "modo.semImprimir.um", varios: "modo.semImprimir.varios" },
+      idioma,
+    );
+    return { titulo, detalhe: null, semImprimir };
+  }
+  if (titulo === null) return { titulo: todos, detalhe: null, semImprimir: null };
+  const depois = lotes.length - cartao.lote;
+  const detalhe =
+    depois > 0
+      ? traduzir(idioma, "modo.lote.restam", { n: String(depois) })
+      : traduzir(idioma, "modo.lote.ultimo");
+  return { titulo, detalhe, semImprimir: null };
+}
+
+/** A linha de dados fora da divisao. */
+export function linhaDoLote(cartao: Cartao, idioma: Idioma = idiomaAtual): string | null {
+  return cartao.total > 0
+    ? traduzir(idioma, "cartao.lote", { n: String(cartao.lote), total: String(cartao.total) })
+    : null;
 }
 
 export function nomeDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual): string {
@@ -415,6 +551,7 @@ const CHAVES_DE_MOTIVO: ReadonlyMap<string, Chave> = new Map<string, Chave>([
   ["fila_fax", "cartao.motivo.filaFax"],
   ["fila_pede_arquivo", "cartao.motivo.filaPedeArquivo"],
   ["ocupada", "cartao.motivo.ocupada"],
+  ["documento_mudou", "modo.motivo.documentoMudou"],
 ]);
 
 function comInicialMaiuscula(texto: string): string {
@@ -556,10 +693,14 @@ export function linhasDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual): Li
       const linhas = [
         linha(em(cartao.simulada ? "cartao.verso.simulado" : "cartao.verso.confirmado"), "ressalva"),
       ];
+      const retirar = fraseDeRetirar(cartao, idioma);
+      if (retirar !== null) linhas.push(linha(retirar, "contexto"));
       if (cartao.trocaDePapel) {
         linhas.push(
           linha(em("cartao.trocaPapel", { papel: nomeDoPapel(cartao.trocaDePapel, idioma) }), "contexto"),
         );
+      } else if (retirar !== null) {
+        linhas.push(linha(em("modo.proximo.depois"), "contexto"));
       } else if (!cartao.simulada) {
         linhas.push(linha(em("cartao.proximo.semTroca"), "contexto"));
       }

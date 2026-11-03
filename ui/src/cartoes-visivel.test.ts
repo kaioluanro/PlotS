@@ -121,6 +121,25 @@ describe("gesto visivel em altura curta", () => {
   });
 });
 
+describe("faixa do nome no topo do cartao", () => {
+  const folha = css("CartaoImpressao.module.css").replaceAll("\r\n", "\n");
+
+  it("fica presa ao topo da lista, com fundo opaco acima do resto do cartao", () => {
+    const regra = /\.topo\s*\{([^}]*)\}/.exec(folha)?.[1] ?? "";
+    expect(regra).toContain("position: sticky");
+    expect(regra).toContain("top: 0");
+    expect(regra).toContain("background: var(--bg-sunken)");
+    expect(regra).toContain("z-index: 1");
+  });
+
+  it("as acoes param abaixo dela ao receber o foco, e o anel fica por cima", () => {
+    const acao = /\.cartao \.botaoDoCartao\s*\{([^}]*)\}/.exec(folha)?.[1] ?? "";
+    expect(acao).toContain("scroll-margin-top: var(--altura-da-faixa");
+    expect(folha).toMatch(/\.botaoDoCartao:focus-visible\s*\{[^}]*z-index: 2;/);
+    expect(cartaoFonte).toContain("--altura-da-faixa");
+  });
+});
+
 describe("pontos de estado com cores forcadas", () => {
   it("cheio pede acao e vazado segue em curso, nas abas inativa e ativa", () => {
     const bloco = barraCss.slice(barraCss.lastIndexOf("@media (forced-colors: active)"));

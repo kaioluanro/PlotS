@@ -3,6 +3,8 @@ import {
   acoesDoCartao,
   alinhamentoDoCartao,
   cartaoPedeAcao,
+  linhaDoLote,
+  linhasDoLote,
   linhasDoCartao,
   nomeDoCartao,
   nomeDoPapel,
@@ -18,6 +20,7 @@ import {
 } from "../cartoes";
 import { desenhoDoCartao, posicaoDoCartao, rolarAteOCartao } from "../cartoes-gesto";
 import { t } from "../i18n";
+import modo from "./BlocoModo.module.css";
 import botoes from "./Botao.module.css";
 import styles from "./CartaoImpressao.module.css";
 import { FiguraGesto } from "./FiguraGesto";
@@ -68,6 +71,7 @@ export function CartaoImpressao({ cartao, aoComandar, aoPedirCancelar, aoDispens
   const sequencia = sequenciaDoCartao(cartao);
   const linhas = linhasDoCartao(cartao);
   const raiz = useRef<HTMLElement>(null);
+  const topo = useRef<HTMLDivElement>(null);
   const pedeAcao = cartaoPedeAcao(cartao);
   const desenho = desenhoDoCartao(cartao);
   // Quando o cartao passa a pedir algo, a lista desce ate ele; o foco de quem usa o teclado fica onde esta.
@@ -102,9 +106,22 @@ export function CartaoImpressao({ cartao, aoComandar, aoPedirCancelar, aoDispens
       },
     );
   }, [pedeAcao, cartao.estado.tipo]);
+  // A faixa do nome tem 1 ou 2 linhas: as acoes precisam da altura dela para parar logo abaixo.
+  useEffect(() => {
+    const faixa = topo.current;
+    if (!faixa || typeof ResizeObserver === "undefined") return;
+    const medir = () => {
+      raiz.current?.style.setProperty("--altura-da-faixa", `${faixa.offsetHeight}px`);
+    };
+    medir();
+    const observador = new ResizeObserver(medir);
+    observador.observe(faixa);
+    return () => observador.disconnect();
+  }, []);
   const classeDoBotao = `${botoes.botao} ${botoes.secundario} ${styles.botaoDoCartao}`;
+  const lote = linhasDoLote(cartao);
   const dados = [
-    cartao.total > 0 ? t("cartao.lote", { n: String(cartao.lote), total: String(cartao.total) }) : null,
+    lote ? lote.detalhe : linhaDoLote(cartao),
     cartao.papel ? nomeDoPapel(cartao.papel) : null,
   ].filter((parte) => parte !== null);
   const problema = cartao.estado.tipo === "erro" || cartao.estado.tipo === "aviso";
@@ -113,7 +130,7 @@ export function CartaoImpressao({ cartao, aoComandar, aoPedirCancelar, aoDispens
 
   return (
     <article ref={raiz} className={styles.cartao} aria-label={nome} tabIndex={-1}>
-      <div className={styles.topo}>
+      <div ref={topo} className={styles.topo}>
         <span className={styles.nome} title={nome}>
           {nome}
         </span>
@@ -123,7 +140,11 @@ export function CartaoImpressao({ cartao, aoComandar, aoPedirCancelar, aoDispens
         <span className={`${styles.ponto} ${CLASSE_DO_TOM[tomDoCartao(cartao)]}`} aria-hidden="true" />
         <span>{textoDoEstadoDoCartao(cartao)}</span>
       </p>
-      {dados.length > 0 && <p className={styles.dados}>{dados.join(" · ")}</p>}
+      {lote?.titulo != null && <p className={modo.loteTitulo}>{lote.titulo}</p>}
+      {dados.length > 0 && (
+        <p className={lote ? modo.loteDetalhe : styles.dados}>{dados.join(" · ")}</p>
+      )}
+      {lote?.semImprimir != null && <p className={modo.loteTitulo}>{lote.semImprimir}</p>}
       {sequencia.length > 0 && (
         <div className={styles.sequencia}>
           {sequencia.map((linha, indice) => (

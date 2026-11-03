@@ -11,11 +11,19 @@
   scroll-margin-bottom: 8px;
 }
 
+/* O nome fica a vista enquanto o cartao estiver na lista. As margens negativas levam o fundo opaco
+   de borda a borda e mantem o cartao como estava: 12 px acima do nome e 8 px abaixo dele. */
 .topo {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 6px;
+  margin: -6px -14px -4px;
+  padding: 6px 14px 4px;
+  background: var(--bg-sunken);
 }
 
 .nome {
@@ -169,6 +177,14 @@
 .cartao .botaoDoCartao {
   min-height: 28px;
   padding: 4px 10px;
+  /* Ao receber o foco, a acao para logo abaixo da faixa do nome; a altura medida cobre o nome de 2 linhas. */
+  scroll-margin-top: var(--altura-da-faixa, 26px);
+}
+
+/* Os 4 px do anel caem na folga de baixo da faixa: ele passa por cima dela, sem cobrir o nome. */
+.botaoDoCartao:focus-visible {
+  position: relative;
+  z-index: 2;
 }
 
 @media (forced-colors: active) {

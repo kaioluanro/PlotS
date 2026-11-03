@@ -4,6 +4,7 @@ mod abertura;
 mod comandos_trabalho;
 mod documento;
 mod fechamento;
+mod grupos;
 mod impressoras;
 mod janela;
 mod leitura_pdf;
@@ -160,6 +161,10 @@ fn main() -> ExitCode {
             comandos_trabalho::comandar_trabalho,
             contar_paginas,
             definir_modelo,
+            grupos::apagar_grupo,
+            grupos::aplicar_grupo,
+            grupos::listar_grupos,
+            grupos::salvar_grupo,
             interface_montou,
             comandos_trabalho::iniciar_impressao,
             documento::ler_documento,

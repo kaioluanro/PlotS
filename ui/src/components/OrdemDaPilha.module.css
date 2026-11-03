@@ -1,0 +1,116 @@
+.pilha {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.titulo {
+  margin: 0;
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.aoTerminar {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 15px;
+  text-align: right;
+}
+
+.linhas {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 3px 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.comGesto {
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+}
+
+.linha {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.numero,
+.paginas {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.numero {
+  text-align: right;
+}
+
+/* Ate duas linhas: o nome inteiro fica no titulo. */
+.impressora {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.gesto {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.frase {
+  margin: 2px 0 0;
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+
+.resumo {
+  margin: 2px 0 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 15px;
+}
+
+/* Na lateral nao cabem quatro colunas: o nome desce para a linha de baixo e continua legivel. */
+@container (max-width: 300px) {
+  .linhas,
+  .comGesto {
+    grid-template-columns: auto auto minmax(0, 1fr);
+    row-gap: 6px;
+  }
+
+  .numero {
+    grid-row: 1;
+    grid-column: 1;
+  }
+
+  .paginas {
+    grid-row: 1;
+    grid-column: 2;
+  }
+
+  .gesto {
+    grid-row: 1;
+    grid-column: 3;
+  }
+
+  .impressora {
+    grid-row: 2;
+    grid-column: 2 / -1;
+  }
+}

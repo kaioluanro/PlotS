@@ -93,13 +93,20 @@
 /* So a lista rola: o rodape e o botao continuam visiveis em qualquer altura. */
 .rolagem {
   flex: 1 1 0;
-  min-height: 0;
-  padding: 4px;
+  min-height: 72px;
+  padding: 0 4px 4px;
   overflow-y: auto;
   /* A barra ocupa o mesmo espaco com ou sem rolagem: a lista nao pula quando um cartao aparece. */
   scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--fg-muted) 40%, transparent) transparent;
+}
+
+/* A folga de cima rola junto: como padding, ela ficaria acima da faixa presa do cartao, com o texto passando ali. */
+.rolagem::before {
+  content: "";
+  display: block;
+  height: 4px;
 }
 
 .emAndamento {
@@ -555,11 +562,41 @@
 
 .rodape {
   display: flex;
-  flex-shrink: 0;
+  flex: 0 1 auto;
   flex-direction: column;
   gap: 8px;
+  min-height: 0;
   padding: 10px 12px 12px;
   border-top: 1px solid var(--border);
+}
+
+/*
+ * Se a janela nao couber, so esta area rola. Os 4 px de folga guardam o anel de foco dos campos. A
+ * barra fica sobre o respiro direito do rodape: aparecer nao aperta os campos nem os desalinha do botao.
+ */
+.camposDoRodape {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  margin: -4px -12px -4px -4px;
+  padding: 4px 8px 4px 4px;
+  overflow: hidden auto;
+  scrollbar-gutter: stable;
+}
+
+.camposDoRodape::-webkit-scrollbar {
+  width: 4px;
+}
+
+.camposDoRodape::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--fg-muted) 40%, transparent);
+  border-radius: 2px;
+}
+
+.grupoEnvio {
+  flex-shrink: 0;
 }
 
 .lote,
@@ -736,14 +773,30 @@
   }
 }
 
-/* Em altura curta, com um cartao na tela, o cartao ganha o espaco: lote e resumo saem da frente. */
+/* Em altura curta, Paginas, Modo e o botao nunca cedem. Cedem, nesta ordem: a dica do Modo, que
+   continua sendo lida pelo aria-describedby; lote e resumo com o nome de grupo aberto; e, com cartao
+   na tela, lote, resumo e grupos, para o cartao ganhar o espaco. */
 @media (max-height: 560px) {
+  .lateral [data-dica-modo] {
+    display: none;
+  }
+
+  .camposDoRodape {
+    gap: 6px;
+  }
+
+  .lateral:has([data-nome-aberto]) .lote,
+  .lateral:has([data-nome-aberto]) .resumo {
+    display: none;
+  }
+
   .lateral[data-com-cartao] .lote,
+  .lateral[data-com-cartao] [data-bloco-grupos],
   .lateral[data-com-cartao] .resumo {
     display: none;
   }
 
-  /* Sem destino e com todas as marcadas ocupadas, o rodape so repetiria o motivo: o cartao fica com o espaco. */
+  /* Divisao em curso, ou toda marcada com cartao em andamento: o rodape nao resolve nada, e o cartao fica com o espaco. */
   .lateral[data-sem-destino] .rodape {
     display: none;
   }

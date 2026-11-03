@@ -14,6 +14,7 @@ import {
   limitarLote,
   listarImpressoras,
 } from "./backend";
+import { BlocoModo } from "./components/BlocoModo";
 import { CalibrarDialog } from "./components/CalibrarDialog";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { DocumentArea, ID_AREA_DOCUMENTO } from "./components/DocumentArea";
@@ -33,14 +34,19 @@ import {
 } from "./cartoes";
 import {
   conteudoDaConfirmacao,
+  conteudoDaDivisao,
+  envioComDivisao,
   conteudoDaReimpressao,
   conteudoDaSubstituicao,
+  conteudoDoApagarGrupo,
   conteudoDoCancelamento,
   conteudoDoEnvio,
+  divisaoDoResumo,
   type ConteudoConfirmacao,
   type PedidoDeSubstituicao,
 } from "./confirmacao";
 import { mensagemDeErro } from "./erros";
+import { useGrupos } from "./grupos-uso";
 import { t } from "./i18n";
 import {
   comModeloGravado,
@@ -58,16 +64,35 @@ import {
   trechoDoEnvio,
   type RascunhoIntervalo,
 } from "./intervalo";
-import { iniciarImpressaoDoTrecho, resumoDoTrecho } from "./intervalo-envio";
 import { abrirLote, type LoteCaminhos } from "./lote";
 import {
   decidirFechamentoJanela,
   deveOuvirFechamentoJanela,
   estadoInicial,
+  modoDoEnvio,
   reduzirAbas,
   type Aba,
+  type DivisaoDoEnvio,
+  type ModoDistribuicao,
 } from "./tabs";
-import { comandarTrabalho, ouvirCartoes, soltarTrabalhos } from "./trabalhos";
+import {
+  comandarTrabalho,
+  iniciarImpressao,
+  ouvirCartoes,
+  resumoDoEnvio,
+  soltarTrabalhos,
+} from "./trabalhos";
+
+/** O que o envio manda, alem da aba e dos destinos. No espelho, nao ha lotes a repartir. */
+interface PlanoDoEnvio {
+  modo: ModoDistribuicao;
+  lotes: number;
+  /** Paginas do documento na confirmacao: se o arquivo mudar, nada sai. */
+  paginas: number;
+  divisao: DivisaoDoEnvio | null;
+}
+
+const ENVIO_EM_ESPELHO: PlanoDoEnvio = { modo: "espelho", lotes: 0, paginas: 0, divisao: null };
 
 export function App() {
   const [estado, despachar] = useReducer(reduzirAbas, estadoInicial);
@@ -89,7 +114,9 @@ export function App() {
     conteudo: ConteudoConfirmacao;
     aba: Aba;
     destinos: readonly Impressora[];
+    plano: PlanoDoEnvio;
   } | null>(null);
+  const grupos = useGrupos(despachar);
   const [cartaoACancelar, setCartaoACancelar] = useState<Cartao | null>(null);
   const [cartaoAReimprimir, setCartaoAReimprimir] = useState<Cartao | null>(null);
   const preparandoEnvio = useRef(false);
@@ -104,7 +131,8 @@ export function App() {
     substituicao !== null ||
     pedidoDeEnvio !== null ||
     cartaoACancelar !== null ||
-    cartaoAReimprimir !== null;
+    cartaoAReimprimir !== null ||
+    grupos.aApagar !== null;
   const abaAtiva = estado.abas.find((aba) => aba.id === estado.ativa) ?? null;
   const idAtiva = estado.ativa;
 
@@ -191,13 +219,18 @@ export function App() {
   // Os trabalhos continuam em qualquer aba: o evento diz a quem cada cartao pertence.
   useEffect(() => assinar(ouvirCartoes((cartao) => despachar({ tipo: "cartao", cartao }))), []);
 
-  const iniciar = useCallback((aba: Aba, destinos: readonly Impressora[]) => {
-    iniciarImpressaoDoTrecho(
+  const iniciar = useCallback((aba: Aba, destinos: readonly Impressora[], plano: PlanoDoEnvio) => {
+    // Antes de pedir: o primeiro cartao chega durante o pedido e ja precisa dos numeros dos lotes.
+    despachar({ tipo: "divisao_enviada", id: aba.id, divisao: plano.divisao });
+    iniciarImpressao(
       aba.id,
       aba.documento.caminho,
       aba.tamanhoLote,
       destinos.map((destino) => destino.id),
       trechoDoEnvio(lerIntervaloDaAba(aba)),
+      plano.modo,
+      plano.lotes,
+      plano.paginas,
     )
       .then((aceitas) => {
         // Quem nao foi aceito ja tinha um trabalho: o cartao diz isso, em vez de sumir em silencio.
@@ -358,6 +391,7 @@ export function App() {
         aplicarCartao(cartao: Cartao): void;
         abaAtiva(): number | null;
         definirLista(nova: ListaImpressoras): void;
+        definirDivisao(divisao: DivisaoDoEnvio | null): void;
         abrir(caminho: string): void;
         definirLendo(lendo: boolean): void;
         reterContagens(): void;
@@ -366,6 +400,11 @@ export function App() {
     };
     alvo.__plotsE2e = {
       definirLista: setLista,
+      definirDivisao(divisao) {
+        if (estado.ativa !== null) {
+          despachar({ tipo: "divisao_enviada", id: estado.ativa, divisao });
+        }
+      },
       aplicarCartao(cartao) {
         despachar({ tipo: "cartao", cartao });
       },
@@ -395,23 +434,55 @@ export function App() {
   const ocupadas = impressorasOcupadas(estado.abas);
 
   const aoImprimir = () => {
-    const { destinos, desabilitado } = envioComIntervalo(
-      estadoDoEnvio(abaAtiva, lista.impressoras, ocupadas),
+    const { destinos, desabilitado } = envioComDivisao(
+      envioComIntervalo(estadoDoEnvio(abaAtiva, lista.impressoras, ocupadas), abaAtiva),
       abaAtiva,
+      lista.impressoras,
+      ocupadas,
     );
     if (abaAtiva === null || desabilitado || preparandoEnvio.current) return;
-    if (!precisaConfirmar(destinos)) {
-      iniciar(abaAtiva, destinos);
+    const modo = modoDoEnvio(abaAtiva.modo, destinos.length);
+    // A divisao sempre pergunta, mesmo simulada: e la que o usuario le como juntar os macos.
+    if (modo === "espelho" && !precisaConfirmar(destinos)) {
+      iniciar(abaAtiva, destinos, ENVIO_EM_ESPELHO);
       return;
     }
     const aba = abaAtiva;
     preparandoEnvio.current = true;
     const leitura = lerIntervaloDaAba(aba);
-    resumoDoTrecho(aba.documento.caminho, aba.tamanhoLote, trechoDoEnvio(leitura))
+    resumoDoEnvio(
+      aba.documento.caminho,
+      aba.tamanhoLote,
+      trechoDoEnvio(leitura),
+      modo,
+      destinos.map((destino) => destino.id),
+    )
       .then((resumo) => {
-        const { linhas, notas } = linhasDoEnvio(destinos, resumo);
-        const conteudo = conteudoDoEnvio(linhasComTrecho(linhas, leitura), notas);
-        setPedidoDeEnvio({ conteudo, aba, destinos });
+        if (modo === "espelho") {
+          const { linhas, notas } = linhasDoEnvio(destinos, resumo);
+          setPedidoDeEnvio({
+            conteudo: conteudoDoEnvio(linhasComTrecho(linhas, leitura), notas),
+            aba,
+            destinos,
+            plano: ENVIO_EM_ESPELHO,
+          });
+          return;
+        }
+        // Quem ficou sem lote so aparece na confirmacao: nao recebe trabalho nem cartao.
+        const partes = divisaoDoResumo(destinos, resumo).filter((parte) => parte.lotes.length > 0);
+        setPedidoDeEnvio({
+          conteudo: conteudoDaDivisao(destinos, resumo, leitura),
+          aba,
+          destinos: destinos.filter((destino) =>
+            partes.some((parte) => parte.impressora === destino.id),
+          ),
+          plano: {
+            modo,
+            lotes: resumo.lotes,
+            paginas: resumo.paginasDoDocumento,
+            divisao: { partes, papeis: resumo.papeis },
+          },
+        });
       })
       .catch((falha: unknown) => setErro(mensagemDeErro(falha)))
       .finally(() => {
@@ -483,6 +554,15 @@ export function App() {
             aoComandar={aoComandarCartao}
             aoPedirCancelar={setCartaoACancelar}
             aoDispensar={dispensar}
+            blocoModo={
+              <BlocoModo
+                aba={abaAtiva}
+                grupos={grupos}
+                aoDefinirModo={(modo) => {
+                  if (idAtiva !== null) despachar({ tipo: "definir_modo", id: idAtiva, modo });
+                }}
+              />
+            }
           />
         )}
         <DocumentArea
@@ -516,7 +596,9 @@ export function App() {
         conteudo={confirmacao === null ? (pedidoDeEnvio?.conteudo ?? null) : null}
         aoCancelar={() => setPedidoDeEnvio(null)}
         aoConfirmar={() => {
-          if (pedidoDeEnvio !== null) iniciar(pedidoDeEnvio.aba, pedidoDeEnvio.destinos);
+          if (pedidoDeEnvio !== null) {
+            iniciar(pedidoDeEnvio.aba, pedidoDeEnvio.destinos, pedidoDeEnvio.plano);
+          }
           setPedidoDeEnvio(null);
         }}
       />
@@ -539,6 +621,7 @@ export function App() {
                 nomeDoCartao(cartaoAReimprimir),
                 cartaoAReimprimir.lote,
                 cartaoAReimprimir.total,
+                cartaoAReimprimir,
               )
             : null
         }
@@ -547,6 +630,13 @@ export function App() {
           if (cartaoAReimprimir !== null) comandar(cartaoAReimprimir, "reimprimir");
           setCartaoAReimprimir(null);
         }}
+      />
+      <ConfirmDialog
+        conteudo={
+          confirmacao === null && grupos.aApagar !== null ? conteudoDoApagarGrupo(grupos.aApagar) : null
+        }
+        aoCancelar={grupos.cancelarApagar}
+        aoConfirmar={grupos.confirmarApagar}
       />
     </div>
   );

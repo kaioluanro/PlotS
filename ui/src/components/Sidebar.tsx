@@ -1,12 +1,13 @@
 import { Check, ChevronDown, CircleAlert, LoaderCircle, RefreshCw } from "lucide-react";
-import { Fragment, useEffect, useId, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 import {
   cartaoEmAndamento,
   estadoDoEnvio,
-  marcadasTodasOcupadas,
+  rodapeCedeAoCartao,
   type Cartao,
   type Comando,
 } from "../cartoes";
+import { envioComDivisao } from "../confirmacao";
 import { t } from "../i18n";
 import {
   envioComIntervalo,
@@ -46,6 +47,7 @@ import {
 } from "../impressoras";
 import type { Aba } from "../tabs";
 import { BlocoIntervalo } from "./BlocoIntervalo";
+import { JuncaoDosMacos } from "./BlocoModo";
 import botoes from "./Botao.module.css";
 import { CartaoImpressao } from "./CartaoImpressao";
 import { LinhaRolagemAdiada } from "./LinhaRolagemAdiada";
@@ -75,6 +77,7 @@ interface Props {
   aoComandar: (cartao: Cartao, comando: Comando) => void;
   aoPedirCancelar: (cartao: Cartao) => void;
   aoDispensar: (cartao: Cartao) => void;
+  blocoModo: ReactNode;
 }
 
 export function Sidebar({
@@ -96,11 +99,20 @@ export function Sidebar({
   aoComandar,
   aoPedirCancelar,
   aoDispensar,
+  blocoModo,
 }: Props) {
   const idExplicacao = useId();
   const marcadas = aba?.impressorasMarcadas ?? [];
   const espera = useEsperaDoErro(aba);
-  const botao = envioComIntervalo(estadoDoEnvio(aba, impressoras, ocupadas), aba, espera.estado);
+  const botao = envioComDivisao(
+    envioComIntervalo(estadoDoEnvio(aba, impressoras, ocupadas), aba, espera.estado),
+    aba,
+    impressoras,
+    ocupadas,
+  );
+  const lateralRef = useRef<HTMLElement>(null);
+  const botaoEnvio = useRef<HTMLButtonElement>(null);
+  const focoNoEnvio = useFocoQuandoOEnvioSai(lateralRef, botaoEnvio, botao.desabilitado);
   const cartoes = aba?.cartoes ?? [];
   const idBotao = useId();
   const idNotaDoModelo = useId();
@@ -111,15 +123,14 @@ export function Sidebar({
 
   return (
     <aside
+      ref={lateralRef}
       id={ID_LATERAL}
       className={styles.lateral}
       aria-labelledby="titulo-lateral"
       // Com um cartao na tela, a altura curta esconde a linha de lote e o resumo (ver o CSS).
       data-com-cartao={cartoes.length > 0 ? "" : undefined}
-      // Com um cartao na tela e todas as marcadas ocupadas, o rodape nao tem o que oferecer: a altura curta o esconde.
-      data-sem-destino={
-        cartoes.length > 0 && marcadasTodasOcupadas(impressoras, marcadas, ocupadas) ? "" : undefined
-      }
+      // Sem nada que o rodape possa resolver agora, a altura curta o esconde.
+      data-sem-destino={rodapeCedeAoCartao(botao, aba, impressoras, ocupadas) ? "" : undefined}
     >
       <div className={styles.cabecalho}>
         <h2 id="titulo-lateral" className={styles.titulo}>
@@ -167,6 +178,7 @@ export function Sidebar({
         {!lendo && impressoras.length === 0 && avisos.length === 0 && (
           <p className={styles.vazia}>{t("lateral.vazia")}</p>
         )}
+        <JuncaoDosMacos aba={aba} />
         {cartoes.length > 0 && (
           <section className={styles.emAndamento} aria-labelledby="titulo-em-andamento">
             <h3 id="titulo-em-andamento" className={styles.tituloSecao}>
@@ -211,17 +223,23 @@ export function Sidebar({
       <LinhaRolagemAdiada />
 
       <div className={styles.rodape}>
-        <BlocoIntervalo
-          key={`intervalo-${aba?.id ?? "sem-aba"}`}
-          aba={aba}
-          espera={espera}
-          aoDefinir={aoDefinirIntervalo}
-        />
-        {/* A chave recria o campo: o rascunho digitado em uma aba nao passa para a outra. */}
-        <CampoLote key={aba?.id ?? "sem-aba"} aba={aba} aoDefinir={aoDefinirLote} />
+        {/* Em janela curta, so os campos rolam: o botao e o motivo ficam sempre embaixo. */}
+        <div className={styles.camposDoRodape}>
+          <BlocoIntervalo
+            key={`intervalo-${aba?.id ?? "sem-aba"}`}
+            aba={aba}
+            espera={espera}
+            aoDefinir={aoDefinirIntervalo}
+          />
+          {/* A chave recria o campo: o rascunho digitado em uma aba nao passa para a outra. */}
+          <CampoLote key={aba?.id ?? "sem-aba"} aba={aba} aoDefinir={aoDefinirLote} />
+          {blocoModo}
+        </div>
         <div className={styles.grupoEnvio}>
           <button
+            ref={botaoEnvio}
             type="button"
+            onFocus={focoNoEnvio}
             className={`${botoes.botao} ${botoes.primario} ${styles.imprimir}`}
             disabled={botao.desabilitado}
             title={botao.motivo ?? undefined}
@@ -239,6 +257,37 @@ export function Sidebar({
       </div>
     </aside>
   );
+}
+
+/**
+ * O botao de envio pode ficar desabilitado ou sair da tela logo depois de usado. Quem estava nele,
+ * ou voltaria a ele ao fechar a confirmacao, segue para a primeira acao do primeiro cartao.
+ */
+function useFocoQuandoOEnvioSai(
+  lateral: RefObject<HTMLElement | null>,
+  botao: RefObject<HTMLButtonElement | null>,
+  desabilitado: boolean,
+): () => void {
+  const pendente = useRef(false);
+  useEffect(() => {
+    if (!pendente.current) return;
+    const ativo = document.activeElement;
+    // O dialogo ainda esta na frente: quem decide e o estado depois que ele sair.
+    if (ativo?.closest('[role="dialog"], [role="alertdialog"]')) return;
+    if (ativo !== null && ativo !== document.body && ativo !== botao.current) {
+      pendente.current = false;
+      return;
+    }
+    const fora = desabilitado || botao.current?.offsetParent === null;
+    if (!fora) return;
+    const acao = lateral.current?.querySelector<HTMLElement>("article button:not(:disabled)");
+    if (!acao) return;
+    pendente.current = false;
+    acao.focus();
+  });
+  return () => {
+    pendente.current = true;
+  };
 }
 
 interface PropsLinha {
