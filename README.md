@@ -20,11 +20,11 @@ O PlotS é software livre sob a licença MIT (arquivo `LICENSE`). Os componentes
 
 ## Seus dados
 
-Os perfis das impressoras ficam em `%APPDATA%\plots\perfis.toml`, um arquivo de texto. Para apagá-los, feche o PlotS e apague esse arquivo (ou a pasta `plots`). Na próxima abertura o programa começa sem perfis.
+Os perfis das impressoras e os ajustes que você salvou nas preferências do driver ficam em `%APPDATA%\plots\perfis.toml`, um arquivo de texto. Os ajustes ficam em Base64, que não é criptografia, e o PlotS não interpreta o que o driver de cada fabricante guarda neles. Se o driver da sua impressora usa senha, PIN ou código de usuário, esses dados podem estar no arquivo, então evite compartilhá-lo. Para apagar o ajuste de uma impressora, use **Usar padrão** na linha dela. Para apagar tudo, feche o PlotS e apague esse arquivo (ou a pasta `plots`). Na próxima abertura o programa começa sem perfis e sem ajustes.
 
-`%APPDATA%` é a pasta Roaming. Em um computador com perfil móvel (por exemplo, de uma empresa ou escola), o Windows pode copiar essa pasta para o servidor e levá-la a outros computadores, junto com o nome das impressoras gravado nos perfis.
+`%APPDATA%` é a pasta Roaming. Em um computador com perfil móvel (por exemplo, de uma empresa ou escola), o Windows pode copiar essa pasta para o servidor e levá-la a outros computadores, junto com o nome das impressoras e os ajustes do driver gravados no arquivo.
 
-O desinstalador foi configurado para não apagar os perfis.
+O desinstalador foi configurado para não apagar os perfis nem os ajustes.
 
 ## Aviso
 

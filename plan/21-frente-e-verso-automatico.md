@@ -1,6 +1,6 @@
 # Frente e verso automático
 
-**Estado:** Não iniciado. Começa depois de `varias-impressoras` e `gesto-e-spooler` entrarem.
+**Estado:** Em andamento.
 
 ## Objetivo
 

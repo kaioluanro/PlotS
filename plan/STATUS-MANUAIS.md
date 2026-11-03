@@ -25,7 +25,7 @@ Requisitos: OK 51 · PARTIAL 33 · MISSING 6 · BUG 0 · N/A 3 (93). Detalhes em
 | [Linux e macOS](18-linux-e-macos.md) | 0 | 0 | 1 | 0 | 0 | Não iniciado |
 | [Modelos de impressora](19-modelos-de-impressora.md) | — | — | — | — | — | Em andamento |
 | [Preferências do driver](20-preferencias-do-driver.md) | — | — | — | — | — | Em andamento |
-| [Frente e verso automático](21-frente-e-verso-automatico.md) | — | — | — | — | — | Não iniciado |
+| [Frente e verso automático](21-frente-e-verso-automatico.md) | — | — | — | — | — | Em andamento |
 
 ## Lotes
 
@@ -54,11 +54,13 @@ Requisitos: OK 51 · PARTIAL 33 · MISSING 6 · BUG 0 · N/A 3 (93). Detalhes em
 | instalador | `1a1f6d7` | concluído; instalador gerado, não executado |
 | gesto-e-spooler | `ca10be1` | concluído; simuladas e backend falso, sem driver real nem papel |
 | varias-impressoras | `62d51a4` | concluído; simuladas, fila real só até a confirmação, sem papel |
+| preferencias-driver | `ec46630` | concluído no código; janela real aberta e fechada, sem clicar em OK |
 
-**Próximo:** engrenagem do driver (`20-preferencias-do-driver`) e frente e verso automático (`21-frente-e-verso-automatico`).
+**Próximo:** frente e verso automático (`21-frente-e-verso-automatico`).
 
 ## Bloqueado ou dependente do usuário
 
 - Impressora real, que o usuário não tem à mão: confirmação dos planos `04-calibracao`, `07-cli-impressao` e `08-impressao-windows`.
 - Imagem da tela de abertura: plano `10-splash`.
 - Executar o instalador em máquina ou conta de teste: plano `17-acabamento`.
+- Conferir a janela real do driver, com OK e Cancelar: plano `20-preferencias-do-driver`.
