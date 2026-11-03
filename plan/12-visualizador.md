@@ -22,7 +22,7 @@ Mostrar o documento e as miniaturas na janela; toda a decisão de ordem continua
 - Cores ICC e CMYK na prévia são aproximadas. Imagens acima de 200 MP não são desenhadas.
 - **Pendente:** medir a troca de aba com um PDF de 20 MB e, se passar de 300 ms, manter vivo o documento da última aba; Ctrl+roda; ir à página digitando o número; `--panel-hover` no tema claro; primeiro "+" quase não muda o zoom; foco em "Tentar de novo"; ícones de "−" e "+" em cinza nas cores forçadas do tema escuro; rever os 8 `Foxit` Serif e Fixed, que parecem sem uso com `useSystemFonts`.
 - **Memória:** PDF de 425 MB, base de 185 MB, pico de 1,39 GB, 414 MB depois de fechar. O resíduo está na GPU do WebView2, causa não determinada.
-- **Não verificado:** JBIG2 aritmético (sem codificador para gerar o teste; pelo código usa o mesmo módulo do MMR), exe empacotado, captura de erro de página, escalas de 125% e 150%, leitor de tela real.
+- **Conferido no exe de release:** abertura, página e miniatura de um PDF com JPX. **Não verificado:** JBIG2 aritmético (sem codificador para gerar o teste; pelo código usa o mesmo módulo do MMR), instalador, captura de erro de página, escalas de 125% e 150%, leitor de tela real.
 
 ## Pronto quando
 
