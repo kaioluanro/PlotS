@@ -256,7 +256,7 @@ const ptBR = {
   "cartao.simulando.frente": "A frente está sendo simulada. O verso libera quando a simulação confirmar.",
   "cartao.simulando.verso": "O verso está sendo simulado. Nada foi à impressora.",
   "cartao.virada.lateral": "Vire o maço pela lateral, como a página de um livro.",
-  "cartao.virada.naoVirar": "Não vire o maço.",
+  "cartao.virada.naoVirar": "Não vire nem gire o maço.",
   "cartao.virada.girar": "Gire o maço 180°, sem virá-lo.",
   "cartao.calibracao":
     "Pegue o maço como saiu, não embaralhe, e recoloque do mesmo jeito que na calibração.",
@@ -803,7 +803,7 @@ const en: Record<Chave, string> = {
   "cartao.simulando.frente": "The front is being simulated. The back unlocks when the simulation confirms.",
   "cartao.simulando.verso": "The back is being simulated. Nothing went to the printer.",
   "cartao.virada.lateral": "Flip the stack over its side, like a book page.",
-  "cartao.virada.naoVirar": "Do not flip the stack.",
+  "cartao.virada.naoVirar": "Do not flip or turn the stack.",
   "cartao.virada.girar": "Turn the stack 180°, without flipping it.",
   "cartao.calibracao":
     "Take the stack as it came out, do not shuffle it, and put it back the same way as in the calibration.",

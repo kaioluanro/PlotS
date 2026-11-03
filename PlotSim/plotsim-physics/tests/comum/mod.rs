@@ -191,7 +191,8 @@ pub fn gesto_do_modelo(modelo: ModeloImpressora, borda: BordaQueEntra) -> Gesto 
     gesto_da_instrucao(Instrucao::do_modelo(modelo), modo.entrada, borda, false)
 }
 
-/// A borda que fecha com o giro do plano: verso girado pede a base; sem giro, o topo.
+/// A borda que fecha com o giro do plano: verso girado pede a base; sem giro, o topo. Nos dois
+/// modelos o verso vai girado, e cumprir a instrução ao pé da letra já faz a base entrar primeiro.
 pub fn borda_que_fecha(perfil: PerfilImpressora) -> BordaQueEntra {
     if perfil.verso_girar_180 {
         BordaQueEntra::Base

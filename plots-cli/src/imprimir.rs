@@ -339,10 +339,16 @@ pub(crate) fn mecanica_coerente(
         entrada_pelo_topo: mascara & 8 != 0,
         giro_segunda_passada: mascara & 16 != 0,
     });
+    // Uma gaveta medida com o verso sem giro: a máquina gira a segunda passada por conta própria.
+    // Continua saindo com a face impressa para baixo, e é isso que as frases dizem.
+    let gaveta_que_gira = Mecanica {
+        giro_segunda_passada: true,
+        ..Mecanica::gaveta()
+    };
     let bases = if perfil.passada1_inversa {
-        [Mecanica::traseira(), Mecanica::gaveta()]
+        [Mecanica::traseira(), Mecanica::gaveta(), gaveta_que_gira]
     } else {
-        [Mecanica::gaveta(), Mecanica::traseira()]
+        [Mecanica::gaveta(), gaveta_que_gira, Mecanica::traseira()]
     };
     bases
         .into_iter()
@@ -384,6 +390,7 @@ fn sequencia_confere(
 #[cfg(test)]
 mod testes {
     use super::*;
+    use plots_core::{GestoRecolocar, ViradaMaco};
     use plots_print::fluxo::{gesto_de_recolocacao, texto_do_gesto};
 
     #[test]
@@ -418,6 +425,43 @@ mod testes {
     }
 
     #[test]
+    fn perfil_salvo_que_nao_vira_o_maco_tambem_encontra_mecanica_nas_duas_ordens() {
+        for mascara in 0u8..8 {
+            for ordem in [OrdemPassadas::ParesPrimeiro, OrdemPassadas::ImparesPrimeiro] {
+                let p = PerfilImpressora {
+                    gesto_recolocar: GestoRecolocar {
+                        virada: ViradaMaco::NaoVirar,
+                        ..GestoRecolocar::default()
+                    },
+                    ..perfil(mascara & 1 != 0, mascara & 2 != 0, mascara & 4 != 0)
+                };
+                assert!(mecanica_coerente(&p, ordem).is_some(), "{p:?} {ordem:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn laser_calibrada_sem_giro_continua_dizendo_o_lado_da_gaveta() {
+        // Quem mediu e chegou ao verso sem giro continua com o perfil dele, e a frase não muda de
+        // lado: a máquina continua saindo com a face impressa para baixo e sendo lida virada.
+        let p = PerfilImpressora {
+            gesto_recolocar: GestoRecolocar {
+                virada: ViradaMaco::NaoVirar,
+                ..GestoRecolocar::default()
+            },
+            ..perfil(true, false, false)
+        };
+        let achada = mecanica_coerente(&p, OrdemPassadas::ParesPrimeiro).expect("mecânica");
+        assert_eq!(
+            Mecanica {
+                giro_segunda_passada: false,
+                ..achada
+            },
+            Mecanica::gaveta(),
+        );
+    }
+
+    #[test]
     fn perfis_embutidos_escolhem_a_propria_mecanica_simulada() {
         let ordem = OrdemPassadas::ParesPrimeiro;
         for virtual_ in [ImpressoraVirtual::Traseira, ImpressoraVirtual::Gaveta] {
@@ -441,7 +485,7 @@ mod testes {
         );
         assert_eq!(
             texto_do_gesto(ImpressoraVirtual::Gaveta.gesto()),
-            "Não vire o maço."
+            "Não vire nem gire o maço."
         );
         assert_eq!(
             texto_do_gesto(Recolocacao {
@@ -461,7 +505,7 @@ mod testes {
         let laser = ImpressoraVirtual::Gaveta.perfil();
         assert!(laser.passada1_inversa, "{laser:?}");
         assert!(!laser.passada2_inversa, "{laser:?}");
-        assert!(!laser.verso_girar_180, "{laser:?}");
+        assert!(laser.verso_girar_180, "{laser:?}");
     }
 
     #[test]

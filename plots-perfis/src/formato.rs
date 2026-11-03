@@ -137,6 +137,17 @@ fn modelo_confere(entrada: &EntradaPerfil) -> bool {
             .is_none_or(|modelo| modelo.perfil() == entrada.perfil)
 }
 
+/// Os valores que o modelo laser gravava enquanto mandava o verso sem giro. Só uma entrada que se
+/// diz da laser, com estes valores exatos, passa ao perfil atual do modelo: ela escolheu o modelo,
+/// não mediu nada. Uma entrada sem modelo, mesmo com os mesmos valores, foi calibrada e não muda.
+const fn laser_gravada_sem_giro() -> PerfilImpressora {
+    let atual = ModeloImpressora::Laser.perfil();
+    PerfilImpressora {
+        verso_girar_180: false,
+        ..atual
+    }
+}
+
 /// Lê a entrada sem recusar o arquivo por causa dela: o modelo que não se sustenta some e os
 /// valores gravados ficam, como em um perfil personalizado. Uma borda inválida também tira o modelo
 /// e vale como a borda curta ou a virada pela lateral. As outras filas não são afetadas.
@@ -162,12 +173,20 @@ impl From<EntradaArquivo> for EntradaPerfil {
                 borda_primeiro: borda_gravada.unwrap_or(BordaEntrada::Curta),
             },
         };
-        let modelo = entrada
+        let modelo_gravado = entrada
             .modelo
             .as_ref()
             .and_then(toml::Value::as_str)
-            .and_then(ModeloImpressora::de_codigo)
-            .filter(|modelo| bordas_validas && modelo.perfil() == perfil);
+            .and_then(ModeloImpressora::de_codigo);
+        let perfil = if bordas_validas
+            && modelo_gravado == Some(ModeloImpressora::Laser)
+            && perfil == laser_gravada_sem_giro()
+        {
+            ModeloImpressora::Laser.perfil()
+        } else {
+            perfil
+        };
+        let modelo = modelo_gravado.filter(|modelo| bordas_validas && modelo.perfil() == perfil);
         // Sem o gesto dos outros papeis, o perfil nao se sustenta como automatico.
         let automatico = modelo.is_some()
             && entrada

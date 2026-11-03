@@ -845,3 +845,95 @@ fn sem_perfil_a_opcao_do_driver_nao_tem_onde_ficar() {
     assert!(!perfis.definir_driver_inverte("Sala", true));
     assert!(perfis.is_empty());
 }
+
+/// O que uma fila da laser gravava enquanto o modelo mandava o verso sem giro.
+const LASER_DE_ANTES: &str = "versao = 1\n\n[filas.\"x\"]\napelido = \"Sala\"\npassada1_inversa = true\npassada2_inversa = false\nverso_girar_180 = false\nvirar_maco = false\nborda_primeiro = \"curta\"\nmodelo = \"laser\"\n";
+
+#[test]
+fn fila_gravada_com_o_modelo_laser_passa_a_valer_o_perfil_atual_do_modelo() {
+    let pasta = Pasta::nova("laser-de-antes");
+    let lidos = ler_texto(&pasta, LASER_DE_ANTES).expect("leitura");
+    let entrada = lidos.obter("x").expect("perfil da fila");
+    assert_eq!(entrada.modelo, Some(ModeloImpressora::Laser));
+    assert_eq!(entrada.perfil, ModeloImpressora::Laser.perfil());
+    assert!(entrada.perfil.verso_girar_180);
+    assert_eq!(entrada.apelido.as_deref(), Some("Sala"));
+    // Só a leitura não reescreve o arquivo; gravar leva os valores novos, e o modelo se sustenta.
+    assert_eq!(fs::read_to_string(pasta.arquivo()).unwrap(), LASER_DE_ANTES);
+    salvar(&pasta.arquivo(), &lidos).expect("gravação");
+    let regravado = fs::read_to_string(pasta.arquivo()).expect("leitura do texto");
+    assert!(regravado.contains("verso_girar_180 = true"), "{regravado}");
+    assert_eq!(carregar(&pasta.arquivo()).expect("leitura"), lidos);
+}
+
+#[test]
+fn fila_automatica_com_o_gesto_da_laser_tambem_passa_ao_perfil_atual() {
+    let pasta = Pasta::nova("laser-automatica-de-antes");
+    let texto = format!("{LASER_DE_ANTES}automatico = true\n");
+    let lidos = ler_texto(&pasta, &texto).expect("leitura");
+    let entrada = lidos.obter("x").expect("perfil da fila");
+    assert!(entrada.automatico);
+    assert_eq!(entrada.modelo, Some(ModeloImpressora::Laser));
+    assert_eq!(entrada.perfil, ModeloImpressora::Laser.perfil());
+}
+
+#[test]
+fn perfil_calibrado_com_os_mesmos_valores_nao_muda_sozinho() {
+    let pasta = Pasta::nova("calibrado-sem-giro");
+    let texto = LASER_DE_ANTES.replace("modelo = \"laser\"\n", "");
+    let lidos = ler_texto(&pasta, &texto).expect("leitura");
+    let entrada = lidos.obter("x").expect("perfil da fila");
+    assert_eq!(entrada.modelo, None);
+    assert!(!entrada.perfil.verso_girar_180);
+    salvar(&pasta.arquivo(), &lidos).expect("gravação");
+    let regravado = fs::read_to_string(pasta.arquivo()).expect("leitura do texto");
+    assert!(regravado.contains("verso_girar_180 = false"), "{regravado}");
+}
+
+#[test]
+fn modelo_laser_com_outros_valores_nao_vira_o_perfil_do_modelo() {
+    // Só os valores exatos do modelo antigo são reconhecidos: o resto continua personalizado.
+    let pasta = Pasta::nova("laser-com-outros-valores");
+    for (de, para) in [
+        ("passada1_inversa = true", "passada1_inversa = false"),
+        ("passada2_inversa = false", "passada2_inversa = true"),
+        ("virar_maco = false", "virar_maco = true"),
+        ("borda_primeiro = \"curta\"", "borda_primeiro = \"longa\""),
+    ] {
+        let texto = LASER_DE_ANTES.replace(de, para);
+        let lidos = ler_texto(&pasta, &texto).expect(&texto);
+        let entrada = lidos.obter("x").expect("perfil da fila");
+        assert_eq!(entrada.modelo, None, "{texto}");
+        assert!(!entrada.perfil.verso_girar_180, "{texto}");
+    }
+}
+
+#[test]
+fn passar_ao_perfil_atual_da_laser_mantem_o_driver_que_inverte() {
+    let pasta = Pasta::nova("laser-de-antes-driver");
+    let texto = format!("{LASER_DE_ANTES}driver_inverte = true\n");
+    let lidos = ler_texto(&pasta, &texto).expect("leitura");
+    let entrada = lidos.obter("x").expect("perfil da fila");
+    assert_eq!(entrada.perfil, ModeloImpressora::Laser.perfil());
+    assert!(entrada.driver_inverte);
+    salvar(&pasta.arquivo(), &lidos).expect("gravação");
+    let regravado = fs::read_to_string(pasta.arquivo()).expect("leitura do texto");
+    assert!(regravado.contains("driver_inverte = true"), "{regravado}");
+    assert!(regravado.contains("verso_girar_180 = true"), "{regravado}");
+}
+
+#[test]
+fn passar_ao_perfil_atual_da_laser_mantem_o_historico_desligado() {
+    let pasta = Pasta::nova("laser-de-antes-historico");
+    let texto = LASER_DE_ANTES.replace("versao = 1\n", "versao = 1\nguardar_historico = false\n");
+    let lidos = ler_texto(&pasta, &texto).expect("leitura");
+    assert!(!lidos.guardar_historico());
+    assert_eq!(
+        lidos.obter("x").expect("perfil da fila").perfil,
+        ModeloImpressora::Laser.perfil()
+    );
+    salvar(&pasta.arquivo(), &lidos).expect("gravação");
+    assert!(!carregar(&pasta.arquivo())
+        .expect("leitura")
+        .guardar_historico());
+}

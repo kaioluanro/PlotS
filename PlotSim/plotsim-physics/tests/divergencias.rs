@@ -1,5 +1,5 @@
-//! Divergências com o programa conferido. A que falha fica ignorada para não travar a suíte, até
-//! alguém decidir qual dos dois está certo; as outras mostram a extensão do problema.
+//! O programa conferido, cumprido ao pé da letra, contra o modelo físico. Os dois modelos fecham, e
+//! o defeito que a laser já teve fica guardado aqui: tirar o giro do verso traz ele de volta.
 
 mod comum;
 
@@ -42,7 +42,6 @@ fn o_jato_ao_pe_da_letra_fecha_em_toda_a_matriz() {
 }
 
 #[test]
-#[ignore = "A laser recoloca como saiu e manda o verso sem giro: pela curva em U, a aresta que entrou primeiro volta por último, e todo verso sai de cabeça para baixo"]
 fn a_laser_ao_pe_da_letra_fecha_em_toda_a_matriz() {
     for total in PAGINAS {
         for lote in LOTES {
@@ -56,8 +55,30 @@ fn a_laser_ao_pe_da_letra_fecha_em_toda_a_matriz() {
 }
 
 #[test]
-fn a_laser_ao_pe_da_letra_acerta_a_ordem_e_erra_so_a_orientacao_do_verso() {
+fn a_laser_ao_pe_da_letra_acerta_a_ordem_e_a_orientacao_do_verso() {
     let motivos = conferir_ao_pe_da_letra(ModeloImpressora::Laser, 6, 0);
+    assert_eq!(motivos, Vec::<String>::new());
+}
+
+#[test]
+fn sem_o_giro_do_verso_a_laser_ao_pe_da_letra_acerta_a_ordem_e_erra_so_a_orientacao() {
+    // Pela curva em U, a aresta que entrou primeiro volta por último: recolocar como saiu e mandar
+    // o verso sem giro deixa todo verso de cabeça para baixo.
+    let modelo = ModeloImpressora::Laser;
+    let perfil = PerfilImpressora {
+        verso_girar_180: false,
+        ..modelo.perfil()
+    };
+    let maco = juntar(plano(6, 0, perfil).iter().map(|l| {
+        executar_lote(
+            l,
+            LASER,
+            &Recoloca::AoPeDaLetra(Vec::new()),
+            Leitura::VirandoOMaco,
+            Defeito::Nenhum,
+        )
+    }));
+    let motivos: Vec<String> = conferir(&maco, 6).iter().map(ToString::to_string).collect();
     assert_eq!(
         motivos,
         vec![
@@ -66,34 +87,6 @@ fn a_laser_ao_pe_da_letra_acerta_a_ordem_e_erra_so_a_orientacao_do_verso() {
             "verso de cabeça para baixo na folha 3",
         ]
     );
-}
-
-#[test]
-fn com_verso_girado_a_laser_ao_pe_da_letra_fecha() {
-    // Uma saída que não pede giro nenhum à pessoa: o programa manda o verso girado.
-    let modelo = ModeloImpressora::Laser;
-    let perfil = PerfilImpressora {
-        verso_girar_180: true,
-        ..modelo.perfil()
-    };
-    for total in PAGINAS {
-        for lote in LOTES {
-            let maco = juntar(plano(total, lote, perfil).iter().map(|l| {
-                executar_lote(
-                    l,
-                    LASER,
-                    &Recoloca::AoPeDaLetra(Vec::new()),
-                    Leitura::VirandoOMaco,
-                    Defeito::Nenhum,
-                )
-            }));
-            assert_eq!(
-                conferir(&maco, u32::try_from(total).unwrap()),
-                vec![],
-                "{total} páginas, lote {lote}"
-            );
-        }
-    }
 }
 
 #[test]
@@ -159,20 +152,9 @@ fn quadro_de_cada_modelo_por_forma_de_recolocar() {
     let combinacoes = PAGINAS.len() * LOTES.len();
     // A um documento de uma página não há verso a errar: essas quatro combinações sempre passam.
     let so_de_uma_pagina = LOTES.len();
-    for (modelo, literal, topo, base) in [
-        (
-            ModeloImpressora::JatoDeTinta,
-            combinacoes,
-            so_de_uma_pagina,
-            combinacoes,
-        ),
-        (
-            ModeloImpressora::Laser,
-            so_de_uma_pagina,
-            combinacoes,
-            so_de_uma_pagina,
-        ),
-    ] {
+    // Com o verso girado nos dois, cumprir a instrução é o mesmo que fazer a base entrar primeiro.
+    for modelo in [ModeloImpressora::JatoDeTinta, ModeloImpressora::Laser] {
+        let (literal, topo, base) = (combinacoes, so_de_uma_pagina, combinacoes);
         let ops = operacoes_da_virada(Instrucao::do_modelo(modelo).virada);
         let achado = (
             quantas_passam(modelo, &Recoloca::AoPeDaLetra(ops)),

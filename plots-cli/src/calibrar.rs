@@ -170,7 +170,7 @@ pub(crate) fn descrever_perfil(perfil: &PerfilImpressora) -> Vec<String> {
         "páginas sem giro"
     };
     let recolocacao = match perfil.gesto_recolocar.virada {
-        ViradaMaco::NaoVirar => "não virar o maço",
+        ViradaMaco::NaoVirar => "não virar nem girar o maço",
         ViradaMaco::PelaLateral => "virar o maço",
         ViradaMaco::PelaBordaDeCima => "virar o maço pela borda de cima",
     };
@@ -232,7 +232,7 @@ mod testes {
                 "Frente: da última para a primeira",
                 "Verso: da última para a primeira",
                 "Verso: páginas giradas 180°",
-                "Recolocação: não virar o maço",
+                "Recolocação: não virar nem girar o maço",
                 "Borda que entra primeiro: longa",
             ]
         );

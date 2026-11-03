@@ -53,8 +53,9 @@ impl Mecanica {
 
     /// Laser: a folha sai com a face impressa para baixo, cai em cima da pilha, e a
     /// gaveta puxa a folha de cima. A gaveta imprime a face que fica para cima, por
-    /// isso o maço não é virado na recolocação. O maço final sai com a primeira
-    /// folha por baixo e é lido virando-o.
+    /// isso o maço não é virado na recolocação. A curva em U troca a aresta que lidera:
+    /// o verso vai girado. O maço final sai com a primeira folha por baixo e é lido
+    /// virando-o.
     pub const fn gaveta() -> Self {
         Self {
             saida_face_impressa_para_cima: false,
@@ -63,6 +64,13 @@ impl Mecanica {
             entrada_pelo_topo: true,
             giro_segunda_passada: false,
         }
+    }
+
+    /// A folha faz uma curva em U quando entra com a face a imprimir para um lado e sai com ela
+    /// para o outro: a face de cima passa para baixo, e a aresta que entrou primeiro passa a ser a
+    /// última a entrar de novo. No caminho reto, a folha só anda.
+    pub const fn curva_em_u(self) -> bool {
+        self.imprime_face_para_cima != self.saida_face_impressa_para_cima
     }
 
     /// Mecânica do tipo de máquina que o modelo representa.
@@ -238,7 +246,7 @@ impl Simulador {
                 }),
                 face_b: None,
                 face_a_para_cima: self.mecanica.saida_face_impressa_para_cima,
-                girada: false,
+                girada: self.mecanica.curva_em_u(),
                 sobreimpressao: None,
             };
             self.pilha.push(folha);
@@ -1032,8 +1040,9 @@ mod tests {
     /// `folhas_para_leitura`. As linhas hipotéticas, que não foram medidas, seguem a regra
     /// física das passadas: a primeira inverte quando a entrada pelo topo e a face impressa
     /// para cima coincidem; a segunda inverte quando a saída no topo e a face impressa para
-    /// cima coincidem; e o verso só gira quando a máquina gira a segunda passada sozinha.
-    /// As duas últimas linhas são o jato de tinta e a laser, com os gestos dos modelos.
+    /// cima coincidem; e o verso só gira quando a máquina gira a segunda passada sozinha. Todas
+    /// têm caminho reto e viram como livro. As duas últimas linhas são o jato de tinta e a laser,
+    /// com os gestos dos modelos: a virada de bloco de notas e a curva em U pedem o verso girado.
     const TABELA_DE_MECANICAS: [((bool, bool, bool), Mecanica, Recolocacao); 10] = [
         // Imprime a face de baixo e sai no topo, face para baixo.
         (
@@ -1106,7 +1115,7 @@ mod tests {
             Recolocacao::virada_pela_borda_de_cima(),
         ),
         // Laser: perfil e gesto do modelo.
-        ((true, false, false), Mecanica::gaveta(), GESTO_NENHUM),
+        ((true, false, true), Mecanica::gaveta(), GESTO_NENHUM),
     ];
 
     fn perfil_de(
@@ -1201,7 +1210,7 @@ mod tests {
             Recolocacao::virada_pela_borda_de_cima()
         )));
         assert!(TABELA_DE_MECANICAS.contains(&(
-            (true, false, false),
+            (true, false, true),
             Mecanica::gaveta(),
             GESTO_NENHUM
         )));
@@ -1244,7 +1253,7 @@ mod tests {
         }
     }
 
-    /// Perfil da laser: frente inversa, verso direto e sem giro.
+    /// Perfil da laser: frente inversa, verso direto e girado.
     fn perfil_laser() -> PerfilImpressora {
         ModeloImpressora::Laser.perfil()
     }
@@ -1280,12 +1289,13 @@ mod tests {
     }
 
     #[test]
-    fn laser_seis_paginas_frente_6_4_2_verso_1_3_5_sem_virar() {
+    fn laser_seis_paginas_frente_6_4_2_verso_1_3_5_girado_sem_virar() {
         let lote = plano_documento(6, 3, OrdemPassadas::ParesPrimeiro, perfil_laser())
             .unwrap()
             .remove(0);
         assert_eq!(numeros(&lote.passada1), vec![Some(6), Some(4), Some(2)]);
         assert_eq!(numeros(&lote.passada2), vec![Some(1), Some(3), Some(5)]);
+        assert!(lote.passada2.iter().all(|p| p.girar_180));
         let sim = executar(
             6,
             Mecanica::gaveta(),
@@ -1399,7 +1409,75 @@ mod tests {
 
     #[test]
     fn laser_entrega_seis_paginas_certas_no_simulador() {
-        seis_paginas_do_modelo(ModeloImpressora::Laser, [6, 4, 2], [1, 3, 5], false);
+        seis_paginas_do_modelo(ModeloImpressora::Laser, [6, 4, 2], [1, 3, 5], true);
+    }
+
+    #[test]
+    fn na_curva_em_u_o_verso_sem_giro_sai_de_cabeca_para_baixo() {
+        let sem_giro = PerfilImpressora {
+            verso_girar_180: false,
+            ..perfil_laser()
+        };
+        let sim = executar(6, Mecanica::gaveta(), sem_giro, Recolocacao::default());
+        let pares = [(Some(1), Some(2)), (Some(3), Some(4)), (Some(5), Some(6))];
+        let veredictos = conferir_folhas(&sim.folhas_para_leitura(), &pares);
+        assert_eq!(
+            veredictos,
+            vec![Veredito::Errada(vec![Defeito::VersoDeCabecaParaBaixo]); 3]
+        );
+    }
+
+    #[test]
+    fn dezesseis_mecanicas_e_vinte_e_quatro_perfis_seguem_a_regra_do_caminho_do_papel() {
+        // Caminho reto: a folha só anda, então é preciso virar para achar a face em branco. Virar
+        // como livro mantém a aresta que lidera; como bloco de notas, troca. Curva em U: a face em
+        // branco já volta para o lado que recebe tinta, sem virar, e a aresta que lidera já trocou.
+        for mascara in 0u8..16 {
+            let mecanica = Mecanica {
+                saida_face_impressa_para_cima: mascara & 1 != 0,
+                saida_no_topo: mascara & 2 != 0,
+                imprime_face_para_cima: mascara & 4 != 0,
+                entrada_pelo_topo: mascara & 8 != 0,
+                giro_segunda_passada: false,
+            };
+            let curva_em_u =
+                mecanica.imprime_face_para_cima != mecanica.saida_face_impressa_para_cima;
+            for virada in [
+                ViradaMaco::NaoVirar,
+                ViradaMaco::PelaLateral,
+                ViradaMaco::PelaBordaDeCima,
+            ] {
+                let vira = virada != ViradaMaco::NaoVirar;
+                for bits in 0u8..8 {
+                    let perfil = PerfilImpressora {
+                        passada1_inversa: bits & 1 != 0,
+                        passada2_inversa: bits & 2 != 0,
+                        verso_girar_180: bits & 4 != 0,
+                        gesto_recolocar: GestoRecolocar {
+                            virada,
+                            ..GestoRecolocar::default()
+                        },
+                    };
+                    let sim = executar(6, mecanica, perfil, perfil.gesto_recolocar.into());
+                    let contexto = format!("{mecanica:?}, {perfil:?}");
+                    let pilha = sim.folhas_para_leitura();
+                    let acha_a_face_em_branco = vira != curva_em_u;
+                    assert_eq!(
+                        pilha.iter().all(|f| f.sobreimpressao.is_none()),
+                        acha_a_face_em_branco,
+                        "{contexto}"
+                    );
+                    if acha_a_face_em_branco {
+                        let em_pe = pilha
+                            .iter()
+                            .all(|f| f.face_a.map(|m| m.girada) == f.face_b.map(|m| m.girada));
+                        // Só a virada de livro, no caminho reto, mantém a aresta que lidera.
+                        let pede_giro = virada != ViradaMaco::PelaLateral;
+                        assert_eq!(em_pe, perfil.verso_girar_180 == pede_giro, "{contexto}");
+                    }
+                }
+            }
+        }
     }
 
     #[test]

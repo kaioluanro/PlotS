@@ -341,7 +341,7 @@ fn simulacao_da_laser_segue_a_sequencia_do_modelo_e_confere_as_folhas() {
     assert_eq!((corretas, folhas), (3, 3));
     assert_eq!(numeros(&lote.passada1), [Some(6), Some(4), Some(2)]);
     assert_eq!(numeros(&lote.passada2), [Some(1), Some(3), Some(5)]);
-    assert!(lote.passada2.iter().all(|p| !p.girar_180));
+    assert!(lote.passada2.iter().all(|p| p.girar_180));
 }
 
 #[test]
@@ -361,7 +361,7 @@ fn instrucao_de_cada_modelo_bate_com_as_frases_do_terminal() {
         }
     );
     let (gesto, colocacao) = frases_de_recolocacao_do_modelo(ModeloImpressora::Laser);
-    assert_eq!(gesto, "Não vire o maço.");
+    assert_eq!(gesto, "Não vire nem gire o maço.");
     assert!(colocacao.ends_with("com a face impressa para baixo."));
     assert!(vira_para_ler(ModeloImpressora::Laser));
     assert!(!vira_para_ler(ModeloImpressora::JatoDeTinta));
@@ -400,7 +400,7 @@ fn gesto_vem_antes_da_colocacao_em_toda_combinacao() {
             "Vire o maço pela lateral, como a página de um livro.",
         ),
         (false, true, "Gire o maço 180°, sem virá-lo."),
-        (false, false, "Não vire o maço."),
+        (false, false, "Não vire nem gire o maço."),
     ];
     for mecanica in mecanicas {
         for (virar_maco, girar_180, texto) in gestos {

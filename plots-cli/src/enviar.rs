@@ -801,7 +801,7 @@ mod testes {
                 "Vire o maço pela borda de cima, como um bloco de notas.",
                 false,
             ),
-            (ModeloImpressora::Laser, "Não vire o maço.", true),
+            (ModeloImpressora::Laser, "Não vire nem gire o maço.", true),
         ];
         for (modelo, virada, vira_para_ler) in casos {
             let rodada = rodar_documento(&[A4, A4], "s\ns\n", &[], None, 10, Some(modelo));

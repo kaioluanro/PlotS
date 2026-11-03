@@ -123,3 +123,17 @@ fn a_instrucao_de_cada_modelo_faz_a_base_entrar_primeiro() {
     i.recolocar_com(&operacoes_da_virada(laser.virada));
     assert_eq!(borda_na_entrada(&i), Some(BordaQueEntra::Base));
 }
+
+#[test]
+fn a_borda_que_fecha_com_o_plano_e_a_que_a_instrucao_faz_entrar() {
+    for modelo in [ModeloImpressora::JatoDeTinta, ModeloImpressora::Laser] {
+        let mut i = Impressora::nova(modo_do_modelo(modelo), 1);
+        i.imprimir(&[Envio::pagina(2)]);
+        i.recolocar_com(&operacoes_da_virada(Instrucao::do_modelo(modelo).virada));
+        assert_eq!(
+            borda_na_entrada(&i),
+            Some(borda_que_fecha(modelo.perfil())),
+            "{modelo:?}"
+        );
+    }
+}

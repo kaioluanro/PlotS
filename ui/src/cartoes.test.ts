@@ -276,7 +276,7 @@ describe("frases do cartao", () => {
     expect(frases).toEqual([
       "O trabalho da frente terminou ou saiu da fila. Isso não garante que o papel já saiu.",
       "Espere a última folha sair antes de recolocar o maço.",
-      "Não vire o maço.",
+      "Não vire nem gire o maço.",
       "Depois, sem mudar a ordem das folhas, coloque na entrada com a face impressa para baixo.",
       "Com o maço na entrada, clique em Imprimir verso.",
     ]);
@@ -692,8 +692,11 @@ describe("texto do gesto na jato e na lateral", () => {
     expect(frasesDoGesto({ ...borda, virada: "girar" }, "en")[0]).toBe(
       "Turn the stack 180°, without flipping it.",
     );
+    expect(frasesDoGesto({ ...borda, virada: "nao_virar" }, "en")[0]).toBe(
+      "Do not flip or turn the stack.",
+    );
     expect(frasesDoGesto({ ...borda, virada: "nao_virar" }, "pt-BR")).toEqual([
-      "Não vire o maço.",
+      "Não vire nem gire o maço.",
       "Depois, sem mudar a ordem das folhas, coloque na entrada com a face impressa para baixo.",
     ]);
   });

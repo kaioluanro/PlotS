@@ -199,12 +199,12 @@ pub fn gesto_de_recolocacao(mecanica: Mecanica, gesto: Recolocacao) -> String {
     )
 }
 
-/// Primeira linha da recolocação, dita pelo gesto: vire, gire ou não vire o maço antes de colocá-lo.
+/// Primeira linha da recolocação, dita pelo gesto: vire, gire, ou não toque o maço antes de colocá-lo.
 pub fn texto_do_gesto(gesto: Recolocacao) -> &'static str {
     match virada_do_gesto(gesto) {
         Virada::PelaBordaDeCima => "Vire o maço pela borda de cima, como um bloco de notas.",
         Virada::PelaLateral => "Vire o maço pela lateral, como a página de um livro.",
-        Virada::NaoVirar => "Não vire o maço.",
+        Virada::NaoVirar => "Não vire nem gire o maço.",
         Virada::Girar => "Gire o maço 180°, sem virá-lo.",
     }
 }

@@ -746,7 +746,7 @@ fn laser_mostra_que_o_maco_nao_e_virado() {
     assert!(resultado.is_ok(), "{saida}");
     assert!(
         saida.contains(
-            "  Não vire o maço.\n  Depois, sem mudar a ordem das folhas, coloque na entrada com a face impressa para baixo.\n"
+            "  Não vire nem gire o maço.\n  Depois, sem mudar a ordem das folhas, coloque na entrada com a face impressa para baixo.\n"
         ),
         "{saida}"
     );
@@ -1109,7 +1109,7 @@ fn imprimir_com_laser_nao_vira_e_confere_as_seis_paginas() {
     assert!(saida.contains("  Verso: 1, 3, 5\n"), "{saida}");
     assert!(
         saida.contains(
-            "  Não vire o maço.\n  Depois, sem mudar a ordem das folhas, coloque na entrada com a face impressa para baixo.\n"
+            "  Não vire nem gire o maço.\n  Depois, sem mudar a ordem das folhas, coloque na entrada com a face impressa para baixo.\n"
         ),
         "{saida}"
     );

@@ -9,7 +9,7 @@ use plots_core::{
     PerfilImpressora, RepartoAutomatico,
 };
 use plots_print::fluxo::Instrucao;
-use plots_print::Mecanica;
+use plots_print::{Mecanica, Simulador};
 use plotsim_physics::{
     conferir, ler_maco, BordaQueEntra, Entrada, Envio, Impressora, Lado, Leitura, MacoLido,
     ModoImpressora, Motivo, TopoDaImagem, Uniao,
@@ -290,24 +290,99 @@ fn cada_uma_das_dezesseis_mecanicas_tem_ao_menos_um_perfil_que_fecha() {
     assert_eq!(sem_saida, Vec::<String>::new());
 }
 
-#[test]
-fn sem_giro_no_verso_so_uma_borda_pode_fechar() {
-    let modelo = ModeloImpressora::Laser;
-    let lotes = plano(6, 0, modelo.perfil());
+/// O que o simulador do programa acusa nas seis páginas, só para comparar: quem julga é o modelo.
+fn simulador_acusa(mecanica: Mecanica, perfil: PerfilImpressora) -> (bool, bool) {
+    let lotes = plano(6, 0, perfil);
     let lote = lotes.first().expect("um lote");
-    let leitura = leitura_do_modelo(modelo);
-    let com_borda = |borda| {
+    let mut sim = Simulador::novo(mecanica);
+    sim.imprimir_frente(&lote.passada1).expect("frente");
+    sim.recolocar(recolocacao(perfil.gesto_recolocar))
+        .expect("recolocação");
+    sim.imprimir_verso(&lote.passada2).expect("verso");
+    let pilha = sim.folhas_para_leitura();
+    let sobre = pilha.iter().any(|f| f.sobreimpressao.is_some());
+    let de_cabeca = pilha.iter().any(|f| match (f.face_a, f.face_b) {
+        (Some(a), Some(b)) => a.girada != b.girada,
+        _ => false,
+    });
+    (sobre, de_cabeca)
+}
+
+/// O mesmo par de respostas, dado pelo modelo físico.
+fn modelo_acusa(mecanica: Mecanica, perfil: PerfilImpressora) -> (bool, bool) {
+    let instrucao = Instrucao::do_gesto(mecanica, recolocacao(perfil.gesto_recolocar));
+    let ops = operacoes_da_virada(instrucao.virada);
+    let leitura = if mecanica.saida_face_impressa_para_cima {
+        Leitura::ComoSaiu
+    } else {
+        Leitura::VirandoOMaco
+    };
+    let modo = modo_da_mecanica(mecanica, Entrada::Manual, TopoDaImagem::NaArestaQueEntra);
+    let maco = juntar(plano(6, 0, perfil).iter().map(|l| {
         executar_lote(
-            lote,
-            LASER,
-            &Recoloca::PeloGesto(gesto_do_modelo(modelo, borda)),
+            l,
+            modo,
+            &Recoloca::AoPeDaLetra(ops.clone()),
             leitura,
             Defeito::Nenhum,
         )
-    };
-    assert_eq!(conferir(&com_borda(BordaQueEntra::Topo), 6), vec![]);
-    assert!(conferir(&com_borda(BordaQueEntra::Base), 6)
-        .contains(&Motivo::VersoDeCabecaParaBaixo { folha: 1 }));
+    }));
+    let motivos = conferir(&maco, 6);
+    (
+        motivos
+            .iter()
+            .any(|m| matches!(m, Motivo::ImpressaoSobreImpressao { .. })),
+        motivos
+            .iter()
+            .any(|m| matches!(m, Motivo::VersoDeCabecaParaBaixo { .. })),
+    )
+}
+
+#[test]
+fn o_simulador_do_programa_concorda_com_o_modelo_em_cada_mecanica_e_perfil() {
+    let mut divergencias = Vec::new();
+    for mecanica in todas_as_mecanicas() {
+        for perfil in todos_os_perfis() {
+            let simulador = simulador_acusa(mecanica, perfil);
+            let modelo = modelo_acusa(mecanica, perfil);
+            if simulador != modelo {
+                divergencias.push(format!(
+                    "{}, {perfil:?}: simulador {simulador:?}, modelo {modelo:?}",
+                    nome_da_mecanica(mecanica)
+                ));
+            }
+        }
+    }
+    assert_eq!(divergencias, Vec::<String>::new());
+}
+
+#[test]
+fn so_uma_borda_pode_fechar_e_o_giro_do_verso_decide_qual() {
+    let modelo = ModeloImpressora::Laser;
+    for (verso_girar_180, fecha, nao_fecha) in [
+        (false, BordaQueEntra::Topo, BordaQueEntra::Base),
+        (true, BordaQueEntra::Base, BordaQueEntra::Topo),
+    ] {
+        let perfil = PerfilImpressora {
+            verso_girar_180,
+            ..modelo.perfil()
+        };
+        let lotes = plano(6, 0, perfil);
+        let lote = lotes.first().expect("um lote");
+        let leitura = leitura_do_modelo(modelo);
+        let com_borda = |borda| {
+            executar_lote(
+                lote,
+                LASER,
+                &Recoloca::PeloGesto(gesto_do_modelo(modelo, borda)),
+                leitura,
+                Defeito::Nenhum,
+            )
+        };
+        assert_eq!(conferir(&com_borda(fecha), 6), vec![]);
+        assert!(conferir(&com_borda(nao_fecha), 6)
+            .contains(&Motivo::VersoDeCabecaParaBaixo { folha: 1 }));
+    }
 }
 
 #[test]

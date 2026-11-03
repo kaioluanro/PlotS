@@ -88,7 +88,7 @@ pub struct PerfilImpressora {
 pub enum ModeloImpressora {
     /// Entrada traseira: sai com a face impressa para cima, e o maço vira pela borda de cima.
     JatoDeTinta,
-    /// Gaveta: sai com a face impressa para baixo, e o maço volta sem ser virado.
+    /// Gaveta: sai com a face impressa para baixo, e o maço volta sem ser virado nem girado.
     Laser,
 }
 
@@ -111,13 +111,14 @@ impl ModeloImpressora {
     }
 
     /// Ordem das passadas e giro do verso. Nos dois modelos a frente sai da última página para
-    /// a primeira; só o jato inverte o verso, e o imprime girado 180°.
+    /// a primeira, e o verso vai girado 180°; só o jato inverte o verso. O jato gira porque vira
+    /// o maço pela borda de cima. A laser gira porque a curva em U troca a aresta que lidera, e o
+    /// maço volta como saiu.
     pub const fn perfil(self) -> PerfilImpressora {
-        let jato = matches!(self, Self::JatoDeTinta);
         PerfilImpressora {
             passada1_inversa: true,
-            passada2_inversa: jato,
-            verso_girar_180: jato,
+            passada2_inversa: matches!(self, Self::JatoDeTinta),
+            verso_girar_180: true,
             gesto_recolocar: self.gesto(),
         }
     }
@@ -935,7 +936,9 @@ mod tests {
         let laser = plano_do_modelo(&paginas, trecho(3, 8), ModeloImpressora::Laser).unwrap();
         assert_eq!(numeros(&laser[0].passada1), [Some(8), Some(6), Some(4)]);
         assert_eq!(numeros(&laser[0].passada2), [Some(3), Some(5), Some(7)]);
-        assert!(laser[0].passada2.iter().all(|pagina| !pagina.girar_180));
+        // A curva em U troca a aresta que lidera: o verso vai girado, como no jato.
+        assert!(laser[0].passada2.iter().all(|pagina| pagina.girar_180));
+        assert!(laser[0].passada1.iter().all(|pagina| !pagina.girar_180));
     }
 
     #[test]
@@ -1123,12 +1126,13 @@ mod tests {
     }
 
     #[test]
-    fn laser_inverte_so_a_frente_e_nao_vira_o_maco() {
+    fn laser_inverte_so_a_frente_gira_o_verso_e_nao_vira_o_maco() {
         let modelo = ModeloImpressora::Laser;
         let lotes = plano_documento(6, 3, OrdemPassadas::ParesPrimeiro, modelo.perfil()).unwrap();
         assert_eq!(numeros(&lotes[0].passada1), [Some(6), Some(4), Some(2)]);
         assert_eq!(numeros(&lotes[0].passada2), [Some(1), Some(3), Some(5)]);
-        assert!(lotes[0].passada2.iter().all(|pagina| !pagina.girar_180));
+        assert!(lotes[0].passada1.iter().all(|pagina| !pagina.girar_180));
+        assert!(lotes[0].passada2.iter().all(|pagina| pagina.girar_180));
         assert_eq!(modelo.gesto().virada, ViradaMaco::NaoVirar);
         assert!(!modelo.gesto().vira_o_maco());
     }

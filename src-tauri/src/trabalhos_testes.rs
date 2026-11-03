@@ -573,7 +573,7 @@ fn troca_de_papel_chega_no_cartao_do_proximo_lote() {
 fn simulacao_pela_thread_entrega_a_sequencia_do_modelo_e_o_resultado() {
     let casos = [
         (ModeloImpressora::JatoDeTinta, [5, 3, 1], true, false),
-        (ModeloImpressora::Laser, [1, 3, 5], false, true),
+        (ModeloImpressora::Laser, [1, 3, 5], true, true),
     ];
     for (modelo, verso, girada, vira) in casos {
         let cena = Cena::nova();

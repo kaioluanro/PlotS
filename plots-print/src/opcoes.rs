@@ -290,6 +290,25 @@ mod testes {
     }
 
     #[test]
+    fn na_laser_a_marca_sai_na_passada_sem_giro_e_a_passada_girada_fica_sem_marca() {
+        let mut lotes = plano(&[A4; 6], 3, ModeloImpressora::Laser);
+        marcar_lotes(&mut lotes, IdiomaDaMarca::Portugues);
+        let lote = &lotes[0];
+        assert!(lote.lote.passada1.iter().all(|pagina| !pagina.girar_180));
+        assert!(lote.lote.passada2.iter().all(|pagina| pagina.girar_180));
+        assert!(lote
+            .lote
+            .passada1
+            .iter()
+            .all(|pagina| lote.marcas.contains_key(&pagina.numero)));
+        assert!(lote
+            .lote
+            .passada2
+            .iter()
+            .all(|pagina| !lote.marcas.contains_key(&pagina.numero)));
+    }
+
+    #[test]
     fn a_marca_diz_o_lote_no_documento_a_folha_no_lote_e_acompanha_o_verso_em_branco() {
         let mut lotes = plano(&[A4; 7], 2, ModeloImpressora::Laser);
         marcar_lotes(&mut lotes, IdiomaDaMarca::Portugues);
