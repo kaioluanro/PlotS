@@ -8,13 +8,15 @@ Pedido do usuário em 2026-11-03: imprimir primeiro só as frentes de vários lo
 
 ## Comportamento
 
-- Nas opções da aba, ao lado de "Folhas por lote", uma escolha: **Lote a lote** (como hoje, padrão) ou **Frentes primeiro**. Só aparece para o fluxo manual.
-- **Primeira fase:** o PlotS envia a frente do lote 1 e, a cada lote pronto, diz para tirar o maço e guardá-lo separado, com o número do lote e as páginas, e colocar folhas em branco. O próximo lote começa num clique, sem gesto de recolocação no meio.
-- **Quando todas as frentes acabam:** o cartão diz quantos maços foram feitos e oferece "Imprimir versos" quando a pessoa quiser. Ele pode ficar esperando sem prazo.
-- **Segunda fase:** lote por lote, o cartão mostra qual maço pegar, pelo número do lote e das páginas, com a frase e a figura do gesto. Ao fim, as frases de junção dizem como empilhar os maços.
-- **Reimprimir** refaz só aquele lote: na primeira fase, a frente; na segunda, avisa que refazer exige a frente de novo.
-- **Fechar o PlotS durante a espera:** a confirmação de fechamento já existente diz que os versos ainda não foram impressos. Nesta primeira entrega, o estado fica só enquanto o programa está aberto.
-- Vale com intervalo, ajustar ao papel, folha de controle, compensação de driver, espelho e divisão. O automático não usa: já não há espera entre as faces.
+- Nas opções da aba, ao lado de "Folhas por lote", uma escolha: **Lote a lote** (como hoje, padrão) ou **Frentes primeiro**. Só aparece para o fluxo manual, e não com a divisão, que reparte lotes.
+- **Lote a lote:** para a cada "Folhas por lote", porque o verso daquele lote precisa ser feito antes do próximo. O número existe por causa da bandeja, do manuseio e do prejuízo de um erro.
+- **Frentes primeiro:** decisão do usuário em 2026-11-03: a impressão não para em 10. Todas as frentes saem em um trabalho contínuo, sem clique no meio, e "Folhas por lote" não se aplica. Tecnicamente, é um lote só por trecho de mesmo papel.
+- **Depois das frentes:** o cartão espera sem prazo e oferece "Imprimir versos", que envia um trabalho só, com a frase e a figura do gesto.
+- **Bandeja menor que o maço:** na frente, o aviso de papel da fila manda colocar mais folhas em branco. No verso, a pessoa coloca a parte de cima e completa com o resto quando a entrada esvazia, sem mudar a ordem.
+- **Papéis mistos:** cada trecho de mesmo papel é um lote; a troca de papel para o envio e é dita antes.
+- **Reimprimir** refaz o trecho inteiro, com confirmação dizendo quantas folhas.
+- **Fechar o PlotS durante a espera:** a confirmação de fechamento diz que os versos ainda não foram impressos. Nesta primeira entrega, o estado fica só enquanto o programa está aberto.
+- Vale com intervalo, ajustar ao papel, folha de controle, compensação de driver e espelho. O automático não usa: já não há espera entre as faces.
 
 ## Plano de implementação
 
@@ -25,7 +27,7 @@ Pedido do usuário em 2026-11-03: imprimir primeiro só as frentes de vários lo
 
 ## Pronto quando
 
-Nas simuladas, com 3 lotes, todas as frentes saem sem gesto, os versos saem quando a pessoa pede, e os maços juntos formam o documento.
+Nas simuladas, um documento de 24 páginas com 10 no campo de lote dá um único trabalho de frentes, sem clique, os versos saem quando a pessoa pede, e o maço final sai certo.
 
 ## Depende de
 
