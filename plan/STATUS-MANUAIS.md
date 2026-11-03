@@ -63,7 +63,7 @@ Requisitos: OK 51 · PARTIAL 33 · MISSING 6 · BUG 0 · N/A 3 (93). Detalhes em
 
 **Próximo:**
 
-1. Integrar as filas do PlotSim e a calibração pela janela (`04-calibracao`). Depois, as fases 4 a 6 do PlotSim (`23-plotsim`).
+1. Integrar a calibração pela janela (`04-calibracao`). Depois, as fases 4 a 6 do PlotSim (`23-plotsim`).
 2. Revisar as linhas desatualizadas de `AUDIT-PlotS.md`, gerar o instalador final e fazer o teste do usuário.
 
 Depois da primeira versão: impressora virtual, Linux e macOS, divisão por velocidade (`15-multiplas-impressoras`) e medir se o Graphify economiza tokens, com 3 perguntas respondidas com e sem ele.

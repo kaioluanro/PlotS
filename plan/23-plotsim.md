@@ -35,11 +35,17 @@ Na suíte rápida, o Planejador e o gesto do PlotS são a **entrada** do teste, 
 - **Informado pelo usuário em 2026-11-03, sobre a jato traseira:** a folha sai com a face impressa para cima, e a borda inferior do papel na bandeja, a que toca o rolo, é a primeira a entrar e a primeira a sair. Isso confirma o caminho reto do modelo, sem curva em U, e a mesma aresta liderando na entrada e na saída. Falta só saber em que aresta a máquina põe o topo da imagem; o modelo testa os dois valores, e o jato passa nos dois.
 - **Pendente, menor:** diagnóstico da conferência em total ímpar; pilha com `VecDeque` para documentos grandes. A matriz ainda não cobre formatos de papel.
 
+## Resultado das filas
+
+- **O texto das páginas não volta:** o PlotS envia cada página como imagem, ao contrário do que a especificação supunha. Decisão: a suíte lê uma marca visual no bitmap, nos PDFs de teste, que também mostra a orientação. O caminho testado continua o real.
+- **A porta sobrescreve o arquivo a cada trabalho**, e o spooler o prende só durante a escrita. Oito em rajada: nada perdido. A folga antes de o próximo apagar é de cerca de 450 ms contra consulta a cada 100 ms; passou disso, o trabalho sai como `SemArquivo`: acusado, mas perdido.
+- **Pendente para a fase 5:** `ModoFisico` alinhar com `plotsim-physics`; `gravar_atomico` copiado de `plots-perfis`, trocar por dependência; prazo próprio da suíte para trabalho preso; histórico sem limite nem limpeza; lentidão do PowerShell.
+
 ## Plano de implementação
 
-- [ ] Fase 0: fila Print to PDF com porta de arquivo, 3 envios sem diálogo. Decide entre os planos A e B
-- [ ] Fase 1: criar, listar e remover filas
-- [ ] Fase 2: detectar trabalho concluído, guardar o PDF, extrair páginas e texto
+- [x] Fase 0: fila Print to PDF com porta de arquivo, sem diálogo (`3085baf`). Vale o plano A, sem administrador nesta máquina
+- [x] Fase 1: criar, listar e remover filas (`3085baf`)
+- [x] Fase 2: detectar trabalho concluído, guardar o PDF, extrair páginas (`3085baf`)
 - [x] Fase 3: modelo físico e conferência, com a suíte rápida (`f1afcee`)
 - [ ] Fase 4: gesto como dado, canal local e `plots imprimir --teste`, depois de as opções de envio entrarem
 - [ ] Fase 5: suíte ponta a ponta, PDFs de teste, matriz e relatório
