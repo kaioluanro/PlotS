@@ -4,20 +4,41 @@ use crate::documento::{self, ErroDocumento};
 use crate::trabalhos::{
     self, Comando, Emissor, Gerente, Identidade, Motivo, Pedido, ResumoDoEnvio,
 };
-use plots_core::ModeloImpressora;
+use plots_core::{IntervaloPaginas, ModeloImpressora};
+use serde::Deserialize;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
+
+/// O trecho como a interface manda. O nucleo nao conhece o formato da mensagem, e numero negativo,
+/// fracionario ou grande demais ja para aqui, sem chegar ao plano.
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub struct IntervaloRecebido {
+    inicio: usize,
+    fim: usize,
+}
+
+impl From<IntervaloRecebido> for IntervaloPaginas {
+    fn from(recebido: IntervaloRecebido) -> Self {
+        Self {
+            inicio: recebido.inicio,
+            fim: recebido.fim,
+        }
+    }
+}
 
 /// Le o PDF para a confirmacao dizer paginas, lotes e papeis antes de qualquer envio.
 #[tauri::command]
 pub async fn resumo_do_envio(
     caminho: String,
     folhas: usize,
+    intervalo: Option<IntervaloRecebido>,
 ) -> Result<ResumoDoEnvio, ErroDocumento> {
     let falha = documento::falha_inesperada(&caminho);
-    tauri::async_runtime::spawn_blocking(move || trabalhos::resumo_do_envio(&caminho, folhas))
-        .await
-        .unwrap_or(Err(falha))
+    tauri::async_runtime::spawn_blocking(move || {
+        trabalhos::resumo_do_envio(&caminho, folhas, intervalo.map(Into::into))
+    })
+    .await
+    .unwrap_or(Err(falha))
 }
 
 /// O identificador diz o tipo: so os dois nomes fixos sao simulados, e o resto e o nome exato da
@@ -91,6 +112,7 @@ pub fn iniciar_impressao(
     caminho: String,
     folhas: usize,
     impressoras: Vec<String>,
+    intervalo: Option<IntervaloRecebido>,
 ) -> Vec<String> {
     let emitir: Emissor = Arc::new(move |cartao| {
         // Sem janela nao ha quem mostrar; o trabalho segue e termina sozinho.
@@ -104,7 +126,7 @@ pub fn iniciar_impressao(
                 Arc::clone(&emitir),
                 aba,
                 impressora,
-                Pedido::novo(caminho.clone(), folhas),
+                Pedido::novo(caminho.clone(), folhas, intervalo.map(Into::into)),
             )
         })
         .collect()
@@ -129,6 +151,27 @@ pub fn soltar_trabalhos(gerente: State<'_, Gerente>, aba: u64) {
 #[cfg(test)]
 mod testes {
     use super::*;
+
+    #[test]
+    fn trecho_recebido_vira_o_do_nucleo_e_numero_hostil_para_na_mensagem() {
+        use serde::de::value::{Error, MapDeserializer};
+        fn ler_inteiros(inicio: i64, fim: i64) -> Result<IntervaloRecebido, Error> {
+            IntervaloRecebido::deserialize(MapDeserializer::new(
+                [("inicio", inicio), ("fim", fim)].into_iter(),
+            ))
+        }
+        fn ler_fracoes(inicio: f64, fim: f64) -> Result<IntervaloRecebido, Error> {
+            IntervaloRecebido::deserialize(MapDeserializer::new(
+                [("inicio", inicio), ("fim", fim)].into_iter(),
+            ))
+        }
+        let lido: IntervaloPaginas = ler_inteiros(3, 8).unwrap().into();
+        assert_eq!(lido, IntervaloPaginas { inicio: 3, fim: 8 });
+        assert!(ler_inteiros(-1, 8).is_err());
+        assert!(ler_inteiros(3, i64::MIN).is_err());
+        assert!(ler_fracoes(3.5, 8.0).is_err());
+        assert!(ler_fracoes(1e300, 1e300).is_err());
+    }
 
     #[test]
     fn so_os_dois_identificadores_fixos_sao_simulados() {

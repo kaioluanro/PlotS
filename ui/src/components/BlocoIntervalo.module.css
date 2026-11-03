@@ -1,0 +1,72 @@
+.bloco {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Com o botao na linha, o rotulo chega mais perto dele para os campos caberem na lateral. */
+.bloco .linhaPaginas {
+  gap: 4px;
+}
+
+/* O botao de voltar ao inteiro aparece a esquerda, sem mover os campos. */
+.linha {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.campos {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.ate {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.inteiro {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--fg-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--anim-fast) ease,
+    color var(--anim-fast) ease;
+}
+
+.inteiro:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.inteiro:focus-visible {
+  outline-offset: -2px;
+}
+
+.inteiro:active {
+  transform: scale(0.97);
+}
+
+@media (forced-colors: active) {
+  .inteiro,
+  .inteiro:hover {
+    color: ButtonText;
+  }
+
+  /* O sistema troca o fundo: o contorno e o que mostra o ponteiro em cima do botao. */
+  .inteiro:hover:not(:focus-visible) {
+    outline: 1px solid Highlight;
+  }
+}

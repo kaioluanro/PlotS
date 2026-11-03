@@ -332,11 +332,21 @@ pub struct Papel {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErroPapel {
-    DimensaoInvalida { pagina: usize },
-    ParIncompativel { frente: usize, verso: usize },
+    DimensaoInvalida {
+        pagina: usize,
+    },
+    ParIncompativel {
+        frente: usize,
+        verso: usize,
+    },
     LoteZero,
     LimitePaginasExcedido,
     ReservaFalhou,
+    IntervaloInvalido {
+        inicio: usize,
+        fim: usize,
+        total: usize,
+    },
 }
 
 impl std::fmt::Display for ErroPapel {
@@ -354,11 +364,65 @@ impl std::fmt::Display for ErroPapel {
                 write!(f, "o documento excede o limite de {LIMITE_PAGINAS} páginas")
             }
             Self::ReservaFalhou => f.write_str("não foi possível reservar memória para os lotes"),
+            Self::IntervaloInvalido { inicio, fim, total } => write!(
+                f,
+                "o trecho de {inicio} a {fim} não cabe em um documento de {total} páginas"
+            ),
         }
     }
 }
 
 impl std::error::Error for ErroPapel {}
+
+/// Um trecho contínuo do documento, com os números de página começando em 1 e o fim incluído.
+/// Os números vêm de fora: só valem depois de `validar` contra o total de páginas.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct IntervaloPaginas {
+    pub inicio: usize,
+    pub fim: usize,
+}
+
+impl IntervaloPaginas {
+    /// Aceita apenas `1 <= inicio <= fim <= total`.
+    pub fn validar(self, total: usize) -> Result<Self, ErroPapel> {
+        if self.inicio >= 1 && self.inicio <= self.fim && self.fim <= total {
+            Ok(self)
+        } else {
+            Err(ErroPapel::IntervaloInvalido {
+                inicio: self.inicio,
+                fim: self.fim,
+                total,
+            })
+        }
+    }
+
+    /// Quantas páginas o trecho tem; zero quando o fim vem antes do início.
+    pub fn quantidade(self) -> usize {
+        self.fim
+            .saturating_sub(self.inicio)
+            .saturating_add(usize::from(self.inicio <= self.fim))
+    }
+}
+
+/// As páginas que entram no plano e quantas vieram antes delas no documento: somar essa conta ao
+/// índice do recorte devolve o número original da página.
+fn recortar_paginas(
+    paginas: &[DimensoesPagina],
+    intervalo: Option<IntervaloPaginas>,
+) -> Result<(&[DimensoesPagina], usize), ErroPapel> {
+    let Some(intervalo) = intervalo else {
+        return Ok((paginas, 0));
+    };
+    let valido = intervalo.validar(paginas.len())?;
+    let invalido = || ErroPapel::IntervaloInvalido {
+        inicio: intervalo.inicio,
+        fim: intervalo.fim,
+        total: paginas.len(),
+    };
+    let antes = valido.inicio.checked_sub(1).ok_or_else(invalido)?;
+    let recorte = paginas.get(antes..valido.fim).ok_or_else(invalido)?;
+    Ok((recorte, antes))
+}
 
 /// Classifica dimensões positivas e finitas, aceitando formatos nominais com
 /// tolerância de 2 mm e preservando a orientação retrato/paisagem.
@@ -414,15 +478,27 @@ fn orientacao_observada(dimensoes: DimensoesPagina) -> Option<OrientacaoPapel> {
 pub fn pares_com_orientacao_mista(
     paginas: &[DimensoesPagina],
 ) -> Result<Vec<(usize, usize)>, ErroPapel> {
+    pares_mistos_do_intervalo(paginas, None)
+}
+
+/// Como `pares_com_orientacao_mista`, olhando só as folhas do trecho, que começam na primeira
+/// página dele. Os pares continuam com os números do documento.
+pub fn pares_mistos_do_intervalo(
+    paginas: &[DimensoesPagina],
+    intervalo: Option<IntervaloPaginas>,
+) -> Result<Vec<(usize, usize)>, ErroPapel> {
     if paginas.len() > LIMITE_PAGINAS {
         return Err(ErroPapel::LimitePaginasExcedido);
     }
+    let (paginas, antes) = recortar_paginas(paginas, intervalo)?;
     let mut orientacoes: Vec<Option<OrientacaoPapel>> = Vec::new();
     orientacoes
         .try_reserve(paginas.len())
         .map_err(|_| ErroPapel::ReservaFalhou)?;
     for (i, dims) in paginas.iter().copied().enumerate() {
-        reconhecer_papel(dims).map_err(|_| ErroPapel::DimensaoInvalida { pagina: i + 1 })?;
+        reconhecer_papel(dims).map_err(|_| ErroPapel::DimensaoInvalida {
+            pagina: antes + i + 1,
+        })?;
         orientacoes.push(orientacao_observada(dims));
     }
     let mut pares = Vec::new();
@@ -434,7 +510,7 @@ pub fn pares_com_orientacao_mista(
         let verso = orientacoes.get(i + 1).copied().flatten();
         if let (Some(f), Some(v)) = (frente, verso) {
             if f != v {
-                pares.push((i + 1, i + 2));
+                pares.push((antes + i + 1, antes + i + 2));
             }
         }
     }
@@ -474,19 +550,35 @@ pub fn plano_lotes_por_papel(
     ordem_passadas: OrdemPassadas,
     perfil: PerfilImpressora,
 ) -> Result<Vec<LotePapel>, ErroPapel> {
+    plano_lotes_do_intervalo(paginas, None, folhas_por_lote, ordem_passadas, perfil)
+}
+
+/// Como `plano_lotes_por_papel`, olhando só o trecho pedido: as folhas começam na primeira página
+/// dele, um trecho ímpar recebe o verso em branco e os números continuam sendo os do documento.
+/// Sem trecho, vale o documento inteiro.
+pub fn plano_lotes_do_intervalo(
+    paginas: &[DimensoesPagina],
+    intervalo: Option<IntervaloPaginas>,
+    folhas_por_lote: usize,
+    ordem_passadas: OrdemPassadas,
+    perfil: PerfilImpressora,
+) -> Result<Vec<LotePapel>, ErroPapel> {
     if folhas_por_lote == 0 {
         return Err(ErroPapel::LoteZero);
     }
     if paginas.len() > LIMITE_PAGINAS {
         return Err(ErroPapel::LimitePaginasExcedido);
     }
+    let (paginas, antes) = recortar_paginas(paginas, intervalo)?;
     let reserva =
         |vec: &mut Vec<Papel>, n| vec.try_reserve(n).map_err(|_| ErroPapel::ReservaFalhou);
     let mut papeis = Vec::new();
     reserva(&mut papeis, paginas.len())?;
     for (i, dims) in paginas.iter().copied().enumerate() {
         reconhecer_papel(dims)
-            .map_err(|_| ErroPapel::DimensaoInvalida { pagina: i + 1 })
+            .map_err(|_| ErroPapel::DimensaoInvalida {
+                pagina: antes + i + 1,
+            })
             .map(|p| papeis.push(p))?;
     }
     let mut folhas: Vec<(Papel, Option<usize>, Option<usize>)> = Vec::new();
@@ -494,7 +586,9 @@ pub fn plano_lotes_por_papel(
         .try_reserve(paginas.len().saturating_add(1) / 2)
         .map_err(|_| ErroPapel::ReservaFalhou)?;
     for i in (0..paginas.len()).step_by(2) {
-        let frente = papeis[i];
+        let Some(frente) = papeis.get(i).copied() else {
+            continue;
+        };
         let verso = papeis.get(i + 1).copied();
         if let Some(v) = verso {
             let mesmo_formato_nominal =
@@ -504,12 +598,12 @@ pub fn plano_lotes_por_papel(
                     || (frente.altura_mm - v.altura_mm).abs() > TOLERANCIA_PAPEL_MM)
             {
                 return Err(ErroPapel::ParIncompativel {
-                    frente: i + 1,
-                    verso: i + 2,
+                    frente: antes + i + 1,
+                    verso: antes + i + 2,
                 });
             }
         }
-        folhas.push((frente, Some(i + 1), verso.map(|_| i + 2)));
+        folhas.push((frente, Some(antes + i + 1), verso.map(|_| antes + i + 2)));
     }
     let mut lotes: Vec<LotePapel> = Vec::new();
     for (papel, frente, verso) in folhas {
@@ -581,6 +675,215 @@ mod tests {
 
     fn numeros(paginas: &[Pagina]) -> Vec<Option<usize>> {
         paginas.iter().map(|pagina| pagina.numero).collect()
+    }
+
+    const A4: DimensoesPagina = DimensoesPagina::new(210.0, 297.0);
+    const A5: DimensoesPagina = DimensoesPagina::new(148.0, 210.0);
+    const PAISAGEM: DimensoesPagina = DimensoesPagina::new(297.0, 210.0);
+
+    fn trecho(inicio: usize, fim: usize) -> Option<IntervaloPaginas> {
+        Some(IntervaloPaginas { inicio, fim })
+    }
+
+    fn plano_do_modelo(
+        paginas: &[DimensoesPagina],
+        intervalo: Option<IntervaloPaginas>,
+        modelo: ModeloImpressora,
+    ) -> Result<Vec<LotePapel>, ErroPapel> {
+        plano_lotes_do_intervalo(
+            paginas,
+            intervalo,
+            10,
+            OrdemPassadas::default(),
+            modelo.perfil(),
+        )
+    }
+
+    #[test]
+    fn trecho_par_mantem_os_numeros_do_documento_na_ordem_de_cada_modelo() {
+        let paginas = [A4; 12];
+        let jato = plano_do_modelo(&paginas, trecho(3, 8), ModeloImpressora::JatoDeTinta).unwrap();
+        assert_eq!(jato.len(), 1);
+        assert_eq!(numeros(&jato[0].passada1), [Some(8), Some(6), Some(4)]);
+        assert_eq!(numeros(&jato[0].passada2), [Some(7), Some(5), Some(3)]);
+        assert!(jato[0].passada2.iter().all(|pagina| pagina.girar_180));
+
+        let laser = plano_do_modelo(&paginas, trecho(3, 8), ModeloImpressora::Laser).unwrap();
+        assert_eq!(numeros(&laser[0].passada1), [Some(8), Some(6), Some(4)]);
+        assert_eq!(numeros(&laser[0].passada2), [Some(3), Some(5), Some(7)]);
+        assert!(laser[0].passada2.iter().all(|pagina| !pagina.girar_180));
+    }
+
+    #[test]
+    fn trecho_impar_recebe_o_verso_em_branco_como_o_documento_inteiro() {
+        let paginas = [A4; 12];
+        let jato = plano_do_modelo(&paginas, trecho(3, 7), ModeloImpressora::JatoDeTinta).unwrap();
+        assert_eq!(
+            jato[0].paginas,
+            [Some(3), Some(4), Some(5), Some(6), Some(7), None]
+        );
+        assert_eq!(numeros(&jato[0].passada1), [None, Some(6), Some(4)]);
+        assert_eq!(numeros(&jato[0].passada2), [Some(7), Some(5), Some(3)]);
+
+        let laser = plano_do_modelo(&paginas, trecho(3, 7), ModeloImpressora::Laser).unwrap();
+        assert_eq!(numeros(&laser[0].passada1), [None, Some(6), Some(4)]);
+        assert_eq!(numeros(&laser[0].passada2), [Some(3), Some(5), Some(7)]);
+    }
+
+    #[test]
+    fn trecho_que_comeca_em_pagina_par_forma_as_folhas_a_partir_dele() {
+        let lotes = plano_do_modelo(&[A4; 12], trecho(4, 7), ModeloImpressora::Laser).unwrap();
+        assert_eq!(lotes[0].paginas, [Some(4), Some(5), Some(6), Some(7)]);
+    }
+
+    #[test]
+    fn primeira_e_ultima_pagina_sozinhas_viram_uma_folha_com_verso_em_branco() {
+        for pagina in [1, 12, 6] {
+            let lotes = plano_do_modelo(&[A4; 12], trecho(pagina, pagina), ModeloImpressora::Laser)
+                .unwrap();
+            assert_eq!(lotes.len(), 1);
+            assert_eq!(lotes[0].paginas, [Some(pagina), None]);
+            assert_eq!(numeros(&lotes[0].passada1), [None]);
+            assert_eq!(numeros(&lotes[0].passada2), [Some(pagina)]);
+        }
+    }
+
+    #[test]
+    fn trecho_do_documento_inteiro_da_o_mesmo_plano_que_nenhum_trecho() {
+        for total in [11, 12] {
+            let paginas = vec![A4; total];
+            for modelo in [ModeloImpressora::JatoDeTinta, ModeloImpressora::Laser] {
+                let sem =
+                    plano_lotes_por_papel(&paginas, 4, OrdemPassadas::default(), modelo.perfil())
+                        .unwrap();
+                for intervalo in [None, trecho(1, total)] {
+                    let com = plano_lotes_do_intervalo(
+                        &paginas,
+                        intervalo,
+                        4,
+                        OrdemPassadas::default(),
+                        modelo.perfil(),
+                    )
+                    .unwrap();
+                    assert_eq!(com, sem);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn trecho_fora_do_documento_e_recusado_sem_estourar() {
+        let paginas = [A4; 12];
+        let recusados = [
+            (8, 3),
+            (0, 3),
+            (0, 0),
+            (3, 0),
+            (3, 13),
+            (13, 13),
+            (13, 20),
+            (1, usize::MAX),
+            (usize::MAX, usize::MAX),
+            (usize::MAX, 1),
+        ];
+        for (inicio, fim) in recusados {
+            let erro = plano_do_modelo(&paginas, trecho(inicio, fim), ModeloImpressora::Laser);
+            assert_eq!(
+                erro,
+                Err(ErroPapel::IntervaloInvalido {
+                    inicio,
+                    fim,
+                    total: 12
+                })
+            );
+            assert!(pares_mistos_do_intervalo(&paginas, trecho(inicio, fim)).is_err());
+        }
+    }
+
+    #[test]
+    fn documento_vazio_nao_aceita_trecho_nenhum() {
+        let intervalo = IntervaloPaginas { inicio: 1, fim: 1 };
+        assert!(intervalo.validar(0).is_err());
+        assert!(intervalo.validar(1).is_ok());
+    }
+
+    #[test]
+    fn papeis_diferentes_seguem_os_lotes_olhando_so_o_trecho() {
+        let paginas = [A4, A4, A4, A4, A5, A5, A5, A5, A4, A4, A4, A4];
+        let dois = plano_do_modelo(&paginas, trecho(3, 8), ModeloImpressora::Laser).unwrap();
+        assert_eq!(dois.len(), 2);
+        assert_eq!(dois[0].papel.formato, FormatoPapel::A4);
+        assert_eq!(dois[0].paginas, [Some(3), Some(4)]);
+        assert_eq!(dois[1].papel.formato, FormatoPapel::A5);
+        assert_eq!(dois[1].paginas, [Some(5), Some(6), Some(7), Some(8)]);
+
+        let um = plano_do_modelo(&paginas, trecho(5, 8), ModeloImpressora::Laser).unwrap();
+        assert_eq!(um.len(), 1);
+        assert_eq!(um[0].papel.formato, FormatoPapel::A5);
+    }
+
+    #[test]
+    fn par_incompativel_do_trecho_cita_os_numeros_do_documento() {
+        let paginas = [A4, A4, A4, A4, A5, A5, A5, A5];
+        assert_eq!(
+            plano_do_modelo(&paginas, trecho(4, 7), ModeloImpressora::Laser),
+            Err(ErroPapel::ParIncompativel {
+                frente: 4,
+                verso: 5
+            })
+        );
+    }
+
+    #[test]
+    fn pagina_ruim_fora_do_trecho_nao_impede_e_dentro_cita_o_numero_original() {
+        let ruim = DimensoesPagina::new(0.0, 297.0);
+        let paginas = [ruim, A4, A4, A4, ruim, A4];
+        let lotes = plano_do_modelo(&paginas, trecho(2, 4), ModeloImpressora::Laser).unwrap();
+        assert_eq!(lotes[0].paginas, [Some(2), Some(3), Some(4), None]);
+        assert_eq!(
+            plano_do_modelo(&paginas, trecho(4, 6), ModeloImpressora::Laser),
+            Err(ErroPapel::DimensaoInvalida { pagina: 5 })
+        );
+    }
+
+    #[test]
+    fn tamanho_do_lote_conta_as_folhas_do_trecho() {
+        let lotes = plano_lotes_do_intervalo(
+            &[A4; 12],
+            trecho(3, 8),
+            2,
+            OrdemPassadas::default(),
+            PerfilImpressora::default(),
+        )
+        .unwrap();
+        assert_eq!(lotes.len(), 2);
+        assert_eq!(lotes[0].paginas, [Some(3), Some(4), Some(5), Some(6)]);
+        assert_eq!(lotes[1].paginas, [Some(7), Some(8)]);
+    }
+
+    #[test]
+    fn orientacao_mista_olha_as_folhas_do_trecho_com_os_numeros_originais() {
+        let paginas = [A4, A4, A4, PAISAGEM, A4, A4];
+        assert_eq!(pares_mistos_do_intervalo(&paginas, None), Ok(vec![(3, 4)]));
+        assert_eq!(
+            pares_mistos_do_intervalo(&paginas, trecho(3, 4)),
+            Ok(vec![(3, 4)])
+        );
+        assert_eq!(
+            pares_mistos_do_intervalo(&paginas, trecho(4, 5)),
+            Ok(vec![(4, 5)])
+        );
+        assert_eq!(
+            pares_mistos_do_intervalo(&paginas, trecho(5, 6)),
+            Ok(vec![])
+        );
+    }
+
+    #[test]
+    fn quantidade_conta_as_paginas_do_trecho() {
+        assert_eq!(IntervaloPaginas { inicio: 3, fim: 8 }.quantidade(), 6);
+        assert_eq!(IntervaloPaginas { inicio: 5, fim: 5 }.quantidade(), 1);
+        assert_eq!(IntervaloPaginas { inicio: 8, fim: 3 }.quantidade(), 0);
     }
 
     #[test]

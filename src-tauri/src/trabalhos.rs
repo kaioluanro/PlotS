@@ -8,8 +8,8 @@ use crate::documento;
 use crate::impressoras;
 use crate::leitura_pdf;
 use plots_core::{
-    plano_lotes_por_papel, DimensoesPagina, FormatoPapel, ModeloImpressora, OrdemPassadas, Pagina,
-    Papel, PerfilImpressora,
+    plano_lotes_do_intervalo, DimensoesPagina, FormatoPapel, IntervaloPaginas, ModeloImpressora,
+    OrdemPassadas, Pagina, Papel, PerfilImpressora,
 };
 use plots_windows::plots_print::fluxo::{
     self, Condutor, DescreveFalha, Espera, Instrucao, Lado, LoteDoFluxo, Passo, SimGuiado, Virada,
@@ -715,22 +715,29 @@ fn recusado(identidade: &Identidade, recados: &Receiver<Recado>, emitir: &Emisso
     }
 }
 
-/// O caminho do PDF e o tamanho do lote, ja conferidos.
+/// O caminho do PDF e o tamanho do lote, ja conferidos. O trecho so e conferido ao ler o PDF,
+/// quando o total de paginas e conhecido; sem trecho, vale o documento inteiro.
 #[derive(Debug, Clone)]
 pub struct Pedido {
     pub caminho: String,
     pub folhas_por_lote: usize,
+    pub intervalo: Option<IntervaloPaginas>,
 }
 
 impl Pedido {
     /// Numero vindo de fora: zero vira recusa e o que passa do limite vai ao limite.
-    pub fn novo(caminho: String, folhas_por_lote: usize) -> Result<Self, Motivo> {
+    pub fn novo(
+        caminho: String,
+        folhas_por_lote: usize,
+        intervalo: Option<IntervaloPaginas>,
+    ) -> Result<Self, Motivo> {
         if folhas_por_lote == 0 {
             return Err(Motivo::novo("pdf", "o lote deve ter ao menos uma folha"));
         }
         Ok(Self {
             caminho,
             folhas_por_lote: folhas_por_lote.min(LOTE_MAXIMO),
+            intervalo,
         })
     }
 }
@@ -741,12 +748,33 @@ fn motivo_do_pdf(erro: &documento::ErroDocumento) -> Motivo {
 
 fn planejar(
     dimensoes: &[DimensoesPagina],
+    intervalo: Option<IntervaloPaginas>,
     folhas_por_lote: usize,
     perfil: PerfilImpressora,
 ) -> Result<Vec<LoteDoFluxo>, Motivo> {
-    let lotes = plano_lotes_por_papel(dimensoes, folhas_por_lote, OrdemPassadas::default(), perfil)
-        .map_err(|erro| Motivo::novo("pdf", erro.to_string()))?;
+    let lotes = plano_lotes_do_intervalo(
+        dimensoes,
+        intervalo,
+        folhas_por_lote,
+        OrdemPassadas::default(),
+        perfil,
+    )
+    .map_err(|erro| Motivo::novo("pdf", erro.to_string()))?;
     Ok(fluxo::lotes_do_plano(&lotes))
+}
+
+/// A face em branco de uma folha toma o tamanho da ultima pagina que o envio conhece. Parar a lista
+/// no fim do trecho faz essa pagina ser a frente da propria folha, e nao o fim do documento, que
+/// pode ser de outro papel. As paginas seguintes nunca sao enviadas.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn dimensoes_do_envio(
+    mut dimensoes: Vec<DimensoesPagina>,
+    intervalo: Option<IntervaloPaginas>,
+) -> Vec<DimensoesPagina> {
+    if let Some(intervalo) = intervalo {
+        dimensoes.truncate(intervalo.fim);
+    }
+    dimensoes
 }
 
 /// A impressora simulada le o mesmo PDF e o mesmo plano, mas nada vai a uma fila.
@@ -755,7 +783,12 @@ pub fn preparar_simulada(
     pedido: &Pedido,
 ) -> Result<Preparo<SimGuiado>, Motivo> {
     let lido = leitura_pdf::ler_pdf(&pedido.caminho).map_err(|erro| motivo_do_pdf(&erro))?;
-    let lotes = planejar(&lido.dimensoes, pedido.folhas_por_lote, modelo.perfil())?;
+    let lotes = planejar(
+        &lido.dimensoes,
+        pedido.intervalo,
+        pedido.folhas_por_lote,
+        modelo.perfil(),
+    )?;
     let backend = SimGuiado::novo(Mecanica::do_modelo(modelo), modelo.gesto().into());
     let condutor =
         Condutor::novo(backend, lotes, ESPERA_SIMULADA).map_err(|erro| motivo_do_job(&erro))?;
@@ -782,7 +815,12 @@ pub fn preparar_fila(
         )
     })?;
     let lido = leitura_pdf::ler_pdf(&pedido.caminho).map_err(|erro| motivo_do_pdf(&erro))?;
-    let lotes = planejar(&lido.dimensoes, pedido.folhas_por_lote, entrada.perfil)?;
+    let lotes = planejar(
+        &lido.dimensoes,
+        pedido.intervalo,
+        pedido.folhas_por_lote,
+        entrada.perfil,
+    )?;
     let pasta = impressoras::pasta_de_saida_do_sistema();
     let filas =
         plots_windows::listar_filas().map_err(|erro| Motivo::novo("sistema", erro.to_string()))?;
@@ -794,8 +832,9 @@ pub fn preparar_fila(
             format!("a fila '{nome}' não pode receber agora; veja o estado dela na lista"),
         ));
     }
+    let dimensoes = dimensoes_do_envio(lido.dimensoes, pedido.intervalo);
     let backend =
-        plots_windows::BackendWindows::novo(fila, lido.origem, lido.dimensoes, pasta.as_deref())
+        plots_windows::BackendWindows::novo(fila, lido.origem, dimensoes, pasta.as_deref())
             .map_err(|erro| erro.para_motivo())?;
     let condutor =
         Condutor::novo(backend, lotes, fluxo::ESPERA_REAL).map_err(|erro| motivo_do_job(&erro))?;
@@ -860,23 +899,26 @@ pub struct ResumoDoEnvio {
     pub assinado: bool,
 }
 
-/// Lotes e papeis nao dependem do perfil: o plano padrao diz quantos sao.
+/// Lotes e papeis nao dependem do perfil: o plano padrao diz quantos sao. Com um trecho, tudo aqui
+/// conta so o trecho.
 pub fn resumo_do_envio(
     caminho: &str,
     folhas: usize,
+    intervalo: Option<IntervaloPaginas>,
 ) -> Result<ResumoDoEnvio, documento::ErroDocumento> {
     let lido = leitura_pdf::ler_pdf(caminho)?;
     let falha = || documento::falha_inesperada(caminho);
     let folhas = folhas.clamp(1, LOTE_MAXIMO);
-    let lotes = plano_lotes_por_papel(
+    let lotes = plano_lotes_do_intervalo(
         &lido.dimensoes,
+        intervalo,
         folhas,
         OrdemPassadas::default(),
         PerfilImpressora::default(),
     )
     .map_err(|_| falha())?;
     let pares_mistos =
-        plots_core::pares_com_orientacao_mista(&lido.dimensoes).map_err(|_| falha())?;
+        plots_core::pares_mistos_do_intervalo(&lido.dimensoes, intervalo).map_err(|_| falha())?;
     let mut papeis: Vec<&Papel> = Vec::new();
     for lote in &lotes {
         if !papeis
@@ -887,7 +929,7 @@ pub fn resumo_do_envio(
         }
     }
     Ok(ResumoDoEnvio {
-        paginas: lido.dimensoes.len(),
+        paginas: intervalo.map_or(lido.dimensoes.len(), IntervaloPaginas::quantidade),
         lotes: lotes.len(),
         papeis: papeis.into_iter().map(papel_do_cartao).collect(),
         pares_mistos,

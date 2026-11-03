@@ -9,6 +9,13 @@ import {
 } from "../cartoes";
 import { t } from "../i18n";
 import {
+  envioComIntervalo,
+  lerIntervaloDaAba,
+  paginasDoResumo,
+  type RascunhoIntervalo,
+} from "../intervalo";
+import { useEsperaDoErro } from "../intervalo-espera";
+import {
   abrirListaPeloTeclado,
   ATRIBUTO_MENU_DE_CONTEXTO,
   avisosDoTopo,
@@ -38,6 +45,7 @@ import {
   type Modelo,
 } from "../impressoras";
 import type { Aba } from "../tabs";
+import { BlocoIntervalo } from "./BlocoIntervalo";
 import botoes from "./Botao.module.css";
 import { CartaoImpressao } from "./CartaoImpressao";
 import styles from "./Sidebar.module.css";
@@ -58,6 +66,7 @@ interface Props {
   aoEscolherModelo: (fila: string, modelo: Modelo) => void;
   aoPedirSubstituicao: (fila: string, modelo: Modelo) => void;
   aoDefinirLote: (tamanho: number) => void;
+  aoDefinirIntervalo: (intervalo: RascunhoIntervalo | null) => void;
   aoCalibrar: (fila: string) => void;
   /** Impressoras com trabalho em andamento em qualquer aba. */
   ocupadas: ReadonlySet<string>;
@@ -79,6 +88,7 @@ export function Sidebar({
   aoEscolherModelo,
   aoPedirSubstituicao,
   aoDefinirLote,
+  aoDefinirIntervalo,
   aoCalibrar,
   ocupadas,
   aoImprimir,
@@ -88,7 +98,8 @@ export function Sidebar({
 }: Props) {
   const idExplicacao = useId();
   const marcadas = aba?.impressorasMarcadas ?? [];
-  const botao = estadoDoEnvio(aba, impressoras, ocupadas);
+  const espera = useEsperaDoErro(aba);
+  const botao = envioComIntervalo(estadoDoEnvio(aba, impressoras, ocupadas), aba, espera.estado);
   const cartoes = aba?.cartoes ?? [];
   const idBotao = useId();
   const idNotaDoModelo = useId();
@@ -197,23 +208,31 @@ export function Sidebar({
       </div>
 
       <div className={styles.rodape}>
+        <BlocoIntervalo
+          key={`intervalo-${aba?.id ?? "sem-aba"}`}
+          aba={aba}
+          espera={espera}
+          aoDefinir={aoDefinirIntervalo}
+        />
         {/* A chave recria o campo: o rascunho digitado em uma aba nao passa para a outra. */}
         <CampoLote key={aba?.id ?? "sem-aba"} aba={aba} aoDefinir={aoDefinirLote} />
-        <button
-          type="button"
-          className={`${botoes.botao} ${botoes.primario} ${styles.imprimir}`}
-          disabled={botao.desabilitado}
-          title={botao.motivo ?? undefined}
-          aria-describedby={botao.motivo === null ? undefined : idBotao}
-          onClick={aoImprimir}
-        >
-          {botao.rotulo}
-        </button>
-        {botao.motivo !== null && (
-          <p id={idBotao} className={styles.dica}>
-            {botao.motivo}
-          </p>
-        )}
+        <div className={styles.grupoEnvio}>
+          <button
+            type="button"
+            className={`${botoes.botao} ${botoes.primario} ${styles.imprimir}`}
+            disabled={botao.desabilitado}
+            title={botao.motivo ?? undefined}
+            aria-describedby={botao.motivo === null ? undefined : idBotao}
+            onClick={aoImprimir}
+          >
+            {botao.rotulo}
+          </button>
+          {botao.motivo !== null && (
+            <p id={idBotao} className={styles.dica}>
+              {botao.motivo}
+            </p>
+          )}
+        </div>
       </div>
     </aside>
   );
@@ -538,5 +557,7 @@ function AbaixoDoLote({
       </p>
     );
   }
-  return <p className={styles.resumo}>{resumoDoLote(paginas.total, aba.tamanhoLote)}</p>;
+  const contadas = paginasDoResumo(lerIntervaloDaAba(aba));
+  if (contadas === null) return null;
+  return <p className={styles.resumo}>{resumoDoLote(contadas, aba.tamanhoLote)}</p>;
 }

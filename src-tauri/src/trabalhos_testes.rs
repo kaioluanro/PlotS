@@ -133,7 +133,7 @@ impl Cena {
         recusa_ao_enviar: bool,
     ) -> bool {
         let backend = self.backend(leituras, recusa_ao_enviar, false);
-        let lotes = planejar(dimensoes, 1, PerfilImpressora::default()).unwrap();
+        let lotes = planejar(dimensoes, None, 1, PerfilImpressora::default()).unwrap();
         self.gerente
             .iniciar(identidade(impressora), self.emissor(), move || {
                 Ok(Preparo {
@@ -171,7 +171,7 @@ impl Cena {
     /// Como `iniciar_com`, mas a preparacao espera o sinal de `liberar`: o teste manda recados antes.
     fn iniciar_retido(&self, impressora: &str, liberar: Receiver<()>) -> bool {
         let backend = self.backend(&[], false, false);
-        let lotes = planejar(&[A4, A4], 1, PerfilImpressora::default()).unwrap();
+        let lotes = planejar(&[A4, A4], None, 1, PerfilImpressora::default()).unwrap();
         self.gerente
             .iniciar(identidade(impressora), self.emissor(), move || {
                 let _ = liberar.recv();
@@ -194,7 +194,7 @@ impl Cena {
     // Trabalho que ja esta na fila e cuja fila recusa o cancelamento.
     fn iniciar_recusando_cancelamento(&self, impressora: &str, leituras: &[Leitura]) -> bool {
         let backend = self.backend(leituras, false, true);
-        let lotes = planejar(&[A4, A4], 1, PerfilImpressora::default()).unwrap();
+        let lotes = planejar(&[A4, A4], None, 1, PerfilImpressora::default()).unwrap();
         self.gerente
             .iniciar(identidade(impressora), self.emissor(), move || {
                 Ok(Preparo {
@@ -537,7 +537,7 @@ fn simulacao_pela_thread_entrega_a_sequencia_do_modelo_e_o_resultado() {
     ];
     for (modelo, verso, girada, vira) in casos {
         let cena = Cena::nova();
-        let lotes = planejar(&[A4; 6], 10, modelo.perfil()).unwrap();
+        let lotes = planejar(&[A4; 6], None, 10, modelo.perfil()).unwrap();
         let mut id = identidade("sim");
         id.simulada = true;
         cena.gerente.iniciar(id, cena.emissor(), move || {
@@ -579,12 +579,19 @@ fn simulacao_pela_thread_entrega_a_sequencia_do_modelo_e_o_resultado() {
 
 #[test]
 fn lote_vindo_de_fora_fica_dentro_do_limite() {
-    assert!(Pedido::novo("a.pdf".into(), 0).is_err());
+    assert!(Pedido::novo("a.pdf".into(), 0, None).is_err());
     assert_eq!(
-        Pedido::novo("a.pdf".into(), 9_999).unwrap().folhas_por_lote,
+        Pedido::novo("a.pdf".into(), 9_999, None)
+            .unwrap()
+            .folhas_por_lote,
         50
     );
-    assert_eq!(Pedido::novo("a.pdf".into(), 7).unwrap().folhas_por_lote, 7);
+    assert_eq!(
+        Pedido::novo("a.pdf".into(), 7, None)
+            .unwrap()
+            .folhas_por_lote,
+        7
+    );
 }
 
 #[test]
@@ -744,4 +751,301 @@ fn reimprimir_com_cancelamento_recusado_nao_envia_a_frente_de_novo() {
         "{}",
         motivo.texto
     );
+}
+
+const CAIXA_A4: &str = "[0 0 595 842]";
+const CAIXA_A5: &str = "[0 0 420 595]";
+const CAIXA_DEITADA: &str = "[0 0 842 595]";
+
+/// Grava um PDF com uma pagina por caixa, em uma pasta so deste teste, apagada ao terminar.
+struct PdfDeTeste {
+    pasta: std::path::PathBuf,
+    caminho: String,
+}
+
+impl PdfDeTeste {
+    fn novo(rotulo: &str, caixas: &[&str]) -> Self {
+        let pasta =
+            std::env::temp_dir().join(format!("plots-trecho-{}-{rotulo}", std::process::id()));
+        std::fs::create_dir_all(&pasta).unwrap();
+        let filhos: Vec<String> = (0..caixas.len())
+            .map(|n| format!("{} 0 R", n + 3))
+            .collect();
+        let mut objetos = vec![
+            "<< /Type /Catalog /Pages 2 0 R >>".to_owned(),
+            format!(
+                "<< /Type /Pages /Count {} /Kids [{}] >>",
+                caixas.len(),
+                filhos.join(" ")
+            ),
+        ];
+        for caixa in caixas {
+            objetos.push(format!("<< /Type /Page /Parent 2 0 R /MediaBox {caixa} >>"));
+        }
+        let mut bytes = b"%PDF-1.5\n".to_vec();
+        let mut posicoes = Vec::new();
+        for (indice, objeto) in objetos.iter().enumerate() {
+            posicoes.push(bytes.len());
+            bytes.extend_from_slice(format!("{} 0 obj\n{objeto}\nendobj\n", indice + 1).as_bytes());
+        }
+        let tabela = bytes.len();
+        let total = objetos.len() + 1;
+        bytes.extend_from_slice(format!("xref\n0 {total}\n0000000000 65535 f \n").as_bytes());
+        for posicao in posicoes {
+            bytes.extend_from_slice(format!("{posicao:010} 00000 n \n").as_bytes());
+        }
+        bytes.extend_from_slice(
+            format!("trailer\n<< /Size {total} /Root 1 0 R >>\nstartxref\n{tabela}\n%%EOF\n")
+                .as_bytes(),
+        );
+        let caminho = pasta.join("documento.pdf");
+        std::fs::write(&caminho, bytes).unwrap();
+        Self {
+            pasta,
+            caminho: caminho.to_string_lossy().into_owned(),
+        }
+    }
+}
+
+impl Drop for PdfDeTeste {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.pasta);
+    }
+}
+
+fn trecho(inicio: usize, fim: usize) -> Option<IntervaloPaginas> {
+    Some(IntervaloPaginas { inicio, fim })
+}
+
+fn numeros_da_face(lista: &[FaceDaSequencia]) -> Vec<Option<usize>> {
+    lista.iter().map(|face| face.numero).collect()
+}
+
+#[test]
+fn resumo_do_envio_conta_so_as_paginas_lotes_e_papeis_do_trecho() {
+    let mut caixas = vec![CAIXA_A4; 4];
+    caixas.extend([CAIXA_A5; 4]);
+    caixas.extend([CAIXA_A4; 4]);
+    let pdf = PdfDeTeste::novo("resumo", &caixas);
+
+    let inteiro = resumo_do_envio(&pdf.caminho, 10, None).unwrap();
+    assert_eq!((inteiro.paginas, inteiro.lotes), (12, 3));
+
+    let misto = resumo_do_envio(&pdf.caminho, 10, trecho(3, 8)).unwrap();
+    assert_eq!((misto.paginas, misto.lotes, misto.papeis.len()), (6, 2, 2));
+
+    let so_a5 = resumo_do_envio(&pdf.caminho, 10, trecho(5, 8)).unwrap();
+    assert_eq!((so_a5.paginas, so_a5.lotes, so_a5.papeis.len()), (4, 1, 1));
+    assert_eq!(so_a5.papeis[0].formato, "a5");
+
+    assert_eq!(
+        resumo_do_envio(&pdf.caminho, 10, trecho(1, 12)).unwrap(),
+        inteiro
+    );
+}
+
+#[test]
+fn resumo_do_envio_cita_a_orientacao_mista_com_o_numero_original() {
+    let pdf = PdfDeTeste::novo(
+        "misto",
+        &[
+            CAIXA_A4,
+            CAIXA_A4,
+            CAIXA_A4,
+            CAIXA_DEITADA,
+            CAIXA_A4,
+            CAIXA_A4,
+        ],
+    );
+    assert_eq!(
+        resumo_do_envio(&pdf.caminho, 10, trecho(3, 4))
+            .unwrap()
+            .pares_mistos,
+        [(3, 4)]
+    );
+    assert!(resumo_do_envio(&pdf.caminho, 10, trecho(5, 6))
+        .unwrap()
+        .pares_mistos
+        .is_empty());
+}
+
+#[test]
+fn resumo_do_envio_recusa_trecho_fora_do_documento() {
+    let pdf = PdfDeTeste::novo("resumo-recusa", &[CAIXA_A4; 12]);
+    for (inicio, fim) in [
+        (8, 3),
+        (0, 3),
+        (3, 13),
+        (usize::MAX, usize::MAX),
+        (1, usize::MAX),
+    ] {
+        assert!(
+            resumo_do_envio(&pdf.caminho, 10, trecho(inicio, fim)).is_err(),
+            "{inicio}..{fim}"
+        );
+    }
+}
+
+#[test]
+fn pedido_guarda_o_trecho_e_a_preparacao_recusa_o_que_nao_cabe() {
+    let pdf = PdfDeTeste::novo("preparar-recusa", &[CAIXA_A4; 12]);
+    let pedido = Pedido::novo(pdf.caminho.clone(), 10, trecho(3, 8)).unwrap();
+    assert_eq!(pedido.intervalo, trecho(3, 8));
+    for (inicio, fim) in [(8, 3), (0, 3), (3, 13), (usize::MAX, usize::MAX)] {
+        let pedido = Pedido::novo(pdf.caminho.clone(), 10, trecho(inicio, fim)).unwrap();
+        let Err(motivo) = preparar_simulada(ModeloImpressora::Laser, &pedido) else {
+            panic!("o trecho {inicio}..{fim} devia ser recusado");
+        };
+        assert_eq!(motivo.codigo, "pdf");
+    }
+}
+
+/// Conduz o trecho na simulada ate o cartao esperar a recolocacao.
+fn simular_trecho(modelo: ModeloImpressora, pedido: Pedido) -> (Cena, Cartao) {
+    let cena = Cena::nova();
+    let mut id = identidade("sim");
+    id.simulada = true;
+    assert!(cena.gerente.iniciar(id, cena.emissor(), move || {
+        preparar_simulada(modelo, &pedido)
+    }));
+    let espera = cena.esperar("sim", aguardando);
+    (cena, espera)
+}
+
+#[test]
+fn simulada_envia_o_trecho_com_os_numeros_do_documento_nos_dois_modelos() {
+    let pdf = PdfDeTeste::novo("simular", &[CAIXA_A4; 12]);
+    let casos = [
+        (ModeloImpressora::JatoDeTinta, [Some(7), Some(5), Some(3)]),
+        (ModeloImpressora::Laser, [Some(3), Some(5), Some(7)]),
+    ];
+    for (modelo, verso) in casos {
+        let pedido = Pedido::novo(pdf.caminho.clone(), 10, trecho(3, 8)).unwrap();
+        let (cena, espera) = simular_trecho(modelo, pedido);
+        let sequencia = espera.sequencia.clone().unwrap();
+        assert_eq!(
+            numeros_da_face(&sequencia.frente),
+            [Some(8), Some(6), Some(4)]
+        );
+        assert_eq!(numeros_da_face(&sequencia.verso), verso);
+        assert_eq!(espera.total, 1);
+        cena.comandar("sim", Comando::EnviarVerso);
+        let fim = cena.esperar("sim", |estado| matches!(estado, EstadoCartao::Concluido));
+        assert_eq!(
+            fim.resultado,
+            Some(Resultado {
+                corretas: 3,
+                folhas: 3
+            })
+        );
+    }
+}
+
+#[test]
+fn simulada_de_trecho_impar_leva_o_verso_em_branco_e_confere_todas_as_folhas() {
+    let pdf = PdfDeTeste::novo("simular-impar", &[CAIXA_A4; 12]);
+    for modelo in [ModeloImpressora::JatoDeTinta, ModeloImpressora::Laser] {
+        let pedido = Pedido::novo(pdf.caminho.clone(), 10, trecho(3, 7)).unwrap();
+        let (cena, espera) = simular_trecho(modelo, pedido);
+        let sequencia = espera.sequencia.clone().unwrap();
+        assert_eq!(numeros_da_face(&sequencia.frente), [None, Some(6), Some(4)]);
+        cena.comandar("sim", Comando::EnviarVerso);
+        let fim = cena.esperar("sim", |estado| matches!(estado, EstadoCartao::Concluido));
+        assert_eq!(
+            fim.resultado,
+            Some(Resultado {
+                corretas: 3,
+                folhas: 3
+            })
+        );
+    }
+}
+
+/// Backend que guarda os numeros de cada passada; a passada citada em `falha` da erro na fila.
+struct Gravador {
+    passadas: Arc<Mutex<Vec<Vec<Option<usize>>>>>,
+    falha: usize,
+}
+
+impl Backend for Gravador {
+    type Erro = String;
+    fn enviar(&mut self, _: Passada, paginas: &[Pagina]) -> Result<(), String> {
+        self.passadas
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(paginas.iter().map(|pagina| pagina.numero).collect());
+        Ok(())
+    }
+    fn consultar(&mut self) -> Result<EstadoEnvio, String> {
+        let enviadas = self
+            .passadas
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .len();
+        Ok(if enviadas == self.falha {
+            EstadoEnvio::Falhou
+        } else {
+            EstadoEnvio::Concluido
+        })
+    }
+    fn cancelar(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+impl DescreveFalha for Gravador {
+    fn motivo(&self) -> Option<String> {
+        None
+    }
+    fn trabalho_saiu_da_fila(&self) -> bool {
+        false
+    }
+}
+
+#[test]
+fn reimprimir_refaz_o_mesmo_trecho_ja_planejado() {
+    let cena = Cena::nova();
+    let passadas: Arc<Mutex<Vec<Vec<Option<usize>>>>> = Arc::default();
+    let backend = Gravador {
+        passadas: Arc::clone(&passadas),
+        falha: 2,
+    };
+    let modelo = ModeloImpressora::Laser;
+    let lotes = planejar(&[A4; 12], trecho(3, 8), 10, modelo.perfil()).unwrap();
+    assert!(cena
+        .gerente
+        .iniciar(identidade("a"), cena.emissor(), move || {
+            Ok(Preparo {
+                condutor: Condutor::novo(
+                    backend,
+                    lotes,
+                    Espera {
+                        intervalo: Duration::from_millis(2),
+                        consultas: 1_000,
+                    },
+                )
+                .map_err(|erro| motivo_do_job(&erro))?,
+                recolocar: recolocar_do_perfil(Some(modelo), None),
+                vira_para_ler: false,
+            })
+        }));
+    cena.esperar("a", aguardando);
+    cena.comandar("a", Comando::EnviarVerso);
+    cena.esperar("a", |estado| matches!(estado, EstadoCartao::Erro { .. }));
+    cena.comandar("a", Comando::Reimprimir);
+    cena.esperar("a", aguardando);
+    let frente = vec![Some(8), Some(6), Some(4)];
+    let verso = vec![Some(3), Some(5), Some(7)];
+    assert_eq!(
+        *passadas.lock().unwrap_or_else(PoisonError::into_inner),
+        [frente.clone(), verso, frente]
+    );
+}
+
+#[test]
+fn envio_real_mede_a_face_em_branco_pelo_fim_do_trecho() {
+    let medidas = vec![A4, A4, A4, A5];
+    assert_eq!(dimensoes_do_envio(medidas.clone(), trecho(1, 3)), [A4; 3]);
+    assert_eq!(dimensoes_do_envio(medidas.clone(), None), medidas);
+    assert_eq!(dimensoes_do_envio(medidas.clone(), trecho(1, 4)), medidas);
 }

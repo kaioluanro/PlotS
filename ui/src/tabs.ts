@@ -1,5 +1,6 @@
 import { cartaoEmAndamento, comCartao, ehRecusaDeOcupada, type Cartao } from "./cartoes";
 import { limitarAoIntervaloDoLote, LOTE_PADRAO } from "./impressoras";
+import { normalizarRascunho, type RascunhoIntervalo } from "./intervalo";
 
 export interface Documento {
   caminho: string;
@@ -20,6 +21,8 @@ export interface Aba {
   impressorasMarcadas: readonly string[];
   /** Folhas por lote, sempre dentro do intervalo aceito. */
   tamanhoLote: number;
+  /** De qual a qual pagina, como foi escrito; `null` e o documento inteiro. */
+  intervalo: RascunhoIntervalo | null;
   paginas: PaginasDaAba;
   /** Um cartao por impressora; trocar de aba troca a lista, e os trabalhos seguem. */
   cartoes: readonly Cartao[];
@@ -46,6 +49,7 @@ export type AcaoAbas =
   | { tipo: "marcar_impressao"; id: number; emAndamento: boolean }
   | { tipo: "alternar_impressora"; id: number; impressora: string }
   | { tipo: "definir_lote"; id: number; tamanho: number }
+  | { tipo: "definir_intervalo"; id: number; intervalo: RascunhoIntervalo | null }
   | { tipo: "paginas_contadas"; id: number; total: number }
   | { tipo: "paginas_recusadas"; id: number; motivo: string }
   | { tipo: "cartao"; cartao: Cartao }
@@ -129,6 +133,7 @@ export function reduzirAbas(estado: EstadoAbas, acao: AcaoAbas): EstadoAbas {
         impressaoEmAndamento: false,
         impressorasMarcadas: [],
         tamanhoLote: LOTE_PADRAO,
+        intervalo: null,
         paginas: { estado: "contando" },
         cartoes: [],
       };
@@ -173,6 +178,12 @@ export function reduzirAbas(estado: EstadoAbas, acao: AcaoAbas): EstadoAbas {
       const tamanhoLote = limitarAoIntervaloDoLote(acao.tamanho);
       return mudarAba(estado, acao.id, (aba) => ({ ...aba, tamanhoLote }));
     }
+    case "definir_intervalo":
+      return mudarAba(estado, acao.id, (aba) =>
+        aba.paginas.estado === "conhecido"
+          ? { ...aba, intervalo: normalizarRascunho(acao.intervalo, aba.paginas) }
+          : aba,
+      );
     case "paginas_contadas":
       return mudarAba(estado, acao.id, (aba) => ({
         ...aba,

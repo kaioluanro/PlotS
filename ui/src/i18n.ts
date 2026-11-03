@@ -320,6 +320,22 @@ const ptBR = {
   "visualizador.tentarDeNovo": "Tentar de novo",
   "visualizador.erro.texto":
     "Não foi possível mostrar este PDF. Tente de novo; se continuar, salve uma nova cópia no programa de origem.",
+  "intervalo.rotulo": "Páginas",
+  "intervalo.ate": "a",
+  "intervalo.primeira": "Primeira página a imprimir",
+  "intervalo.ultima": "Última página a imprimir",
+  "intervalo.inteiro": "Usar o documento inteiro",
+  "intervalo.erro.vazio": "Digite a primeira e a última página.",
+  "intervalo.erro.naoNumero": "Use só números inteiros.",
+  "intervalo.erro.fora": "Este documento tem {total} páginas: use de 1 a {total}.",
+  "intervalo.erro.foraUma": "Este documento tem só a página 1.",
+  "intervalo.erro.invertido": "A primeira página não pode vir depois da última.",
+  "intervalo.fechado.semDocumento": "Abra um PDF para escolher as páginas.",
+  "intervalo.fechado.contando": "Espere a contagem das páginas.",
+  "intervalo.fechado.recusado": "Este PDF foi recusado, então não há páginas para escolher.",
+  "intervalo.botao.invalido": "Corrija as páginas para imprimir.",
+  "intervalo.envio.varias": "Trecho: páginas {inicio} a {fim} de {total}",
+  "intervalo.envio.uma": "Trecho: página {inicio} de {total}",
 } as const;
 
 export type Chave = keyof typeof ptBR;
@@ -641,6 +657,22 @@ const en: Record<Chave, string> = {
   "visualizador.tentarDeNovo": "Try again",
   "visualizador.erro.texto":
     "Could not show this PDF. Try again; if it keeps failing, save a new copy from the original program.",
+  "intervalo.rotulo": "Pages",
+  "intervalo.ate": "to",
+  "intervalo.primeira": "First page to print",
+  "intervalo.ultima": "Last page to print",
+  "intervalo.inteiro": "Use the whole document",
+  "intervalo.erro.vazio": "Enter the first and the last page.",
+  "intervalo.erro.naoNumero": "Use whole numbers only.",
+  "intervalo.erro.fora": "This document has {total} pages: use 1 to {total}.",
+  "intervalo.erro.foraUma": "This document only has page 1.",
+  "intervalo.erro.invertido": "The first page cannot come after the last one.",
+  "intervalo.fechado.semDocumento": "Open a PDF to choose the pages.",
+  "intervalo.fechado.contando": "Wait for the pages to be counted.",
+  "intervalo.fechado.recusado": "This PDF was refused, so there are no pages to choose.",
+  "intervalo.botao.invalido": "Fix the pages to print.",
+  "intervalo.envio.varias": "Range: pages {inicio} to {fim} of {total}",
+  "intervalo.envio.uma": "Range: page {inicio} of {total}",
 };
 
 export const traducoes: Record<Idioma, Record<Chave, string>> = { "pt-BR": ptBR, en };

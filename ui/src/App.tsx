@@ -51,6 +51,14 @@ import {
   type ListaImpressoras,
   type Modelo,
 } from "./impressoras";
+import {
+  envioComIntervalo,
+  lerIntervaloDaAba,
+  linhasComTrecho,
+  trechoDoEnvio,
+  type RascunhoIntervalo,
+} from "./intervalo";
+import { iniciarImpressaoDoTrecho, resumoDoTrecho } from "./intervalo-envio";
 import { abrirLote, type LoteCaminhos } from "./lote";
 import {
   decidirFechamentoJanela,
@@ -59,13 +67,7 @@ import {
   reduzirAbas,
   type Aba,
 } from "./tabs";
-import {
-  comandarTrabalho,
-  iniciarImpressao,
-  ouvirCartoes,
-  resumoDoEnvio,
-  soltarTrabalhos,
-} from "./trabalhos";
+import { comandarTrabalho, ouvirCartoes, soltarTrabalhos } from "./trabalhos";
 
 export function App() {
   const [estado, despachar] = useReducer(reduzirAbas, estadoInicial);
@@ -190,11 +192,12 @@ export function App() {
   useEffect(() => assinar(ouvirCartoes((cartao) => despachar({ tipo: "cartao", cartao }))), []);
 
   const iniciar = useCallback((aba: Aba, destinos: readonly Impressora[]) => {
-    iniciarImpressao(
+    iniciarImpressaoDoTrecho(
       aba.id,
       aba.documento.caminho,
       aba.tamanhoLote,
       destinos.map((destino) => destino.id),
+      trechoDoEnvio(lerIntervaloDaAba(aba)),
     )
       .then((aceitas) => {
         // Quem nao foi aceito ja tinha um trabalho: o cartao diz isso, em vez de sumir em silencio.
@@ -392,7 +395,10 @@ export function App() {
   const ocupadas = impressorasOcupadas(estado.abas);
 
   const aoImprimir = () => {
-    const { destinos, desabilitado } = estadoDoEnvio(abaAtiva, lista.impressoras, ocupadas);
+    const { destinos, desabilitado } = envioComIntervalo(
+      estadoDoEnvio(abaAtiva, lista.impressoras, ocupadas),
+      abaAtiva,
+    );
     if (abaAtiva === null || desabilitado || preparandoEnvio.current) return;
     if (!precisaConfirmar(destinos)) {
       iniciar(abaAtiva, destinos);
@@ -400,10 +406,12 @@ export function App() {
     }
     const aba = abaAtiva;
     preparandoEnvio.current = true;
-    resumoDoEnvio(aba.documento.caminho, aba.tamanhoLote)
+    const leitura = lerIntervaloDaAba(aba);
+    resumoDoTrecho(aba.documento.caminho, aba.tamanhoLote, trechoDoEnvio(leitura))
       .then((resumo) => {
         const { linhas, notas } = linhasDoEnvio(destinos, resumo);
-        setPedidoDeEnvio({ conteudo: conteudoDoEnvio(linhas, notas), aba, destinos });
+        const conteudo = conteudoDoEnvio(linhasComTrecho(linhas, leitura), notas);
+        setPedidoDeEnvio({ conteudo, aba, destinos });
       })
       .catch((falha: unknown) => setErro(mensagemDeErro(falha)))
       .finally(() => {
@@ -417,6 +425,10 @@ export function App() {
 
   const aoDefinirLote = (tamanho: number) => {
     if (idAtiva !== null) despachar({ tipo: "definir_lote", id: idAtiva, tamanho });
+  };
+
+  const aoDefinirIntervalo = (intervalo: RascunhoIntervalo | null) => {
+    if (idAtiva !== null) despachar({ tipo: "definir_intervalo", id: idAtiva, intervalo });
   };
 
   const aoConfirmar = () => {
@@ -464,6 +476,7 @@ export function App() {
             aoPedirSubstituicao={(fila, modelo) => setSubstituicao({ fila, modelo })}
             aoAlternar={aoAlternarImpressora}
             aoDefinirLote={aoDefinirLote}
+            aoDefinirIntervalo={aoDefinirIntervalo}
             aoCalibrar={setFilaACalibrar}
             ocupadas={ocupadas}
             aoImprimir={aoImprimir}
