@@ -39,6 +39,7 @@ fn nome_da_passada(passada: Passada) -> &'static str {
     match passada {
         Passada::Frente => "frente",
         Passada::Verso => "verso",
+        Passada::DuasFaces => "duas-faces",
     }
 }
 
@@ -187,6 +188,18 @@ mod testes {
         let nome = nome_documento(3, Passada::Verso);
         assert_eq!(nome, "PlotS - lote 3 - verso");
         assert!(!nome.contains(['/', '\\', ':']));
+    }
+
+    #[test]
+    fn trabalho_em_duas_faces_tem_nome_proprio_na_fila_e_no_arquivo() {
+        assert_eq!(
+            nome_documento(2, Passada::DuasFaces),
+            "PlotS - lote 2 - duas-faces"
+        );
+        assert_eq!(
+            nome_arquivo_saida(2, Passada::DuasFaces, "PORTPROMPT:"),
+            "lote-0002-duas-faces.pdf"
+        );
     }
 
     #[test]

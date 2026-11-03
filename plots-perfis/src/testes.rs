@@ -50,6 +50,98 @@ fn perfil_com(passadas: (bool, bool, bool), gesto: (ViradaMaco, BordaEntrada)) -
     }
 }
 
+#[test]
+fn perfil_antigo_sem_o_campo_novo_carrega_em_uma_face() {
+    let pasta = Pasta::nova("automatico");
+    let caminho = pasta.arquivo();
+    std::fs::write(
+        &caminho,
+        "versao = 1\n\n[filas.Sala]\npassada1_inversa = true\npassada2_inversa = false\n\
+         verso_girar_180 = false\nvirar_maco = false\nborda_primeiro = \"curta\"\nmodelo = \"laser\"\n",
+    )
+    .unwrap();
+    let lidos = carregar(&caminho).unwrap();
+    let entrada = lidos.obter("Sala").unwrap();
+    assert!(!entrada.automatico);
+    assert_eq!(entrada.modelo, Some(ModeloImpressora::Laser));
+}
+
+#[test]
+fn automatico_guarda_o_gesto_dos_outros_papeis_e_volta_igual_do_arquivo() {
+    let pasta = Pasta::nova("automatico");
+    let caminho = pasta.arquivo();
+    let mut perfis = Perfis::new();
+    perfis.definir_automatico("Sala", Some(ModeloImpressora::Laser));
+    salvar(&caminho, &perfis).unwrap();
+    let lidos = carregar(&caminho).unwrap();
+    let entrada = lidos.obter("Sala").unwrap();
+    assert!(entrada.automatico);
+    assert_eq!(entrada.modelo, Some(ModeloImpressora::Laser));
+    assert_eq!(entrada.perfil, ModeloImpressora::Laser.perfil());
+    assert_eq!(lidos, perfis);
+}
+
+#[test]
+fn automatico_sem_gesto_usa_o_do_modelo_que_a_fila_tinha_ou_o_do_jato() {
+    let mut perfis = Perfis::new();
+    perfis.definir_automatico("Nova", None);
+    assert_eq!(
+        perfis.obter("Nova").unwrap().modelo,
+        Some(ModeloImpressora::JatoDeTinta)
+    );
+    perfis.definir_modelo("Laser", ModeloImpressora::Laser);
+    perfis.definir_automatico("Laser", None);
+    let laser = perfis.obter("Laser").unwrap();
+    assert!(laser.automatico);
+    assert_eq!(laser.modelo, Some(ModeloImpressora::Laser));
+}
+
+#[test]
+fn escolher_um_modelo_manual_desliga_o_automatico() {
+    let mut perfis = Perfis::new();
+    perfis.definir_automatico("Sala", None);
+    perfis.definir_modelo("Sala", ModeloImpressora::Laser);
+    assert!(!perfis.obter("Sala").unwrap().automatico);
+}
+
+#[test]
+fn valor_estranho_em_automatico_nao_recusa_o_arquivo_e_vale_como_desligado() {
+    let pasta = Pasta::nova("automatico");
+    let caminho = pasta.arquivo();
+    let base = "passada1_inversa = true\npassada2_inversa = false\nverso_girar_180 = false\n\
+                virar_maco = false\nborda_primeiro = \"curta\"\n";
+    std::fs::write(
+        &caminho,
+        format!(
+            "versao = 1\n\n[filas.Texto]\n{base}modelo = \"laser\"\nautomatico = \"sim\"\n\n\
+             [filas.SemModelo]\n{base}automatico = true\n"
+        ),
+    )
+    .unwrap();
+    let lidos = carregar(&caminho).unwrap();
+    assert!(!lidos.obter("Texto").unwrap().automatico);
+    assert!(
+        !lidos.obter("SemModelo").unwrap().automatico,
+        "sem gesto para os outros papéis, o perfil não vale como automático"
+    );
+}
+
+#[test]
+fn automatico_sem_modelo_nao_e_gravado_para_nao_se_perder_na_leitura() {
+    let pasta = Pasta::nova("automatico");
+    let caminho = pasta.arquivo();
+    let mut perfis = Perfis::new();
+    perfis.inserir(
+        "Sala",
+        EntradaPerfil {
+            automatico: true,
+            ..EntradaPerfil::default()
+        },
+    );
+    assert!(salvar(&caminho, &perfis).is_err());
+    assert!(!caminho.exists());
+}
+
 fn entrada_completa() -> EntradaPerfil {
     EntradaPerfil {
         apelido: Some("Jato — escritório".to_owned()),
@@ -59,6 +151,7 @@ fn entrada_completa() -> EntradaPerfil {
         ),
         gesto_texto: Some("Vire o maço e encoste a borda curta primeiro".to_owned()),
         modelo: None,
+        automatico: false,
     }
 }
 
@@ -112,6 +205,7 @@ fn todas_as_combinacoes_de_perfil_voltam_iguais() {
             perfil: perfil_com(passadas, (virada, borda)),
             gesto_texto: None,
             modelo: None,
+            automatico: false,
         };
         let fila = format!("fila-{mascara}");
         perfis.inserir(&fila, entrada.clone());

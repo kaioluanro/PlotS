@@ -134,7 +134,7 @@ describe("faixa do nome no topo do cartao", () => {
 
   it("as acoes param abaixo dela ao receber o foco, e o anel fica por cima", () => {
     const acao = /\.cartao \.botaoDoCartao\s*\{([^}]*)\}/.exec(folha)?.[1] ?? "";
-    expect(acao).toContain("scroll-margin-top: var(--altura-da-faixa");
+    expect(acao).toContain("scroll-margin-top: calc(var(--altura-da-faixa");
     expect(folha).toMatch(/\.botaoDoCartao:focus-visible\s*\{[^}]*z-index: 2;/);
     expect(cartaoFonte).toContain("--altura-da-faixa");
   });

@@ -200,8 +200,8 @@ describe("linha do ajuste salvo", () => {
 
   it("so avisa da face por vez quando o campo publico do ajuste diz duas faces", () => {
     const aviso = traduzir("pt-BR", "preferencias.salvo.duasFaces");
-    expect(aviso).toContain("uma face por vez");
-    expect(traducoes.en["preferencias.salvo.duasFaces"]).toContain("one side at a time");
+    expect(aviso).toContain("imprime uma por vez");
+    expect(traducoes.en["preferencias.salvo.duasFaces"]).toContain("prints one at a time");
     expect(html(true)).toContain(aviso);
     expect(html(false)).not.toContain(aviso);
   });
@@ -390,7 +390,7 @@ describe("confirmacao do envio real", () => {
       null,
       "pt-BR",
     );
-    expect(conteudo.notas).toContain("Driver: ajuste só no PlotS. Papel e faces seguem o PlotS.");
+    expect(conteudo.notas).toContain("Ajuste do driver só no PlotS: Sala. Papel e faces seguem o PlotS.");
   });
 });
 

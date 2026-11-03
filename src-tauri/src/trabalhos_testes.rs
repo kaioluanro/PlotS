@@ -1323,3 +1323,301 @@ fn sem_recusa_o_cartao_nao_fala_do_ajuste() {
     cena.comandar(FILA, Comando::Cancelar);
     esperar_fim(&cena, FILA);
 }
+
+impl Cena {
+    /// Como `iniciar`, com o plano de uma impressora que imprime as duas faces sozinha.
+    fn iniciar_automatica(
+        &self,
+        impressora: &str,
+        leituras: &[Leitura],
+        paginas: &[DimensoesPagina],
+    ) {
+        let backend = self.backend(leituras, false, false);
+        let pedido = Pedido::novo("x.pdf".to_owned(), 1, None).unwrap();
+        let perfil = ModeloImpressora::JatoDeTinta.perfil();
+        let lotes = planejar_pedido(paginas, &pedido, perfil, true).unwrap();
+        self.gerente
+            .iniciar(identidade(impressora), self.emissor(), move || {
+                Ok(Preparo {
+                    condutor: Condutor::novo(
+                        backend,
+                        lotes,
+                        Espera {
+                            intervalo: Duration::from_millis(2),
+                            consultas: 1_000,
+                        },
+                    )
+                    .map_err(|erro| motivo_do_job(&erro))?,
+                    recolocar: recolocar_do_perfil(Some(ModeloImpressora::JatoDeTinta), None),
+                    vira_para_ler: false,
+                })
+            });
+    }
+}
+
+fn simular_automatica(pedido: Pedido) -> Cena {
+    let cena = Cena::nova();
+    let mut id = identidade("auto");
+    id.simulada = true;
+    assert!(cena.gerente.iniciar(id, cena.emissor(), move || {
+        preparar_simulada_automatica(ModeloImpressora::JatoDeTinta, &pedido)
+    }));
+    cena
+}
+
+fn concluido(estado: &EstadoCartao) -> bool {
+    matches!(estado, EstadoCartao::Concluido)
+}
+
+fn proximo_lote(estado: &EstadoCartao) -> bool {
+    matches!(estado, EstadoCartao::ProximoLote)
+}
+
+#[test]
+fn simulada_automatica_termina_o_a4_sem_nenhum_comando_e_confere_as_folhas() {
+    let pdf = PdfDeTeste::novo("automatica-a4", &[CAIXA_A4; 5]);
+    let cena = simular_automatica(Pedido::novo(pdf.caminho.clone(), 1, None).unwrap());
+    let fim = cena.esperar("auto", concluido);
+    assert_eq!(
+        fim.resultado,
+        Some(Resultado {
+            corretas: 3,
+            folhas: 3
+        })
+    );
+    assert_eq!(fim.total, 1, "folhas por lote não divide o trabalho");
+    assert!(fim.tem_automatico);
+    assert!(!fim.vira_para_ler, "como o maço sai, a pessoa confere");
+    assert!(cena
+        .cartoes_de("auto")
+        .iter()
+        .all(|cartao| !aguardando(&cartao.estado)));
+}
+
+#[test]
+fn documento_misto_alterna_os_fluxos_e_so_o_papel_manual_pede_gesto() {
+    let mut caixas = vec![CAIXA_A4; 4];
+    caixas.extend([CAIXA_A5; 2]);
+    caixas.extend([CAIXA_A4; 2]);
+    let pdf = PdfDeTeste::novo("auto-misto", &caixas);
+    let cena = simular_automatica(Pedido::novo(pdf.caminho.clone(), 10, None).unwrap());
+
+    let antes_do_a5 = cena.esperar("auto", proximo_lote);
+    assert!(antes_do_a5.anterior_automatico);
+    assert!(!antes_do_a5.lote_automatico);
+    assert_eq!(
+        antes_do_a5.troca_de_papel.map(|papel| papel.formato),
+        Some("a5")
+    );
+
+    cena.comandar("auto", Comando::EnviarFrente);
+    let gesto = cena.esperar("auto", aguardando);
+    assert!(!gesto.lote_automatico);
+    assert!(gesto.recolocar.is_some());
+
+    cena.comandar("auto", Comando::EnviarVerso);
+    let antes_do_a4 = cena.esperar("auto", proximo_lote);
+    assert!(antes_do_a4.lote_automatico);
+    assert_eq!(
+        antes_do_a4.troca_de_papel.map(|papel| papel.formato),
+        Some("a4")
+    );
+
+    cena.comandar("auto", Comando::EnviarFrente);
+    let fim = cena.esperar("auto", concluido);
+    assert_eq!(
+        fim.resultado,
+        Some(Resultado {
+            corretas: 4,
+            folhas: 4
+        })
+    );
+    assert_eq!(fim.total, 3);
+}
+
+#[test]
+fn pagina_deitada_sai_no_mesmo_trabalho_e_a_simulada_nao_recusa() {
+    let pdf = PdfDeTeste::novo(
+        "auto-deitada",
+        &[CAIXA_A4, CAIXA_A4, CAIXA_DEITADA, CAIXA_DEITADA],
+    );
+    let cena = simular_automatica(Pedido::novo(pdf.caminho.clone(), 10, None).unwrap());
+    let fim = cena.esperar("auto", concluido);
+    assert_eq!(fim.total, 1);
+    assert_eq!(
+        fim.resultado,
+        Some(Resultado {
+            corretas: 2,
+            folhas: 2
+        })
+    );
+}
+
+#[test]
+fn na_divisao_os_lotes_da_automatica_saem_um_depois_do_outro_sem_clique() {
+    let pdf = PdfDeTeste::novo("auto-divisao", &[CAIXA_A4; 18]);
+    let parte = ParteDoEnvio {
+        indice: 0,
+        impressoras: 2,
+        lotes: 5,
+        paginas: 18,
+    };
+    let pedido = Pedido::novo(pdf.caminho.clone(), 2, None)
+        .unwrap()
+        .com_parte(Some(parte));
+    let cena = simular_automatica(pedido);
+    let fim = cena.esperar("auto", concluido);
+    assert_eq!(fim.total, 3);
+    assert_eq!(
+        fim.resultado,
+        Some(Resultado {
+            corretas: 5,
+            folhas: 5
+        })
+    );
+    assert!(cena
+        .cartoes_de("auto")
+        .iter()
+        .all(|cartao| !proximo_lote(&cartao.estado) && !aguardando(&cartao.estado)));
+}
+
+#[test]
+fn recusa_das_duas_faces_nao_envia_nada_e_libera_a_impressora() {
+    let cena = Cena::nova();
+    let mut id = identidade("recusa");
+    id.simulada = true;
+    let plano = {
+        let pedido = Pedido::novo("x.pdf".to_owned(), 1, None).unwrap();
+        planejar_pedido(
+            &[A4; 2],
+            &pedido,
+            ModeloImpressora::JatoDeTinta.perfil(),
+            true,
+        )
+        .unwrap()
+    };
+    // A simulada comum nao tem o recurso, como um driver que nao fica com as duas faces.
+    let sem_recurso = SimGuiado::novo(
+        Mecanica::do_modelo(ModeloImpressora::JatoDeTinta),
+        ModeloImpressora::JatoDeTinta.gesto().into(),
+    );
+    cena.gerente.iniciar(id, cena.emissor(), move || {
+        Ok(Preparo {
+            condutor: Condutor::novo(sem_recurso, plano, ESPERA_SIMULADA)
+                .map_err(|erro| motivo_do_job(&erro))?,
+            recolocar: Recolocar::da_instrucao(Instrucao::do_modelo(ModeloImpressora::JatoDeTinta)),
+            vira_para_ler: false,
+        })
+    });
+    let erro = cena.esperar("recusa", |estado| {
+        matches!(estado, EstadoCartao::Erro { .. })
+    });
+    let EstadoCartao::Erro { motivo } = &erro.estado else {
+        panic!("sem erro");
+    };
+    assert_eq!(motivo.codigo, MOTIVO_DUAS_FACES_RECUSADAS);
+    assert_eq!(erro.resultado, None, "nada saiu");
+    esperar_fim(&cena, "recusa");
+    assert!(
+        !ativo(&cena, "recusa"),
+        "a pessoa troca o modelo e envia de novo"
+    );
+}
+
+#[test]
+fn recusa_depois_de_um_lote_ja_enviado_diz_em_que_lote_parou() {
+    let cena = Cena::nova();
+    let mut id = identidade("meio");
+    id.simulada = true;
+    let plano = {
+        let pedido = Pedido::novo("x.pdf".to_owned(), 1, None).unwrap();
+        planejar_pedido(
+            &[A4, A4, A5, A5, A4, A4],
+            &pedido,
+            ModeloImpressora::JatoDeTinta.perfil(),
+            true,
+        )
+        .unwrap()
+    };
+    assert_eq!(plano.len(), 3, "automatico, manual, automatico");
+    // A simulada ve outro papel no fim, como um driver que so recusa ao receber aquele lote.
+    let backend = SimGuiado::automatica(
+        Mecanica::do_modelo(ModeloImpressora::JatoDeTinta),
+        ModeloImpressora::JatoDeTinta.gesto().into(),
+        vec![A4, A4, A5, A5, A5, A5],
+    );
+    cena.gerente.iniciar(id, cena.emissor(), move || {
+        Ok(Preparo {
+            condutor: Condutor::novo(backend, plano, ESPERA_SIMULADA)
+                .map_err(|erro| motivo_do_job(&erro))?,
+            recolocar: Recolocar::da_instrucao(Instrucao::do_modelo(ModeloImpressora::JatoDeTinta)),
+            vira_para_ler: false,
+        })
+    });
+    cena.esperar("meio", proximo_lote);
+    cena.comandar("meio", Comando::EnviarFrente);
+    cena.esperar("meio", aguardando);
+    cena.comandar("meio", Comando::EnviarVerso);
+    cena.esperar("meio", proximo_lote);
+    cena.comandar("meio", Comando::EnviarFrente);
+    let erro = cena.esperar("meio", |estado| matches!(estado, EstadoCartao::Erro { .. }));
+    let EstadoCartao::Erro { motivo } = &erro.estado else {
+        panic!("sem erro");
+    };
+    assert_eq!(motivo.codigo, MOTIVO_DUAS_FACES_RECUSADAS);
+    assert_eq!(
+        (erro.lote, erro.total),
+        (3, 3),
+        "a interface sabe que os anteriores sairam"
+    );
+    esperar_fim(&cena, "meio");
+}
+
+#[test]
+fn reimprimir_no_aviso_de_duas_faces_tira_da_fila_e_refaz_o_lote_inteiro() {
+    let cena = Cena::nova();
+    cena.iniciar_automatica("a", &[Leitura::Aviso("sem papel"); 5_000], &[A4; 4]);
+    cena.esperar("a", |estado| {
+        matches!(
+            estado,
+            EstadoCartao::Aviso {
+                passada: PassadaDoCartao::DuasFaces,
+                ..
+            }
+        )
+    });
+    cena.comandar("a", Comando::Reimprimir);
+    cena.esperar_envios(2);
+    assert_eq!(cena.cancelados(), 1);
+    assert_eq!(cena.enviados(), [Passada::DuasFaces, Passada::DuasFaces]);
+    cena.comandar("a", Comando::Cancelar);
+    esperar_fim(&cena, "a");
+}
+
+#[test]
+fn pedir_verso_no_lote_de_duas_faces_nao_envia_nada() {
+    let cena = Cena::nova();
+    cena.iniciar_automatica(
+        "a",
+        &[Leitura::Estado(EstadoEnvio::EmAndamento); 5_000],
+        &[A4; 4],
+    );
+    cena.esperar_envios(1);
+    cena.comandar("a", Comando::EnviarVerso);
+    cena.comandar("a", Comando::Cancelar);
+    esperar_fim(&cena, "a");
+    assert_eq!(cena.enviados(), [Passada::DuasFaces]);
+}
+
+#[test]
+fn papel_a5_na_automatica_continua_em_uma_face_por_passada() {
+    let cena = Cena::nova();
+    cena.iniciar_automatica("a", &[], &[A5; 2]);
+    let espera = cena.esperar("a", aguardando);
+    assert!(!espera.lote_automatico);
+    assert!(!espera.tem_automatico);
+    assert_eq!(cena.enviados(), [Passada::Frente]);
+    cena.comandar("a", Comando::EnviarVerso);
+    cena.esperar("a", concluido);
+    assert_eq!(cena.enviados(), [Passada::Frente, Passada::Verso]);
+}

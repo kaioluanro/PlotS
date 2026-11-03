@@ -435,3 +435,52 @@ fn gesto_de_cada_modelo_vem_antes_da_colocacao() {
         );
     }
 }
+
+/// Simulada automatica com estas medidas, enviando as duas faces de um plano em A4.
+fn enviar_em_duas_faces_com_medidas(medidas: Vec<DimensoesPagina>) -> Result<(), ErroSimulacao> {
+    let plano = lotes(
+        &vec![A4; medidas.len()],
+        50,
+        ModeloImpressora::JatoDeTinta.perfil(),
+    );
+    let mut backend = SimGuiado::automatica(
+        Mecanica::do_modelo(ModeloImpressora::JatoDeTinta),
+        ModeloImpressora::JatoDeTinta.gesto().into(),
+        medidas,
+    );
+    backend.enviar(Passada::DuasFaces, &plano[0].lote.passada1)
+}
+
+#[test]
+fn simulada_automatica_aceita_a4_e_carta_em_duas_faces() {
+    assert!(enviar_em_duas_faces_com_medidas(vec![A4; 2]).is_ok());
+    let carta = DimensoesPagina::new(215.9, 279.4);
+    assert!(enviar_em_duas_faces_com_medidas(vec![carta; 2]).is_ok());
+}
+
+#[test]
+fn simulada_automatica_recusa_papel_que_nao_seja_a4_ou_carta() {
+    for medida in [
+        A5,
+        DimensoesPagina::new(216.0, 356.0),
+        DimensoesPagina::new(100.0, 100.0),
+    ] {
+        assert!(matches!(
+            enviar_em_duas_faces_com_medidas(vec![medida; 2]),
+            Err(ErroSimulacao::DuasFacesRecusadas)
+        ));
+    }
+}
+
+#[test]
+fn simulada_sem_medidas_recusa_as_duas_faces() {
+    let plano = lotes(&[A4; 2], 50, ModeloImpressora::JatoDeTinta.perfil());
+    let mut backend = SimGuiado::novo(
+        Mecanica::do_modelo(ModeloImpressora::JatoDeTinta),
+        ModeloImpressora::JatoDeTinta.gesto().into(),
+    );
+    assert!(matches!(
+        backend.enviar(Passada::DuasFaces, &plano[0].lote.passada1),
+        Err(ErroSimulacao::DuasFacesRecusadas)
+    ));
+}

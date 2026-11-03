@@ -92,6 +92,8 @@
 
 /* So a lista rola: o rodape e o botao continuam visiveis em qualquer altura. */
 .rolagem {
+  /* O texto so para leitores de tela fica preso aqui: fora da lista, ele estenderia a pagina. */
+  position: relative;
   flex: 1 1 0;
   min-height: 72px;
   padding: 0 4px 4px;
@@ -597,16 +599,33 @@
   width: 108px;
 }
 
+/* O nome do modelo automatico nao cabe na largura dos outros. */
+.seletorCaixaLargo {
+  width: 100%;
+}
+
+.fileiraDoGesto {
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.gestoRotulo {
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
 .seletor {
   width: 100%;
-  min-height: 24px;
+  min-height: 28px;
   padding: 0 20px 0 8px;
   overflow: hidden;
   color: var(--fg);
   font-family: inherit;
   font-size: 11px;
   font-weight: 500;
-  line-height: 22px;
+  line-height: 26px;
   white-space: nowrap;
   background: var(--bg-sunken);
   border: 1px solid var(--border-control);
@@ -725,6 +744,14 @@
   line-height: 14px;
 }
 
+/* Fica logo abaixo do campo, na mesma margem dele. */
+.notaDoLote {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 10px;
+  line-height: 14px;
+}
+
 .rodape {
   display: flex;
   flex: 0 1 auto;
@@ -740,6 +767,7 @@
  * barra fica sobre o respiro direito do rodape: aparecer nao aperta os campos nem os desalinha do botao.
  */
 .camposDoRodape {
+  position: relative;
   display: flex;
   flex: 0 1 auto;
   flex-direction: column;
@@ -984,7 +1012,8 @@
    continua sendo lida pelo aria-describedby; lote e resumo com o nome de grupo aberto; e, com cartao
    na tela, lote, resumo e grupos, para o cartao ganhar o espaco. */
 @media (max-height: 560px) {
-  .lateral [data-dica-modo] {
+  .lateral [data-dica-modo],
+  .notaDoLote {
     display: none;
   }
 

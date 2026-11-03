@@ -148,9 +148,39 @@ pub fn ajuste_do_papel(papel: &Papel) -> Result<AjustePapel, ErroEnvio> {
     Ok(AjustePapel::Formato(formato))
 }
 
+/// Quantas faces o envio pede ao driver.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FacesDoEnvio {
+    /// Uma face só: o fluxo manual, sempre.
+    Uma,
+    /// As duas faces, com a virada pela borda longa.
+    Duas,
+}
+
+impl FacesDoEnvio {
+    /// Só o trabalho em duas faces pede o recurso ao driver.
+    pub const fn da_passada(passada: plots_print::job::Passada) -> Self {
+        match passada {
+            plots_print::job::Passada::DuasFaces => Self::Duas,
+            plots_print::job::Passada::Frente | plots_print::job::Passada::Verso => Self::Uma,
+        }
+    }
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
+
+    #[test]
+    fn so_o_trabalho_de_duas_faces_pede_o_recurso_ao_driver() {
+        use plots_print::job::Passada;
+        assert_eq!(
+            FacesDoEnvio::da_passada(Passada::DuasFaces),
+            FacesDoEnvio::Duas
+        );
+        assert_eq!(FacesDoEnvio::da_passada(Passada::Frente), FacesDoEnvio::Uma);
+        assert_eq!(FacesDoEnvio::da_passada(Passada::Verso), FacesDoEnvio::Uma);
+    }
     use plots_core::{reconhecer_papel, DimensoesPagina};
 
     fn papel(largura: f64, altura: f64) -> Papel {

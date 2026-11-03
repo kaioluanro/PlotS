@@ -3,7 +3,7 @@
 //! entrada hostil: os bytes salvos só chegam ao driver depois de conferidos.
 
 use crate::erro::ErroEnvio;
-use crate::papel::AjustePapel;
+use crate::papel::{AjustePapel, FacesDoEnvio};
 use crate::preferencias::{ErroPreferencias, RespostaDaJanela};
 use crate::spooler::{sistema, BufferDevmode, Impressora};
 use crate::LIMITE_BUFFER_BYTES;
@@ -62,34 +62,47 @@ fn fixar(
     driver: &impl DriverDaFila,
     mut base: BufferDevmode,
     ajuste: AjustePapel,
+    faces: FacesDoEnvio,
     recusa: impl FnOnce() -> ErroEnvio,
 ) -> Result<BufferDevmode, ErroEnvio> {
     base.aplicar(ajuste);
+    if faces == FacesDoEnvio::Duas {
+        base.pedir_duas_faces();
+    }
     let mut mesclado = BufferDevmode::com_tamanho(driver.tamanho())?;
     if driver.mesclar(&mut mesclado, &base) != IDOK {
-        return Err(recusa());
+        return Err(match faces {
+            FacesDoEnvio::Uma => recusa(),
+            FacesDoEnvio::Duas => ErroEnvio::DuasFacesNaoAceitas,
+        });
     }
-    mesclado.conferir_simplex()?;
+    match faces {
+        FacesDoEnvio::Uma => mesclado.conferir_simplex()?,
+        FacesDoEnvio::Duas => mesclado.conferir_duas_faces()?,
+    }
     mesclado.conferir_aplicado()?;
     Ok(mesclado)
 }
 
 /// `DEVMODE` do envio. Parte do salvo, quando há, mas o que o envio fixa vale sobre ele: o papel,
-/// uma cópia, escala real, retrato, uma página por folha e uma face só.
+/// uma cópia, escala real, retrato, uma página por folha e as faces pedidas.
 pub(crate) fn montar(
     driver: &impl DriverDaFila,
     ajuste: AjustePapel,
+    faces: FacesDoEnvio,
     salvo: Option<&[u8]>,
 ) -> Result<BufferDevmode, ErroEnvio> {
     let padrao = ler_padrao(driver)?;
     match salvo {
         Some(bytes) => {
             let partida = validar_salvo(driver, &padrao, bytes)?;
-            fixar(driver, partida, ajuste, || {
+            fixar(driver, partida, ajuste, faces, || {
                 ErroEnvio::Resposta("o driver não aceitou o ajuste salvo")
             })
         }
-        None => fixar(driver, padrao, ajuste, || sistema("DocumentPropertiesW")),
+        None => fixar(driver, padrao, ajuste, faces, || {
+            sistema("DocumentPropertiesW")
+        }),
     }
 }
 
@@ -100,6 +113,7 @@ fn culpa_do_ajuste(erro: &ErroEnvio) -> bool {
         erro,
         ErroEnvio::Resposta(_)
             | ErroEnvio::SimplexNaoAceito
+            | ErroEnvio::DuasFacesNaoAceitas
             | ErroEnvio::PapelNaoAceito { .. }
             | ErroEnvio::ValorNaoAceito { .. }
             | ErroEnvio::ValorNaoConfirmado { .. }

@@ -5,9 +5,10 @@
 use crate::erro::ErroEnvio;
 use crate::estado::Estado;
 use crate::papel::{
-    conferir_devmode, AjustePapel, CampoLido, LeituraDevmode, DMPAPER_USER, ESCALA_REAL,
-    ORIENTACAO_RETRATO, UMA_COPIA, UMA_POR_FOLHA,
+    conferir_devmode, AjustePapel, CampoLido, FacesDoEnvio, LeituraDevmode, DMPAPER_USER,
+    ESCALA_REAL, ORIENTACAO_RETRATO, UMA_COPIA, UMA_POR_FOLHA,
 };
+use crate::preferencias::PerguntaDuasFaces;
 use crate::preferencias_driver::{montar, DriverDaFila};
 use crate::raster::{bytes_do_bitmap, Dispositivo, PlanoPagina};
 use crate::texto::{deslocamento_no_buffer, texto_utf16_le};
@@ -18,17 +19,43 @@ use windows::core::{w, Error, HRESULT, PCWSTR};
 use windows::Win32::Foundation::{ERROR_INSUFFICIENT_BUFFER, ERROR_INVALID_PARAMETER, HWND};
 use windows::Win32::Graphics::Gdi::{
     CreateDCW, DeleteDC, GetDeviceCaps, StretchDIBits, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
-    DEVMODEW, DEVMODE_FIELD_FLAGS, DIB_RGB_COLORS, DMCOLLATE_FALSE, DMDUP_SIMPLEX, DM_COLLATE,
-    DM_COPIES, DM_DUPLEX, DM_FORMNAME, DM_IN_BUFFER, DM_IN_PROMPT, DM_NUP, DM_ORIENTATION,
-    DM_OUT_BUFFER, DM_PAPERLENGTH, DM_PAPERSIZE, DM_PAPERWIDTH, DM_SCALE, HDC, HORZRES, LOGPIXELSX,
-    LOGPIXELSY, PHYSICALHEIGHT, PHYSICALOFFSETX, PHYSICALOFFSETY, PHYSICALWIDTH, RASTERCAPS,
-    RC_STRETCHDIB, SRCCOPY, VERTRES,
+    DEVMODEW, DEVMODE_FIELD_FLAGS, DIB_RGB_COLORS, DMCOLLATE_FALSE, DMDUP_SIMPLEX, DMDUP_VERTICAL,
+    DM_COLLATE, DM_COPIES, DM_DUPLEX, DM_FORMNAME, DM_IN_BUFFER, DM_IN_PROMPT, DM_NUP,
+    DM_ORIENTATION, DM_OUT_BUFFER, DM_PAPERLENGTH, DM_PAPERSIZE, DM_PAPERWIDTH, DM_SCALE, HDC,
+    HORZRES, LOGPIXELSX, LOGPIXELSY, PHYSICALHEIGHT, PHYSICALOFFSETX, PHYSICALOFFSETY,
+    PHYSICALWIDTH, RASTERCAPS, RC_STRETCHDIB, SRCCOPY, VERTRES,
 };
 use windows::Win32::Graphics::Printing::{
     ClosePrinter, DocumentPropertiesW, GetJobW, GetPrinterW, OpenPrinterW, SetJobW,
     JOB_CONTROL_DELETE, JOB_INFO_2W, PRINTER_HANDLE, PRINTER_INFO_2W,
 };
-use windows::Win32::Storage::Xps::{AbortDoc, EndDoc, EndPage, StartDocW, StartPage, DOCINFOW};
+use windows::Win32::Storage::Xps::{
+    AbortDoc, DeviceCapabilitiesW, EndDoc, EndPage, StartDocW, StartPage, DC_DUPLEX, DOCINFOW,
+};
+
+/// Pergunta ao driver da própria fila, sem abrir nada na fila e sem mudar nada.
+pub(crate) struct DriverDoSistema;
+
+impl PerguntaDuasFaces for DriverDoSistema {
+    fn dc_duplex(&self, fila: &str, porta: &str) -> i32 {
+        let para_o_sistema =
+            |texto: &str| -> Vec<u16> { texto.encode_utf16().chain(std::iter::once(0)).collect() };
+        let nome = para_o_sistema(fila);
+        // A porta pode vir em lista: o driver quer uma só.
+        let porta = para_o_sistema(porta.split(',').next().unwrap_or_default().trim());
+        // Garantia: os dois textos terminam em zero e vivem durante a chamada; sem buffer de saída
+        // nem `DEVMODE`, a função só devolve o número.
+        unsafe {
+            DeviceCapabilitiesW(
+                PCWSTR::from_raw(nome.as_ptr()),
+                PCWSTR::from_raw(porta.as_ptr()),
+                DC_DUPLEX,
+                None,
+                None,
+            )
+        }
+    }
+}
 
 /// Nível de `GetJobW` que traz o estado e o texto de estado do trabalho.
 const NIVEL_INFO_2: u32 = 2;
@@ -84,9 +111,10 @@ impl Impressora {
     pub(crate) fn devmode(
         &self,
         ajuste: AjustePapel,
+        faces: FacesDoEnvio,
         salvo: Option<&[u8]>,
     ) -> Result<BufferDevmode, ErroEnvio> {
-        montar(self, ajuste, salvo)
+        montar(self, ajuste, faces, salvo)
     }
 
     /// Estado atual do trabalho. `None` quando ele já não está na fila.
@@ -421,6 +449,26 @@ impl BufferDevmode {
                 modo.Anonymous1.Anonymous1.dmPaperLength = comprimento;
                 modo.dmFields |= DM_PAPERWIDTH | DM_PAPERLENGTH;
             }
+        }
+    }
+
+    /// Pede as duas faces, com a virada pela borda longa. Vem depois de `aplicar`, que fixa o resto.
+    pub(crate) fn pedir_duas_faces(&mut self) {
+        // Garantia: mesmo tamanho e alinhamento de `aplicar`; a referência exclusiva vale só aqui.
+        let modo = unsafe { &mut *self.ponteiro_mut() };
+        modo.dmFields |= DM_DUPLEX;
+        modo.dmDuplex = DMDUP_VERTICAL;
+    }
+
+    /// Em duas faces, o que vale é a resposta do driver: ele precisa ter ficado com o campo marcado
+    /// e com a virada pedida. Qualquer outra resposta impede o envio.
+    pub(crate) fn conferir_duas_faces(&self) -> Result<(), ErroEnvio> {
+        // Garantia: mesmo tamanho e alinhamento de `aplicar`; o driver preencheu o buffer.
+        let modo = unsafe { &*self.ponteiro() };
+        if modo.dmFields.0 & DM_DUPLEX.0 != 0 && modo.dmDuplex.0 == DMDUP_VERTICAL.0 {
+            Ok(())
+        } else {
+            Err(ErroEnvio::DuasFacesNaoAceitas)
         }
     }
 

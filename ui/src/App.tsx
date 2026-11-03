@@ -461,7 +461,12 @@ export function App() {
         if (modo === "espelho") {
           const { linhas, notas } = linhasDoEnvio(destinos, resumo);
           setPedidoDeEnvio({
-            conteudo: conteudoDoEnvio(linhasComTrecho(linhas, leitura), notas),
+            conteudo: conteudoDoEnvio(
+              linhasComTrecho(linhas, leitura),
+              notas,
+              destinos.some((destino) => destino.modo === "automatico"),
+              destinos.every((destino) => destino.tipo === "simulada"),
+            ),
             aba,
             destinos,
             plano: ENVIO_EM_ESPELHO,

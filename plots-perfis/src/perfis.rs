@@ -15,6 +15,9 @@ pub struct EntradaPerfil {
     pub gesto_texto: Option<String>,
     /// Modelo de que os parâmetros vieram; `None` quando foram medidos ou escritos à mão.
     pub modelo: Option<ModeloImpressora>,
+    /// A impressora imprime as duas faces sozinha nos papéis aceitos. Nos outros, vale o gesto de
+    /// `modelo`, que nesse caso sempre existe.
+    pub automatico: bool,
 }
 
 /// Conjunto de perfis, indexado pelo nome exato da fila.
@@ -57,8 +60,21 @@ impl Perfis {
                 perfil: modelo.perfil(),
                 gesto_texto: None,
                 modelo: Some(modelo),
+                automatico: false,
             },
         );
+    }
+
+    /// Marca a fila como frente e verso automático. Sem `gesto`, os outros papéis seguem o gesto do
+    /// modelo que ela já tinha, ou o do jato de tinta.
+    pub fn definir_automatico(&mut self, fila: &str, gesto: Option<ModeloImpressora>) {
+        let gesto = gesto
+            .or_else(|| self.obter(fila).and_then(|entrada| entrada.modelo))
+            .unwrap_or(ModeloImpressora::JatoDeTinta);
+        self.definir_modelo(fila, gesto);
+        if let Some(entrada) = self.filas.get_mut(fila) {
+            entrada.automatico = true;
+        }
     }
 
     /// Remove o perfil da fila e o devolve, se existir.

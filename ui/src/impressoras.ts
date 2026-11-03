@@ -2,8 +2,8 @@ import { idiomaAtual, traduzir, type Chave, type Idioma } from "./i18n";
 import type { PaginasDaAba } from "./tabs";
 
 export type Nivel = "pronta" | "ativa" | "atencao" | "problema";
-export type Modelo = "jato" | "laser";
-export type Modo = Modelo | "personalizado" | "sem_perfil" | "desconhecido";
+export type Modelo = "jato" | "laser" | "automatico" | "automatico:jato" | "automatico:laser";
+export type Modo = "jato" | "laser" | "automatico" | "personalizado" | "sem_perfil" | "desconhecido";
 
 export interface CondicaoLida {
   codigo: string;
@@ -17,6 +17,8 @@ export interface Impressora {
   nivel: Nivel;
   condicoes: CondicaoLida[];
   modo: Modo;
+  duasFaces?: boolean;
+  gestoManual?: "jato" | "laser";
   /** Esta fila nunca recebe da janela. */
   recusa?: "pede_arquivo" | "fax";
 }
@@ -67,11 +69,14 @@ export function resumoDoLote(
   paginas: number,
   folhasPorLote: number,
   idioma: Idioma = idiomaAtual,
+  soAutomaticas = false,
 ): string {
   const lotes = contarLotes(paginas, folhasPorLote);
   const textoPaginas = traduzir(idioma, paginas === 1 ? "folhas.paginas.um" : "folhas.paginas.varios", {
     n: String(paginas),
   });
+  // Sem gesto, folhas por lote nao reparte nada: a contagem de lotes nao diria o que vai acontecer.
+  if (soAutomaticas) return textoPaginas;
   const textoLotes = traduzir(idioma, lotes === 1 ? "folhas.lotes.um" : "folhas.lotes.varios", {
     n: String(lotes),
   });
@@ -129,7 +134,7 @@ export function nomeDeExibicao(impressora: Impressora, idioma: Idioma = idiomaAt
   if (impressora.tipo === "fila") return impressora.nome;
   return traduzir(
     idioma,
-    impressora.modo === "laser" ? "impressora.simulada.gaveta" : "impressora.simulada.traseira",
+    impressora.modo === "automatico" ? "impressora.simulada.automatica" : impressora.modo === "laser" ? "impressora.simulada.gaveta" : "impressora.simulada.traseira",
   );
 }
 
@@ -168,14 +173,17 @@ export function caminhoDoAviso(aviso: Aviso): string | null {
 const CHAVES_DO_MODELO: Readonly<Record<Modelo, Chave>> = {
   jato: "modo.jato",
   laser: "modo.laser",
+  automatico: "modo.automatico",
+  "automatico:jato": "modo.automatico",
+  "automatico:laser": "modo.automatico",
 };
 
 export function nomeDoModelo(modelo: Modelo, idioma: Idioma = idiomaAtual): string {
   return traduzir(idioma, CHAVES_DO_MODELO[modelo]);
 }
 
-export function eModelo(modo: Modo): modo is Modelo {
-  return modo === "jato" || modo === "laser";
+export function eModelo(modo: Modo): modo is Extract<Modelo, Modo> {
+  return modo === "jato" || modo === "laser" || modo === "automatico";
 }
 
 export const CALIBRAR = "calibrar";
@@ -206,16 +214,18 @@ export function estadoDoSeletor(
 ): EstadoDoSeletor | null {
   if (impressora.tipo !== "fila" || impressora.modo === "desconhecido") return null;
   const { modo } = impressora;
+  const escolhaEmGravacao = gravando?.startsWith("automatico:") ? "automatico" : gravando;
   const opcoes: OpcaoDoSeletor[] = [
     { valor: "jato", rotulo: nomeDoModelo("jato", idioma), soEstado: false },
     { valor: "laser", rotulo: nomeDoModelo("laser", idioma), soEstado: false },
+    ...(impressora.duasFaces || modo === "automatico" ? [{ valor: "automatico", rotulo: nomeDoModelo("automatico", idioma), soEstado: false }] : []),
     { valor: CALIBRAR, rotulo: traduzir(idioma, "modo.calibrar"), soEstado: false, divisorAntes: true },
   ];
   if (eModelo(modo)) {
     const rotulo = nomeDoModelo(modo, idioma);
     return {
-      valor: gravando ?? modo,
-      titulo: traduzir(idioma, "modo.perfil.titulo", {
+      valor: escolhaEmGravacao ?? modo,
+      titulo: modo === "automatico" ? rotulo : traduzir(idioma, "modo.perfil.titulo", {
         modo: rotulo,
         face: traduzir(idioma, "modo.entrada"),
       }),
@@ -224,7 +234,7 @@ export function estadoDoSeletor(
   }
   const personalizado = modo === "personalizado";
   return {
-    valor: gravando ?? modo,
+    valor: escolhaEmGravacao ?? modo,
     titulo: traduzir(idioma, personalizado ? "modo.seletor.personalizado" : "modo.seletor.semPerfil"),
     opcoes: [
       {
@@ -243,7 +253,7 @@ export type EscolhaNoSeletor =
   | { acao: "nada" };
 
 export function interpretarEscolha(valor: string): EscolhaNoSeletor {
-  if (valor === "jato" || valor === "laser") return { acao: "gravar", modelo: valor };
+  if (valor === "jato" || valor === "laser" || valor === "automatico") return { acao: "gravar", modelo: valor };
   return valor === CALIBRAR ? { acao: "calibrar" } : { acao: "nada" };
 }
 
@@ -319,7 +329,9 @@ export function comModeloGravado(
     ...lista,
     impressoras: lista.impressoras.map((impressora) =>
       impressora.tipo === "fila" && impressora.nome === fila
-        ? { ...impressora, modo: modelo }
+        ? modelo.startsWith("automatico")
+          ? { ...impressora, modo: "automatico" as const, gestoManual: modelo === "automatico:laser" ? "laser" as const : modelo === "automatico:jato" ? "jato" as const : impressora.gestoManual ?? (impressora.modo === "laser" ? "laser" as const : "jato" as const) }
+          : { ...impressora, modo: modelo as "jato" | "laser", gestoManual: undefined }
         : impressora,
     ),
   };

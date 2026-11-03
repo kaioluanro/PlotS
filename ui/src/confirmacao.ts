@@ -148,13 +148,26 @@ export function conteudoDaConfirmacao(estado: EstadoAbas): ConteudoConfirmacao |
 }
 
 /** A confirmacao antes de um envio real: quem recebe, as paginas e o papel. */
-export function conteudoDoEnvio(linhas: readonly string[], notas: readonly string[]): ConteudoConfirmacao {
+export function conteudoDoEnvio(
+  linhas: readonly string[],
+  notas: readonly string[],
+  temAutomatica = false,
+  soSimuladas = false,
+): ConteudoConfirmacao {
   return {
-    titulo: "cartao.envio.titulo",
+    titulo: soSimuladas
+      ? "modo.automatico.simulacaoTitulo"
+      : temAutomatica
+        ? "modo.automatico.envioTitulo"
+        : "cartao.envio.titulo",
     texto: "cartao.envio.texto",
     consequencia: null,
     manter: "cartao.envio.voltar",
-    fechar: "cartao.envio.enviar",
+    fechar: soSimuladas
+      ? "modo.automatico.simulacaoConfirmar"
+      : temAutomatica
+        ? "modo.automatico.envioConfirmar"
+        : "cartao.envio.enviar",
     parametros: {},
     ehJanela: false,
     focoNaOrigemAoConfirmar: true,
@@ -320,6 +333,35 @@ function conteudoDeLoteUnico(
   };
 }
 
+/** Na divisao, cada trecho de fluxo vale so nas paginas que uma impressora automatica recebe. */
+function fluxosRecebidos(
+  recebem: readonly Impressora[],
+  comLote: readonly ParteDaDivisao[],
+  fluxos: NonNullable<ResumoDoEnvio["fluxos"]>,
+): NonNullable<ResumoDoEnvio["fluxos"]> {
+  const automaticas = new Set(recebem.filter((item) => item.modo === "automatico").map((item) => item.id));
+  const faixas = comLote
+    .filter((parte) => automaticas.has(parte.impressora))
+    .flatMap((parte) => parte.faixas ?? []);
+  const pedacos = faixas.flatMap((faixa) =>
+    fluxos.flatMap((fluxo) => {
+      const inicio = Math.max(faixa.inicio, fluxo.inicio);
+      const fim = Math.min(faixa.fim, fluxo.fim);
+      return inicio <= fim ? [{ automatico: fluxo.automatico, inicio, fim }] : [];
+    }),
+  );
+  const juntos: NonNullable<ResumoDoEnvio["fluxos"]> = [];
+  for (const pedaco of pedacos.sort((a, b) => a.inicio - b.inicio)) {
+    const anterior = juntos[juntos.length - 1];
+    if (anterior && anterior.automatico === pedaco.automatico && anterior.fim + 1 >= pedaco.inicio) {
+      anterior.fim = Math.max(anterior.fim, pedaco.fim);
+    } else {
+      juntos.push({ ...pedaco });
+    }
+  }
+  return juntos;
+}
+
 /** A confirmacao da divisao: de onde sai cada lote, quem fica de fora e como juntar os macos. */
 export function conteudoDaDivisao(
   destinos: readonly Impressora[],
@@ -330,14 +372,17 @@ export function conteudoDaDivisao(
   const partes = divisaoDoResumo(destinos, resumo, idioma);
   const comLote = partes.filter((parte) => parte.lotes.length > 0);
   const semLote = partes.filter((parte) => parte.lotes.length === 0);
-  const envio = linhasDoEnvio(destinos, resumo, idioma);
-  const reais = destinos.filter((destino) => destino.tipo === "fila").length;
-  const aviso = traduzir(idioma, "cartao.envio.simuladas");
-  // So com simuladas nao existe a fila real a que o aviso se compara.
+  // Quem fica sem lote nao recebe nada: as notas falam so de quem imprime.
+  const recebem = destinos.filter((destino) => comLote.some((parte) => parte.impressora === destino.id));
+  const envio = linhasDoEnvio(
+    recebem,
+    { ...resumo, fluxos: fluxosRecebidos(recebem, comLote, resumo.fluxos ?? []) },
+    idioma,
+  );
   const doAjuste = linhaDoAjusteNoEnvio(destinos, filasComAjusteAgora(), idioma);
   const notasDoEnvio = [
     ...(doAjuste === null ? [] : [doAjuste]),
-    ...envio.notas.filter((nota) => reais > 0 || nota !== aviso),
+    ...envio.notas,
   ];
   const pilha = ordemDaPilha(comLote, resumo.paginas, resumo.papeis, idioma);
   const trecho = leitura === null ? [] : linhasComTrecho(["", ""], leitura, idioma).slice(0, -2);
@@ -381,7 +426,10 @@ export function envioComDivisao(
   if (aba === null) return envio;
   const marcadas = lista.filter((impressora) => aba.impressorasMarcadas.includes(impressora.id));
   const soSimuladas = marcadas.length > 0 && marcadas.every((item) => item.tipo === "simulada");
-  const rotulo = traduzir(idioma, soSimuladas ? "cartao.simular.frente" : "imprimir.frente");
+  const soAutomaticas = marcadas.length > 0 && marcadas.every((item) => item.modo === "automatico");
+  const rotulo = soAutomaticas
+    ? traduzir(idioma, soSimuladas ? "modo.automatico.simular" : "modo.automatico.enviar")
+    : traduzir(idioma, soSimuladas ? "cartao.simular.frente" : "imprimir.frente");
   if (aba.divisao !== null && aba.cartoes.some(cartaoEmAndamento)) {
     return {
       ...envio,

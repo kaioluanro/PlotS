@@ -170,6 +170,9 @@ pub struct Lote {
     pub passada1: Vec<Pagina>,
     /// Segunda sequência a enviar, conforme `ordem_passadas`.
     pub passada2: Vec<Pagina>,
+    /// A impressora imprime as duas faces sozinha: `passada1` é um trabalho só, na ordem do
+    /// documento, e `passada2` fica vazia.
+    pub duas_faces: bool,
 }
 
 #[derive(Debug)]
@@ -277,6 +280,7 @@ pub fn plano_documento(
             paginas,
             passada1,
             passada2,
+            duas_faces: false,
         });
         inicio = fim;
     }
@@ -526,6 +530,9 @@ pub struct LotePapel {
     pub paginas: Vec<Option<usize>>,
     pub passada1: Vec<Pagina>,
     pub passada2: Vec<Pagina>,
+    /// A impressora imprime as duas faces sozinha: `passada1` é um trabalho só, na ordem do
+    /// documento, e `passada2` fica vazia.
+    pub duas_faces: bool,
 }
 
 /// Valida os pares frente/verso e divide as folhas em lotes contíguos por papel.
@@ -625,6 +632,7 @@ pub fn plano_lotes_do_intervalo(
                 paginas: Vec::new(),
                 passada1: Vec::new(),
                 passada2: Vec::new(),
+                duas_faces: false,
             });
         }
         if let Some(lote) = lotes.last_mut() {
@@ -669,6 +677,80 @@ pub fn plano_lotes_do_intervalo(
     Ok(lotes)
 }
 
+/// Papéis que seguem pelo frente e verso automático. A regra é conservadora: outra máquina pode
+/// aceitar mais, mas o fluxo manual funciona em todas.
+pub const fn papel_aceita_duas_faces(papel: &Papel) -> bool {
+    matches!(papel.formato, FormatoPapel::A4 | FormatoPapel::Carta)
+}
+
+/// Como repartir os lotes de uma impressora que imprime as duas faces sozinha.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RepartoAutomatico {
+    /// Sem gesto não há maço a limitar: um trabalho por trecho seguido do mesmo papel.
+    PorTrechoDePapel,
+    /// Na divisão, os lotes são os mesmos de todas as impressoras, e cada um vira um trabalho.
+    PorLote,
+}
+
+/// Plano de uma impressora que imprime as duas faces sozinha. Os papéis aceitos saem em um trabalho
+/// na ordem do documento, sem inverter, sem girar e sem face em branco. Os outros papéis seguem o
+/// fluxo manual de `perfil`. As folhas e a ordem no documento são as mesmas do plano manual.
+///
+/// A página deitada segue o que o envio já faz: gira para caber na folha em pé. A virada é sempre
+/// pela borda longa da folha, que nessa página é a borda de cima: ela se lê virando como um
+/// calendário, e não como um livro.
+pub fn plano_automatico_do_intervalo(
+    paginas: &[DimensoesPagina],
+    intervalo: Option<IntervaloPaginas>,
+    folhas_por_lote: usize,
+    ordem_passadas: OrdemPassadas,
+    perfil: PerfilImpressora,
+    reparto: RepartoAutomatico,
+) -> Result<Vec<LotePapel>, ErroPapel> {
+    let plano =
+        plano_lotes_do_intervalo(paginas, intervalo, folhas_por_lote, ordem_passadas, perfil)?;
+    let mut lotes: Vec<LotePapel> = Vec::new();
+    lotes
+        .try_reserve(plano.len())
+        .map_err(|_| ErroPapel::ReservaFalhou)?;
+    for lote in plano {
+        if !papel_aceita_duas_faces(&lote.papel) {
+            lotes.push(lote);
+            continue;
+        }
+        let mut documento = Vec::new();
+        documento
+            .try_reserve(lote.paginas.len())
+            .map_err(|_| ErroPapel::ReservaFalhou)?;
+        documento.extend(lote.paginas.iter().flatten().copied().map(Pagina::original));
+        let junta = reparto == RepartoAutomatico::PorTrechoDePapel;
+        match lotes.last_mut() {
+            Some(anterior)
+                if junta && anterior.duas_faces && anterior.papel.formato == lote.papel.formato =>
+            {
+                anterior
+                    .paginas
+                    .try_reserve(lote.paginas.len())
+                    .map_err(|_| ErroPapel::ReservaFalhou)?;
+                anterior
+                    .passada1
+                    .try_reserve(documento.len())
+                    .map_err(|_| ErroPapel::ReservaFalhou)?;
+                anterior.paginas.extend(lote.paginas);
+                anterior.passada1.extend(documento);
+            }
+            _ => lotes.push(LotePapel {
+                papel: lote.papel,
+                paginas: lote.paginas,
+                passada1: documento,
+                passada2: Vec::new(),
+                duas_faces: true,
+            }),
+        }
+    }
+    Ok(lotes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -697,6 +779,147 @@ mod tests {
             OrdemPassadas::default(),
             modelo.perfil(),
         )
+    }
+
+    const CARTA: DimensoesPagina = DimensoesPagina::new(216.0, 279.0);
+
+    fn automatico(
+        paginas: &[DimensoesPagina],
+        intervalo: Option<IntervaloPaginas>,
+        folhas: usize,
+        reparto: RepartoAutomatico,
+    ) -> Vec<LotePapel> {
+        plano_automatico_do_intervalo(
+            paginas,
+            intervalo,
+            folhas,
+            OrdemPassadas::default(),
+            ModeloImpressora::JatoDeTinta.perfil(),
+            reparto,
+        )
+        .unwrap()
+    }
+
+    fn inteiros(paginas: &[Pagina]) -> Vec<usize> {
+        paginas.iter().filter_map(|pagina| pagina.numero).collect()
+    }
+
+    #[test]
+    fn automatico_sai_em_um_trabalho_na_ordem_do_documento_sem_inverter_nem_girar() {
+        let lotes = automatico(&[A4; 8], None, 1, RepartoAutomatico::PorTrechoDePapel);
+        assert_eq!(lotes.len(), 1, "folhas por lote não limita o automático");
+        assert!(lotes[0].duas_faces);
+        assert_eq!(inteiros(&lotes[0].passada1), [1, 2, 3, 4, 5, 6, 7, 8]);
+        assert!(lotes[0].passada2.is_empty());
+        assert!(lotes[0].passada1.iter().all(|pagina| !pagina.girar_180));
+    }
+
+    #[test]
+    fn automatico_com_total_impar_nao_recebe_folha_em_branco() {
+        let lotes = automatico(&[A4; 5], None, 10, RepartoAutomatico::PorTrechoDePapel);
+        assert_eq!(lotes[0].passada1.len(), 5);
+        assert!(lotes[0]
+            .passada1
+            .iter()
+            .all(|pagina| pagina.numero.is_some()));
+        assert_eq!(
+            lotes[0].paginas.last(),
+            Some(&None),
+            "a folha continua com o verso vazio"
+        );
+    }
+
+    #[test]
+    fn documento_misto_alterna_os_fluxos_em_ordem_de_documento() {
+        let paginas = [A4, A4, A4, A4, A5, A5, A5, A5, A5, A5, CARTA, CARTA, A4, A4];
+        let lotes = automatico(&paginas, None, 2, RepartoAutomatico::PorTrechoDePapel);
+        let resumo: Vec<(FormatoPapel, bool)> = lotes
+            .iter()
+            .map(|lote| (lote.papel.formato, lote.duas_faces))
+            .collect();
+        assert_eq!(
+            resumo,
+            [
+                (FormatoPapel::A4, true),
+                (FormatoPapel::A5, false),
+                (FormatoPapel::A5, false),
+                (FormatoPapel::Carta, true),
+                (FormatoPapel::A4, true),
+            ]
+        );
+        assert_eq!(inteiros(&lotes[0].passada1), [1, 2, 3, 4]);
+        assert_eq!(inteiros(&lotes[3].passada1), [11, 12]);
+        assert_eq!(inteiros(&lotes[4].passada1), [13, 14]);
+    }
+
+    #[test]
+    fn papel_fora_de_a4_e_carta_continua_em_uma_face_com_o_perfil_manual() {
+        for papel in [
+            A5,
+            DimensoesPagina::new(216.0, 330.0),
+            DimensoesPagina::new(216.0, 356.0),
+            DimensoesPagina::new(100.0, 150.0),
+        ] {
+            let paginas = [papel; 4];
+            let lotes = automatico(&paginas, None, 10, RepartoAutomatico::PorTrechoDePapel);
+            let manual = plano_do_modelo(&paginas, None, ModeloImpressora::JatoDeTinta).unwrap();
+            assert_eq!(lotes, manual);
+            assert!(!lotes[0].duas_faces);
+        }
+    }
+
+    #[test]
+    fn automatico_respeita_o_trecho_com_os_numeros_do_documento() {
+        let lotes = automatico(
+            &[A4; 12],
+            trecho(3, 7),
+            2,
+            RepartoAutomatico::PorTrechoDePapel,
+        );
+        assert_eq!(lotes.len(), 1);
+        assert_eq!(inteiros(&lotes[0].passada1), [3, 4, 5, 6, 7]);
+    }
+
+    #[test]
+    fn na_divisao_os_lotes_sao_os_mesmos_do_plano_manual() {
+        let lotes = automatico(&[A4; 18], None, 2, RepartoAutomatico::PorLote);
+        assert_eq!(lotes.len(), 5);
+        assert!(lotes.iter().all(|lote| lote.duas_faces));
+        assert_eq!(inteiros(&lotes[1].passada1), [5, 6, 7, 8]);
+        assert_eq!(inteiros(&lotes[4].passada1), [17, 18]);
+    }
+
+    #[test]
+    fn pagina_deitada_fica_no_mesmo_trabalho_do_mesmo_papel() {
+        let paginas = [A4, A4, PAISAGEM, PAISAGEM, A4, A4];
+        let lotes = automatico(&paginas, None, 10, RepartoAutomatico::PorTrechoDePapel);
+        assert_eq!(lotes.len(), 1);
+        assert_eq!(inteiros(&lotes[0].passada1), [1, 2, 3, 4, 5, 6]);
+        let divisao = automatico(&paginas, None, 10, RepartoAutomatico::PorLote);
+        assert_eq!(
+            divisao.len(),
+            3,
+            "a divisão mantém os lotes de todas as impressoras"
+        );
+    }
+
+    #[test]
+    fn par_de_papeis_incompativeis_e_recusado_como_no_plano_manual() {
+        let erro = plano_automatico_do_intervalo(
+            &[A4, A5],
+            None,
+            10,
+            OrdemPassadas::default(),
+            PerfilImpressora::default(),
+            RepartoAutomatico::PorLote,
+        );
+        assert!(matches!(
+            erro,
+            Err(ErroPapel::ParIncompativel {
+                frente: 1,
+                verso: 2
+            })
+        ));
     }
 
     #[test]

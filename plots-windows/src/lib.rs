@@ -33,7 +33,8 @@ pub use backend::BackendWindows;
 pub use erro::{ErroEnvio, COMANDO_BAIXAR_BIBLIOTECA};
 pub use estado::{Condicao, Estado};
 pub use papel::{
-    ajuste_do_papel, conferir_devmode, medida_nominal, AjustePapel, CampoLido, LeituraDevmode,
+    ajuste_do_papel, conferir_devmode, medida_nominal, AjustePapel, CampoLido, FacesDoEnvio,
+    LeituraDevmode,
 };
 pub use passada::{
     abrir_origem, caminhos_da_biblioteca, escolher_biblioteca, nome_arquivo_saida, nome_documento,
@@ -45,7 +46,8 @@ pub use preferencias::{
     fechar_janelas_do_driver, ha_janela_do_driver_aberta, trazer_janela_do_driver_para_frente,
 };
 pub use preferencias::{
-    ligar_fonte_de_ajustes, ErroPreferencias, FonteDeAjustes, RespostaDaJanela,
+    declara_duas_faces, fila_declara_duas_faces, ligar_fonte_de_ajustes, ErroPreferencias,
+    FonteDeAjustes, PerguntaDuasFaces, RespostaDaJanela,
 };
 #[cfg(windows)]
 pub use preferencias_driver::ajuste_pede_duas_faces;

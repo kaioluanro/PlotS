@@ -112,6 +112,7 @@ pub(crate) fn executar(
     nova.perfil = ajustado;
     // Os valores deixam de ser os do modelo, mesmo que as respostas não mudem nenhum deles.
     nova.modelo = None;
+    nova.automatico = false;
     lidos.inserir(fila, nova);
     salvar_perfis(&caminho_perfis, &lidos)?;
     writeln!(

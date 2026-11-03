@@ -1,12 +1,12 @@
 //! Lógica do ajuste do driver com um driver falso: nenhuma janela abre e nada vai para a fila.
 
 use super::*;
-use crate::papel::UMA_POR_FOLHA;
+use crate::papel::{FacesDoEnvio, UMA_POR_FOLHA};
 use crate::spooler::BufferDevmode;
 use std::cell::{Cell, RefCell};
 use windows::Win32::Graphics::Gdi::{
-    DEVMODE_FIELD_FLAGS, DMDUP_SIMPLEX, DMDUP_VERTICAL, DM_COPIES, DM_DUPLEX, DM_NUP,
-    DM_ORIENTATION, DM_PAPERSIZE, DM_SCALE,
+    DEVMODE_DUPLEX, DEVMODE_FIELD_FLAGS, DMDUP_SIMPLEX, DMDUP_VERTICAL, DM_COPIES, DM_DUPLEX,
+    DM_NUP, DM_ORIENTATION, DM_PAPERSIZE, DM_SCALE,
 };
 
 const EXTRA: u16 = 32;
@@ -187,14 +187,14 @@ fn resposta_de_erro_da_janela_vira_erro_e_nao_grava() {
 fn ajuste_salvo_chega_ao_envio() {
     let driver = Falso::novo();
     let salvo = salvo_de_duas_faces();
-    let montado = montar(&driver, papel_a4(), Some(&salvo)).unwrap();
+    let montado = montar(&driver, papel_a4(), FacesDoEnvio::Uma, Some(&salvo)).unwrap();
     assert_eq!(qualidade(&montado), QUALIDADE_DA_PESSOA);
 }
 
 #[test]
 fn sem_ajuste_o_envio_parte_do_padrao_da_fila() {
     let driver = Falso::novo();
-    let montado = montar(&driver, papel_a4(), None).unwrap();
+    let montado = montar(&driver, papel_a4(), FacesDoEnvio::Uma, None).unwrap();
     assert_eq!(qualidade(&montado), 0);
 }
 
@@ -202,7 +202,7 @@ fn sem_ajuste_o_envio_parte_do_padrao_da_fila() {
 fn ajuste_de_duas_faces_copias_paginas_por_folha_e_outro_papel_nao_vence_o_envio() {
     let driver = Falso::novo();
     let salvo = salvo_de_duas_faces();
-    let montado = montar(&driver, papel_a4(), Some(&salvo)).unwrap();
+    let montado = montar(&driver, papel_a4(), FacesDoEnvio::Uma, Some(&salvo)).unwrap();
     // Garantia: o buffer tem o tamanho de `DEVMODEW`, e os campos lidos são inteiros.
     let (duplex, publico, nup) = unsafe {
         let modo = &*montado.ponteiro();
@@ -246,8 +246,10 @@ fn driver_que_mantem_as_duas_faces_do_ajuste_recua_ao_padrao_com_aviso() {
     let driver = PrendeSoOAjuste(Falso::novo());
     let mut salvo = Some(salvo_de_duas_faces());
     let original = salvo.clone();
-    let (montado, recusado) =
-        com_recuo_ao_padrao(&mut salvo, |bytes| montar(&driver, papel_a4(), bytes)).unwrap();
+    let (montado, recusado) = com_recuo_ao_padrao(&mut salvo, |bytes| {
+        montar(&driver, papel_a4(), FacesDoEnvio::Uma, bytes)
+    })
+    .unwrap();
     assert_eq!(recusado, original);
     assert_eq!(salvo, None);
     assert_eq!(qualidade(&montado), 0);
@@ -267,8 +269,10 @@ fn driver_que_recusa_o_ajuste_cai_no_padrao_e_entrega_os_bytes_recusados() {
     };
     let bytes = buffer.bytes().unwrap();
     let mut salvo = Some(bytes.clone());
-    let (montado, recusado) =
-        com_recuo_ao_padrao(&mut salvo, |ajuste| montar(&driver, papel_a4(), ajuste)).unwrap();
+    let (montado, recusado) = com_recuo_ao_padrao(&mut salvo, |ajuste| {
+        montar(&driver, papel_a4(), FacesDoEnvio::Uma, ajuste)
+    })
+    .unwrap();
     assert_eq!(recusado, Some(bytes));
     assert_eq!(qualidade(&montado), 0);
     assert_eq!(salvo, None, "as próximas passadas não tentam de novo");
@@ -280,7 +284,9 @@ fn se_o_padrao_tambem_falha_o_ajuste_fica_guardado_e_o_erro_aparece() {
     driver.recusa_tudo.set(true);
     let original = salvo_de_duas_faces();
     let mut salvo = Some(original.clone());
-    let resultado = com_recuo_ao_padrao(&mut salvo, |ajuste| montar(&driver, papel_a4(), ajuste));
+    let resultado = com_recuo_ao_padrao(&mut salvo, |ajuste| {
+        montar(&driver, papel_a4(), FacesDoEnvio::Uma, ajuste)
+    });
     assert!(resultado.is_err());
     assert_eq!(salvo, Some(original));
 }
@@ -376,7 +382,13 @@ fn salvo_com_formulario_sem_fim() -> Vec<u8> {
 #[test]
 fn nome_de_formulario_sem_zero_final_nao_chega_ao_driver() {
     let driver = Espia::novo();
-    montar(&driver, papel_a4(), Some(&salvo_com_formulario_sem_fim())).unwrap();
+    montar(
+        &driver,
+        papel_a4(),
+        FacesDoEnvio::Uma,
+        Some(&salvo_com_formulario_sem_fim()),
+    )
+    .unwrap();
     let entradas = driver.entradas.borrow();
     let (_, formulario) = entradas.first().unwrap();
     assert_eq!(*formulario, driver.formulario_do_padrao);
@@ -385,7 +397,13 @@ fn nome_de_formulario_sem_zero_final_nao_chega_ao_driver() {
 #[test]
 fn campos_que_o_padrao_nao_informou_nao_chegam_ao_driver() {
     let driver = Espia::novo();
-    montar(&driver, papel_a4(), Some(&salvo_com_formulario_sem_fim())).unwrap();
+    montar(
+        &driver,
+        papel_a4(),
+        FacesDoEnvio::Uma,
+        Some(&salvo_com_formulario_sem_fim()),
+    )
+    .unwrap();
     let entradas = driver.entradas.borrow();
     let (campos, _) = entradas.first().unwrap();
     assert_eq!(*campos, driver.campos_do_padrao);
@@ -455,7 +473,7 @@ fn duas_faces_escondidas_nos_dados_privados_passam_como_limite_conhecido() {
         *byte = LIGA_DUAS_FACES;
     }
     let driver = Falso::novo();
-    let montado = montar(&driver, papel_a4(), Some(&bytes)).unwrap();
+    let montado = montar(&driver, papel_a4(), FacesDoEnvio::Uma, Some(&bytes)).unwrap();
     assert_eq!(montado.conferir_simplex(), Ok(()));
     let saida = montado.bytes().unwrap();
     assert!(saida
@@ -542,8 +560,10 @@ fn bytes_curtos_ou_com_tamanhos_absurdos_nao_viram_devmode() {
 fn bytes_hostis_nao_chegam_ao_driver_e_o_envio_usa_o_padrao() {
     let driver = Falso::novo();
     let mut salvo = Some(vec![0xFF; 5000]);
-    let (montado, recusado) =
-        com_recuo_ao_padrao(&mut salvo, |ajuste| montar(&driver, papel_a4(), ajuste)).unwrap();
+    let (montado, recusado) = com_recuo_ao_padrao(&mut salvo, |ajuste| {
+        montar(&driver, papel_a4(), FacesDoEnvio::Uma, ajuste)
+    })
+    .unwrap();
     assert!(recusado.is_some());
     assert_eq!(qualidade(&montado), 0);
 }
@@ -553,7 +573,7 @@ fn ajuste_de_outra_versao_do_driver_e_recusado() {
     let driver = Falso::novo();
     let versao = std::mem::offset_of!(DEVMODEW, dmDriverVersion);
     let outro = com_campo(salvo_de_duas_faces(), versao, VERSAO_DO_DRIVER + 1);
-    assert!(montar(&driver, papel_a4(), Some(&outro)).is_err());
+    assert!(montar(&driver, papel_a4(), FacesDoEnvio::Uma, Some(&outro)).is_err());
 }
 
 #[test]
@@ -579,7 +599,7 @@ fn nome_da_fila_no_ajuste_nao_vale() {
     let driver = Olhador(Falso::novo(), RefCell::new(Vec::new()));
     let nome = std::mem::offset_of!(DEVMODEW, dmDeviceName);
     let adulterado = com_campo(salvo_de_duas_faces(), nome, u16::from(b'X'));
-    montar(&driver, papel_a4(), Some(&adulterado)).unwrap();
+    montar(&driver, papel_a4(), FacesDoEnvio::Uma, Some(&adulterado)).unwrap();
     assert_eq!(driver.1.borrow()[0], u16::from(b'F'));
 }
 
@@ -609,7 +629,7 @@ fn tamanho_absurdo_informado_pelo_driver_nao_reserva_memoria() {
         }
     }
     for tamanho in [-1, 0, 10, i32::MAX] {
-        assert!(montar(&Absurdo(tamanho), papel_a4(), None).is_err());
+        assert!(montar(&Absurdo(tamanho), papel_a4(), FacesDoEnvio::Uma, None).is_err());
         assert!(perguntar(&Absurdo(tamanho), None, 0).is_err());
     }
 }
@@ -633,7 +653,11 @@ fn driver_real_aceita_o_proprio_ajuste_e_o_envio_continua_em_uma_face() {
     }
     let impressora = Impressora::abrir(FILA_DE_PDF).unwrap();
     let montado = impressora
-        .devmode(papel_a4(), Some(&adulterado.bytes().unwrap()))
+        .devmode(
+            papel_a4(),
+            FacesDoEnvio::Uma,
+            Some(&adulterado.bytes().unwrap()),
+        )
         .unwrap();
     assert_eq!(montado.conferir_simplex(), Ok(()));
     assert_eq!(montado.conferir_aplicado(), Ok(()));
@@ -663,4 +687,113 @@ fn nome_com_zero_no_meio_nao_chega_ao_sistema() {
         ajuste_padrao_da_fila("a\0b"),
         Err(ErroPreferencias::Envio(ErroEnvio::TextoInvalido))
     ));
+}
+
+/// Lê o que o `DEVMODE` montado diz sobre as faces.
+fn faces_montadas(montado: &BufferDevmode) -> (DEVMODE_DUPLEX, bool) {
+    // Garantia: o buffer tem o tamanho de `DEVMODEW`, e os campos lidos são inteiros.
+    let modo = unsafe { &*montado.ponteiro() };
+    (modo.dmDuplex, modo.dmFields.0 & DM_DUPLEX.0 != 0)
+}
+
+/// Driver que não fica com as duas faces, de cada jeito que um driver real pode recusar.
+struct RecusaDuasFaces {
+    driver: Falso,
+    como: Recusa,
+}
+
+#[derive(Clone, Copy)]
+enum Recusa {
+    VoltaParaUmaFace,
+    TiraOCampo,
+    DiaRespostaDeErro,
+}
+
+impl DriverDaFila for RecusaDuasFaces {
+    fn tamanho(&self) -> i32 {
+        self.driver.tamanho()
+    }
+    fn ler(&self, destino: &mut BufferDevmode) -> i32 {
+        self.driver.ler(destino)
+    }
+    fn mesclar(&self, destino: &mut BufferDevmode, entrada: &BufferDevmode) -> i32 {
+        let resposta = self.driver.mesclar(destino, entrada);
+        // Garantia: como em `padrao`.
+        unsafe {
+            let modo = &mut *destino.ponteiro_mut();
+            match self.como {
+                Recusa::VoltaParaUmaFace => modo.dmDuplex = DMDUP_SIMPLEX,
+                Recusa::TiraOCampo => {
+                    modo.dmFields = DEVMODE_FIELD_FLAGS(modo.dmFields.0 & !DM_DUPLEX.0);
+                }
+                Recusa::DiaRespostaDeErro => return -1,
+            }
+        }
+        resposta
+    }
+    fn perguntar(&self, destino: &mut BufferDevmode, entrada: &BufferDevmode, dono: isize) -> i32 {
+        self.driver.perguntar(destino, entrada, dono)
+    }
+}
+
+#[test]
+fn duas_faces_pedem_a_virada_pela_borda_longa_e_mantem_o_resto_do_envio() {
+    let driver = Falso::novo();
+    let montado = montar(&driver, papel_a4(), FacesDoEnvio::Duas, None).unwrap();
+    assert_eq!(faces_montadas(&montado), (DMDUP_VERTICAL, true));
+    // Garantia: como em `faces_montadas`.
+    let publico = unsafe { (*montado.ponteiro()).Anonymous1.Anonymous1 };
+    assert_eq!(publico.dmCopies, 1);
+    assert_eq!(publico.dmScale, 100);
+    assert_eq!(publico.dmOrientation, 1);
+    assert_eq!(publico.dmPaperSize, A4);
+}
+
+#[test]
+fn ajuste_salvo_continua_de_base_e_as_duas_faces_valem_sobre_ele() {
+    let driver = Falso::novo();
+    let salvo = salvo_de_duas_faces();
+    let montado = montar(&driver, papel_a4(), FacesDoEnvio::Duas, Some(&salvo)).unwrap();
+    assert_eq!(qualidade(&montado), QUALIDADE_DA_PESSOA);
+    assert_eq!(faces_montadas(&montado), (DMDUP_VERTICAL, true));
+}
+
+#[test]
+fn driver_que_nao_fica_com_as_duas_faces_e_recusado() {
+    for como in [
+        Recusa::VoltaParaUmaFace,
+        Recusa::TiraOCampo,
+        Recusa::DiaRespostaDeErro,
+    ] {
+        let driver = RecusaDuasFaces {
+            driver: Falso::novo(),
+            como,
+        };
+        assert_eq!(
+            montar(&driver, papel_a4(), FacesDoEnvio::Duas, None).err(),
+            Some(ErroEnvio::DuasFacesNaoAceitas)
+        );
+    }
+}
+
+#[test]
+fn recusa_das_duas_faces_com_ajuste_tenta_o_padrao_e_nao_passa_em_silencio() {
+    let driver = RecusaDuasFaces {
+        driver: Falso::novo(),
+        como: Recusa::VoltaParaUmaFace,
+    };
+    let mut salvo = Some(salvo_de_duas_faces());
+    let resultado = com_recuo_ao_padrao(&mut salvo, |ajuste| {
+        montar(&driver, papel_a4(), FacesDoEnvio::Duas, ajuste)
+    });
+    assert_eq!(resultado.err(), Some(ErroEnvio::DuasFacesNaoAceitas));
+    assert!(salvo.is_some(), "o problema não era o ajuste: ele fica");
+}
+
+#[test]
+fn fluxo_manual_continua_em_uma_face_mesmo_com_ajuste_de_duas_faces() {
+    let driver = Falso::novo();
+    let salvo = salvo_de_duas_faces();
+    let montado = montar(&driver, papel_a4(), FacesDoEnvio::Uma, Some(&salvo)).unwrap();
+    assert_eq!(faces_montadas(&montado).0, DMDUP_SIMPLEX);
 }

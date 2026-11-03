@@ -4,12 +4,12 @@
 //! interface deve chamar a partir de outra thread.
 
 use crate::erro::ErroEnvio;
-use crate::papel::ajuste_do_papel;
+use crate::papel::{ajuste_do_papel, FacesDoEnvio};
 use crate::passada::{
     caminhos_da_biblioteca, escolher_biblioteca, nome_arquivo_saida, nome_documento,
     papel_da_passada, VARIAVEL_PASTA_BIBLIOTECA,
 };
-use crate::preferencias::{ajuste_salvo, avisar_recusa};
+use crate::preferencias::{ajuste_salvo, avisar_recusa, fila_declara_duas_faces};
 use crate::preferencias_driver::com_recuo_ao_padrao;
 use crate::raster::{
     conferir_papel, fator_de_unidade, marcar_ponto_discreto, planejar_pagina,
@@ -265,7 +265,7 @@ impl Backend for BackendWindows {
     type Erro = ErroEnvio;
 
     fn enviar(&mut self, passada: Passada, paginas: &[Pagina]) -> Result<(), ErroEnvio> {
-        if passada == Passada::Frente && !self.repetir_lote {
+        if passada != Passada::Verso && !self.repetir_lote {
             self.lote = self.lote.saturating_add(1);
         }
         self.repetir_lote = false;
@@ -277,6 +277,13 @@ impl Backend for BackendWindows {
         self.mensagem_do_driver = None;
         self.saiu_da_fila = false;
 
+        let faces = FacesDoEnvio::da_passada(passada);
+        // O perfil pode ter sido gravado com outro driver: sem a declaração dele, nada sai.
+        if faces == FacesDoEnvio::Duas
+            && fila_declara_duas_faces(&self.nome_fila, &self.porta) != Some(true)
+        {
+            return Err(ErroEnvio::DuasFacesNaoAceitas);
+        }
         let papel = papel_da_passada(paginas, &self.dimensoes)?;
         let ajuste = ajuste_do_papel(&papel)?;
         let arquivo = self.proximo_arquivo(passada)?;
@@ -299,7 +306,7 @@ impl Backend for BackendWindows {
         let (impressora, nome_fila) = (&self.impressora, &self.nome_fila);
         let ((contexto, dispositivo), recusado) =
             com_recuo_ao_padrao(&mut self.ajuste_do_driver, |salvo| {
-                let devmode = impressora.devmode(ajuste, salvo)?;
+                let devmode = impressora.devmode(ajuste, faces, salvo)?;
                 let contexto = ContextoFila::criar(nome_fila, &devmode)?;
                 if !contexto.aceita_bitmap() {
                     return Err(ErroEnvio::SemSuporteABitmap);

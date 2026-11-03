@@ -81,9 +81,19 @@ fn divisao_do_resumo(
 /// So o modelo afirma como o maco sai; perfil personalizado ou nao lido nao diz nada.
 fn vira_para_ler(impressora: &str, perfis: &Result<Perfis, ErroPerfis>) -> Option<bool> {
     let (simulada, nome) = identificar(impressora);
+    if impressora == impressoras::ID_SIMULADA_AUTOMATICA {
+        return None;
+    }
     let modelo = match simulada {
         Some(modelo) => Some(modelo),
-        None => perfis.as_ref().ok()?.obter(&nome)?.modelo,
+        None => {
+            let entrada = perfis.as_ref().ok()?.obter(&nome)?;
+            // Como o maco sai das duas faces nao se sabe: a pessoa confere.
+            if entrada.automatico {
+                return None;
+            }
+            entrada.modelo
+        }
     };
     modelo.map(fluxo::vira_para_ler)
 }
@@ -115,12 +125,16 @@ fn destinos_do_envio(
         .collect()
 }
 
-/// O identificador diz o tipo: so os dois nomes fixos sao simulados, e o resto e o nome exato da
-/// fila. Um nome sem prefixo nunca cai em uma impressora simulada.
+/// O identificador diz o tipo: so os nomes fixos sao simulados, e o resto e o nome exato da fila. Um
+/// nome sem prefixo nunca cai em uma impressora simulada. O modelo da simulada automatica e o gesto
+/// dos papeis que ela nao imprime sozinha.
 fn identificar(impressora: &str) -> (Option<ModeloImpressora>, String) {
     match impressora {
         "simulada:traseira" => (Some(ModeloImpressora::JatoDeTinta), impressora.to_owned()),
         "simulada:gaveta" => (Some(ModeloImpressora::Laser), impressora.to_owned()),
+        impressoras::ID_SIMULADA_AUTOMATICA => {
+            (Some(ModeloImpressora::JatoDeTinta), impressora.to_owned())
+        }
         outro => (
             None,
             outro.strip_prefix("fila:").unwrap_or(outro).to_owned(),
@@ -143,8 +157,14 @@ fn iniciar_um(
         simulada: simulada.is_some(),
     };
     if let Some(modelo) = simulada {
+        let automatica = impressora == impressoras::ID_SIMULADA_AUTOMATICA;
         return gerente.iniciar(identidade, emitir, move || {
-            trabalhos::preparar_simulada(modelo, &pedido?)
+            let pedido = pedido?;
+            if automatica {
+                trabalhos::preparar_simulada_automatica(modelo, &pedido)
+            } else {
+                trabalhos::preparar_simulada(modelo, &pedido)
+            }
         });
     }
     iniciar_fila(gerente, identidade, emitir, nome, pedido)
@@ -252,6 +272,77 @@ mod testes {
             plots_core::plano_lotes_por_papel(&dimensoes, FOLHAS, OrdemPassadas::default(), perfil)
                 .unwrap();
         fluxo::lotes_do_plano(&lotes)
+    }
+
+    #[test]
+    fn simulada_automatica_e_reconhecida_e_nao_afirma_como_o_maco_sai() {
+        assert_eq!(
+            identificar("simulada:automatica").0,
+            Some(ModeloImpressora::JatoDeTinta)
+        );
+        let perfis = Ok(Perfis::new());
+        assert_eq!(vira_para_ler("simulada:automatica", &perfis), None);
+    }
+
+    #[test]
+    fn fila_automatica_nao_afirma_como_o_maco_sai_nem_com_gesto_de_laser() {
+        let mut perfis = Perfis::new();
+        perfis.definir_automatico("Sala", Some(ModeloImpressora::Laser));
+        assert_eq!(vira_para_ler("fila:Sala", &Ok(perfis)), None);
+    }
+
+    /// Cada impressora tem o seu tipo de plano, mas o rodizio dos lotes e um so: nenhuma pagina se
+    /// repete e nenhuma falta.
+    #[test]
+    fn divisao_entre_manual_e_automatica_nao_repete_nem_perde_paginas() {
+        const PAGINAS: usize = 18;
+        let dimensoes = vec![DimensoesPagina::new(210.0, 297.0); PAGINAS];
+        let pedido = |indice| {
+            Pedido::novo("x.pdf".to_owned(), FOLHAS, None)
+                .unwrap()
+                .com_parte(Some(ParteDoEnvio {
+                    indice,
+                    impressoras: 2,
+                    lotes: 5,
+                    paginas: PAGINAS,
+                }))
+        };
+        let perfil = ModeloImpressora::JatoDeTinta.perfil();
+        let manual = trabalhos::planejar_pedido(&dimensoes, &pedido(0), perfil, false).unwrap();
+        let automatica = trabalhos::planejar_pedido(&dimensoes, &pedido(1), perfil, true).unwrap();
+        assert_eq!(manual.len(), 3);
+        assert_eq!(automatica.len(), 2);
+        assert!(manual.iter().all(|item| !item.lote.duas_faces));
+        assert!(automatica.iter().all(|item| item.lote.duas_faces));
+        assert_eq!(
+            automatica[0]
+                .lote
+                .passada1
+                .iter()
+                .filter_map(|pagina| pagina.numero)
+                .collect::<Vec<_>>(),
+            [5, 6, 7, 8],
+            "em ordem de documento, sem inverter"
+        );
+        let mut vistas: Vec<usize> = manual
+            .iter()
+            .chain(&automatica)
+            .flat_map(|item| item.lote.passada1.iter().chain(&item.lote.passada2))
+            .filter_map(|pagina| pagina.numero)
+            .collect();
+        vistas.sort_unstable();
+        assert_eq!(vistas, (1..=PAGINAS).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn espelho_com_automatica_faz_um_trabalho_e_com_manual_respeita_as_folhas_por_lote() {
+        let dimensoes = vec![DimensoesPagina::new(210.0, 297.0); 8];
+        let pedido = Pedido::novo("x.pdf".to_owned(), 1, None).unwrap();
+        let perfil = ModeloImpressora::JatoDeTinta.perfil();
+        let automatica = trabalhos::planejar_pedido(&dimensoes, &pedido, perfil, true).unwrap();
+        let manual = trabalhos::planejar_pedido(&dimensoes, &pedido, perfil, false).unwrap();
+        assert_eq!(automatica.len(), 1);
+        assert_eq!(manual.len(), 4);
     }
 
     #[test]
@@ -422,20 +513,20 @@ mod testes {
         };
         let perfil = ModeloImpressora::Laser.perfil();
         assert_eq!(
-            trabalhos::planejar_pedido(&dimensoes, &pedido(9), perfil)
+            trabalhos::planejar_pedido(&dimensoes, &pedido(9), perfil, false)
                 .unwrap_err()
                 .codigo,
             trabalhos::MOTIVO_DOCUMENTO_MUDOU
         );
         assert!(
-            trabalhos::planejar_pedido(&dimensoes, &pedido(9), perfil)
+            trabalhos::planejar_pedido(&dimensoes, &pedido(9), perfil, false)
                 .unwrap_err()
                 .texto
                 .ends_with('.'),
             "a frase mostrada no cartao termina em ponto"
         );
         assert_eq!(
-            trabalhos::planejar_pedido(&dimensoes, &pedido(8), perfil)
+            trabalhos::planejar_pedido(&dimensoes, &pedido(8), perfil, false)
                 .unwrap()
                 .len(),
             1

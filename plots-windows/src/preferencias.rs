@@ -64,6 +64,65 @@ pub(crate) fn avisar_recusa(fila: &str, ajuste: &[u8]) {
     }
 }
 
+/// Quem responde `DeviceCapabilitiesW` com `DC_DUPLEX` para uma fila.
+pub trait PerguntaDuasFaces {
+    /// A resposta bruta do driver: 1 tem duas faces, 0 não tem, e -1 não conseguiu responder.
+    fn dc_duplex(&self, fila: &str, porta: &str) -> i32;
+}
+
+/// O que o driver declara sobre as duas faces. `None` quando ele não conseguiu responder: não diz
+/// que não tem, e vale perguntar de novo. O driver pode declarar sem ter a unidade instalada, por
+/// isso quem escolhe o modelo é sempre a pessoa.
+pub fn declara_duas_faces(
+    driver: &impl PerguntaDuasFaces,
+    fila: &str,
+    porta: &str,
+) -> Option<bool> {
+    match driver.dc_duplex(fila, porta) {
+        1 => Some(true),
+        0 => Some(false),
+        _ => None,
+    }
+}
+
+/// Fora do Windows não há driver a perguntar.
+#[cfg(not(windows))]
+pub fn fila_declara_duas_faces(_fila: &str, _porta: &str) -> Option<bool> {
+    None
+}
+
+/// Pergunta ao driver da fila se ela tem duas faces. Só lê.
+#[cfg(windows)]
+pub fn fila_declara_duas_faces(fila: &str, porta: &str) -> Option<bool> {
+    declara_duas_faces(&crate::spooler::DriverDoSistema, fila, porta)
+}
+
+#[cfg(test)]
+mod testes_de_duas_faces {
+    use super::*;
+
+    struct Responde(i32);
+
+    impl PerguntaDuasFaces for Responde {
+        fn dc_duplex(&self, _: &str, _: &str) -> i32 {
+            self.0
+        }
+    }
+
+    #[test]
+    fn so_a_resposta_um_quer_dizer_que_o_driver_declara_duas_faces() {
+        assert_eq!(declara_duas_faces(&Responde(1), "a", "b"), Some(true));
+        assert_eq!(declara_duas_faces(&Responde(0), "a", "b"), Some(false));
+    }
+
+    #[test]
+    fn erro_ou_resposta_fora_do_combinado_nao_afirma_nada() {
+        for resposta in [-1, 2, i32::MIN, i32::MAX] {
+            assert_eq!(declara_duas_faces(&Responde(resposta), "a", "b"), None);
+        }
+    }
+}
+
 /// Fora do Windows não há driver a perguntar.
 #[cfg(not(windows))]
 pub fn abrir_janela_do_driver(

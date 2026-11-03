@@ -37,6 +37,16 @@ const visiveis = (impressora: Impressora) =>
     .map((opcao) => opcao.rotulo);
 
 describe("estado do seletor de modelo", () => {
+  it("oferece o modelo automatico apenas quando o driver declara duas faces", () => {
+    expect(visiveis(fila("sem_perfil"))).not.toContain("Frente e verso automático");
+    expect(visiveis({ ...fila("sem_perfil"), duasFaces: true })).toContain("Frente e verso automático");
+    expect(interpretarEscolha("automatico")).toEqual({ acao: "gravar", modelo: "automatico" });
+  });
+
+  it("mantem o modelo automatico visivel enquanto grava o gesto manual", () => {
+    expect(estadoDoSeletor({ ...fila("automatico"), duasFaces: true }, "automatico:laser")?.valor).toBe("automatico");
+    expect(nomeDeExibicao(simulada("automatico"), "en")).toBe("Simulated — Automatic");
+  });
   it.each<[Modo, string, string]>([
     ["sem_perfil", "sem_perfil", "Sem perfil"],
     ["personalizado", "personalizado", "Personalizado"],

@@ -132,6 +132,9 @@ pub enum ErroSimulacao {
         esperadas: usize,
         disponiveis: usize,
     },
+    /// A máquina não imprime as duas faces deste pedido: o papel não é aceito, ou ela não tem o
+    /// recurso. Nada sai.
+    DuasFacesRecusadas,
 }
 
 impl std::fmt::Display for ErroSimulacao {
@@ -147,6 +150,9 @@ impl std::fmt::Display for ErroSimulacao {
                 f,
                 "quantidade de folhas: necessárias {esperadas}, disponíveis {disponiveis}"
             ),
+            Self::DuasFacesRecusadas => {
+                f.write_str("a impressora não aceitou imprimir nas duas faces; nada foi enviado")
+            }
         }
     }
 }
@@ -241,6 +247,38 @@ impl Simulador {
             self.pilha.reverse();
         }
         self.estado = Estado::AguardandoRecolocacao;
+        Ok(())
+    }
+
+    /// A máquina imprime as duas faces de cada folha sozinha, nesta ordem: cada duas páginas formam
+    /// uma folha, e a primeira folha fica por baixo. Quem envia não manda face em branco nem página
+    /// girada: um total ímpar deixa só o verso da última folha sem marca. Nada é impresso se o
+    /// pedido vier com uma delas.
+    pub fn imprimir_duas_faces(&mut self, paginas: &[Pagina]) -> Result<(), ErroSimulacao> {
+        self.exige(Estado::Ocioso)?;
+        if paginas
+            .iter()
+            .any(|pagina| pagina.numero.is_none() || pagina.girar_180)
+        {
+            return Err(ErroSimulacao::DuasFacesRecusadas);
+        }
+        let marca = |pagina: Option<&Pagina>| Marca {
+            pagina: pagina.and_then(|pagina| pagina.numero),
+            girada: false,
+        };
+        for par in paginas.chunks(2) {
+            self.pilha.push(Folha {
+                face_a: Some(marca(par.first())),
+                face_b: Some(marca(par.get(1))),
+                face_a_para_cima: !self.mecanica.saida_face_impressa_para_cima,
+                girada: false,
+                sobreimpressao: None,
+            });
+        }
+        if !self.mecanica.saida_no_topo {
+            self.pilha.reverse();
+        }
+        self.estado = Estado::Concluido;
         Ok(())
     }
 

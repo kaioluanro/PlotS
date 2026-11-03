@@ -53,11 +53,17 @@
   border-radius: var(--radius-sm);
 }
 
+/* Em cartao mais alto que a lista, o estado para logo abaixo da faixa do nome, em vez de passar por tras dela. */
 .estado {
+  position: sticky;
+  top: var(--altura-da-faixa, 26px);
+  z-index: 1;
   display: flex;
   align-items: flex-start;
   gap: 6px;
-  margin: 0;
+  margin: 0 -14px -4px;
+  padding: 0 14px 4px;
+  background: var(--bg-sunken);
   color: var(--fg);
   font-size: 12px;
   font-weight: 500;
@@ -177,8 +183,8 @@
 .cartao .botaoDoCartao {
   min-height: 28px;
   padding: 4px 10px;
-  /* Ao receber o foco, a acao para logo abaixo da faixa do nome; a altura medida cobre o nome de 2 linhas. */
-  scroll-margin-top: var(--altura-da-faixa, 26px);
+  /* Ao receber o foco, a acao para logo abaixo do nome e do estado, que ficam fixos no topo do cartao. */
+  scroll-margin-top: calc(var(--altura-da-faixa, 26px) + var(--altura-do-estado, 20px));
 }
 
 /* Os 4 px do anel caem na folga de baixo da faixa: ele passa por cima dela, sem cobrir o nome. */

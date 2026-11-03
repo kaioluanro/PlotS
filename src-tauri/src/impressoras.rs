@@ -3,6 +3,7 @@
 //! Nenhuma pagina e enviada e nenhuma fila e alterada. O arquivo de perfis so muda quando o
 //! usuario escolhe um modelo, com a gravacao atomica de `plots-perfis`.
 
+use crate::duas_faces::ConsultaDeDuasFaces;
 use plots_core::ModeloImpressora;
 use plots_perfis::{EntradaPerfil, ErroPerfis, Perfis};
 use plots_windows::{Condicao, ErroFilas, Fila};
@@ -21,6 +22,10 @@ pub const VARIAVEL_ARQUIVO_SAIDA: &str = "PLOTS_ARQUIVO_SAIDA";
 /// Nomes iguais aos que a linha de comando reconhece para as impressoras simuladas.
 const NOME_SIMULADA_TRASEIRA: &str = "Simulada — Traseira";
 const NOME_SIMULADA_GAVETA: &str = "Simulada — Gaveta";
+/// So existe na janela: a linha de comando continua com as duas de cima.
+const NOME_SIMULADA_AUTOMATICA: &str = "Simulada — Automática";
+/// O que identifica a simulada que imprime as duas faces sozinha.
+pub const ID_SIMULADA_AUTOMATICA: &str = "simulada:automatica";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -37,6 +42,8 @@ pub enum Modo {
     Jato,
     /// Perfil pronto da laser.
     Laser,
+    /// A impressora imprime as duas faces sozinha nos papeis aceitos.
+    Automatico,
     /// Perfil salvo sem modelo: os valores nao dizem de que tipo a maquina e.
     Personalizado,
     /// Os perfis foram lidos e nenhum tem o nome exato desta fila.
@@ -74,6 +81,12 @@ pub struct Impressora {
     pub modo: Modo,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recusa: Option<Recusa>,
+    /// No modelo automatico, o gesto dos papeis que ele nao aceita.
+    #[serde(rename = "gestoManual", skip_serializing_if = "Option::is_none")]
+    pub gesto_manual: Option<&'static str>,
+    /// O driver declara ter duas faces. Nao quer dizer que a unidade exista: quem escolhe e a pessoa.
+    #[serde(rename = "duasFaces", skip_serializing_if = "std::ops::Not::not")]
+    pub duas_faces: bool,
 }
 
 /// Por que esta fila nunca recebe da janela, seja qual for o estado dela.
@@ -127,8 +140,7 @@ pub(crate) fn gravar_modelo(
     fila: &str,
     codigo: &str,
 ) -> Result<(), Aviso> {
-    let (Some(modelo), false) = (ModeloImpressora::de_codigo(codigo), fila.trim().is_empty())
-    else {
+    let (Some(escolha), false) = (ler_escolha(codigo), fila.trim().is_empty()) else {
         return Err(falha_ao_gravar(fila));
     };
     let _vez = GRAVACAO_DE_PERFIS
@@ -140,8 +152,30 @@ pub(crate) fn gravar_modelo(
     };
     let caminho = caminho.map_err(aviso)?;
     let mut perfis = plots_perfis::carregar(&caminho).map_err(aviso)?;
-    perfis.definir_modelo(fila, modelo);
+    match escolha {
+        Escolha::Manual(modelo) => perfis.definir_modelo(fila, modelo),
+        Escolha::Automatico(gesto) => perfis.definir_automatico(fila, gesto),
+    }
     plots_perfis::salvar(&caminho, &perfis).map_err(aviso)
+}
+
+/// O que a interface pediu para gravar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Escolha {
+    Manual(ModeloImpressora),
+    /// Sem gesto, fica o que a fila ja tinha, ou o padrao.
+    Automatico(Option<ModeloImpressora>),
+}
+
+/// Codigo exato: `automatico`, `automatico:<gesto>` ou o de um modelo manual.
+fn ler_escolha(codigo: &str) -> Option<Escolha> {
+    if codigo == "automatico" {
+        return Some(Escolha::Automatico(None));
+    }
+    if let Some(gesto) = codigo.strip_prefix("automatico:") {
+        return ModeloImpressora::de_codigo(gesto).map(|gesto| Escolha::Automatico(Some(gesto)));
+    }
+    ModeloImpressora::de_codigo(codigo).map(Escolha::Manual)
 }
 
 /// Aviso de que o modelo desta fila nao foi gravado.
@@ -153,13 +187,34 @@ pub fn falha_ao_gravar(fila: &str) -> Aviso {
     }
 }
 
-/// Le as filas e os perfis do sistema. Uma falha em qualquer um vira aviso.
+/// Le as filas e os perfis do sistema. Uma falha em qualquer um vira aviso. O driver so e esperado ate
+/// o limite de `duas_faces`; quem nao respondeu a tempo fica sem o modelo automatico nesta leitura.
 pub fn ler_do_sistema() -> ListaImpressoras {
-    let mut lista = montar(plots_windows::listar_filas(), ler_perfis_do_sistema());
+    let mut lista = montar_perguntando(
+        &DUAS_FACES,
+        plots_windows::listar_filas(),
+        ler_perfis_do_sistema(),
+        |fila| plots_windows::fila_declara_duas_faces(&fila.nome, &fila.porta),
+    );
     if pasta_de_saida(std::env::var_os(VARIAVEL_ARQUIVO_SAIDA)).is_some() {
         liberar_filas_que_pedem_arquivo(&mut lista);
     }
     lista
+}
+
+/// O que os drivers ja responderam, compartilhado por todas as leituras da lista.
+static DUAS_FACES: ConsultaDeDuasFaces = ConsultaDeDuasFaces::padrao();
+
+fn montar_perguntando(
+    consulta: &'static ConsultaDeDuasFaces,
+    filas: Result<Vec<Fila>, ErroFilas>,
+    perfis: Result<Perfis, ErroPerfis>,
+    perguntar: impl Fn(&Fila) -> Option<bool> + Clone + Send + 'static,
+) -> ListaImpressoras {
+    if let Ok(filas) = &filas {
+        consulta.perguntar_as_que_faltam(filas, perguntar);
+    }
+    montar_com(filas, perfis, |fila| consulta.declara(fila))
 }
 
 /// Perfis do arquivo do usuario ou do indicado por `PLOTS_PERFIS`.
@@ -218,10 +273,20 @@ fn caminho_dos_perfis(variavel: Option<OsString>) -> Result<PathBuf, ErroPerfis>
     }
 }
 
-/// Junta o que foi lido. Fora do Windows nao ha filas a ler, e isso nao e uma falha.
+/// Junta o que foi lido, sem perguntar nada aos drivers.
 pub fn montar(
     filas: Result<Vec<Fila>, ErroFilas>,
     perfis: Result<Perfis, ErroPerfis>,
+) -> ListaImpressoras {
+    montar_com(filas, perfis, |_| false)
+}
+
+/// Junta o que foi lido. Fora do Windows nao ha filas a ler, e isso nao e uma falha. So se pergunta
+/// sobre as duas faces de quem fica na lista.
+pub fn montar_com(
+    filas: Result<Vec<Fila>, ErroFilas>,
+    perfis: Result<Perfis, ErroPerfis>,
+    declara_duas_faces: impl Fn(&Fila) -> bool,
 ) -> ListaImpressoras {
     let mut avisos = Vec::new();
     let filas = filas.unwrap_or_else(|erro| {
@@ -246,7 +311,7 @@ pub fn montar(
     let mut impressoras: Vec<Impressora> = filas
         .iter()
         .filter(|fila| vistas.insert(fila.nome.as_str()))
-        .map(|fila| impressora_da_fila(fila, perfis.as_ref()))
+        .map(|fila| impressora_da_fila(fila, perfis.as_ref(), declara_duas_faces(fila)))
         .collect();
     impressoras.push(simulada(
         "simulada:traseira",
@@ -258,6 +323,15 @@ pub fn montar(
         NOME_SIMULADA_GAVETA,
         Modo::Laser,
     ));
+    impressoras.push(Impressora {
+        gesto_manual: Some(ModeloImpressora::JatoDeTinta.codigo()),
+        duas_faces: true,
+        ..simulada(
+            ID_SIMULADA_AUTOMATICA,
+            NOME_SIMULADA_AUTOMATICA,
+            Modo::Automatico,
+        )
+    });
     ListaImpressoras {
         impressoras,
         avisos,
@@ -273,17 +347,22 @@ fn simulada(id: &str, nome: &str, modo: Modo) -> Impressora {
         condicoes: Vec::new(),
         modo,
         recusa: None,
+        gesto_manual: None,
+        duas_faces: false,
     }
 }
 
-fn impressora_da_fila(fila: &Fila, perfis: Option<&Perfis>) -> Impressora {
-    let modo = match perfis {
-        None => Modo::Desconhecido,
-        Some(perfis) => match perfis.obter(&fila.nome) {
-            None => Modo::SemPerfil,
-            Some(entrada) => modo_da_entrada(entrada),
-        },
+fn impressora_da_fila(fila: &Fila, perfis: Option<&Perfis>, duas_faces: bool) -> Impressora {
+    let entrada = perfis.and_then(|perfis| perfis.obter(&fila.nome));
+    let modo = match (perfis, entrada) {
+        (None, _) => Modo::Desconhecido,
+        (Some(_), None) => Modo::SemPerfil,
+        (Some(_), Some(entrada)) => modo_da_entrada(entrada),
     };
+    let gesto_manual = entrada
+        .filter(|entrada| entrada.automatico)
+        .and_then(|entrada| entrada.modelo)
+        .map(ModeloImpressora::codigo);
     let mut nivel = Nivel::Pronta;
     let mut condicoes = Vec::new();
     for condicao in fila.estado.condicoes() {
@@ -299,6 +378,8 @@ fn impressora_da_fila(fila: &Fila, perfis: Option<&Perfis>) -> Impressora {
         condicoes,
         modo,
         recusa: recusa_da_porta(&fila.porta),
+        gesto_manual,
+        duas_faces,
     }
 }
 
@@ -311,6 +392,9 @@ fn recusa_da_porta(porta: &str) -> Option<Recusa> {
 
 /// O modo vem so do campo `modelo`: os valores do perfil nao dizem de que tipo a maquina e.
 fn modo_da_entrada(entrada: &EntradaPerfil) -> Modo {
+    if entrada.automatico {
+        return Modo::Automatico;
+    }
     match entrada.modelo {
         Some(ModeloImpressora::JatoDeTinta) => Modo::Jato,
         Some(ModeloImpressora::Laser) => Modo::Laser,
@@ -407,6 +491,116 @@ fn ler_condicao(condicao: &Condicao) -> (CondicaoLida, Nivel) {
 }
 
 #[cfg(test)]
+mod testes_de_duas_faces {
+    use super::*;
+    use plots_windows::Estado;
+
+    fn fila(nome: &str) -> Fila {
+        Fila {
+            nome: nome.to_owned(),
+            driver: "Driver".to_owned(),
+            porta: "USB001".to_owned(),
+            padrao: false,
+            estado: Estado::de_bits(0),
+        }
+    }
+
+    fn linha<'a>(lista: &'a ListaImpressoras, id: &str) -> &'a Impressora {
+        lista.impressoras.iter().find(|item| item.id == id).unwrap()
+    }
+
+    #[test]
+    fn so_a_fila_que_o_driver_declara_tem_duas_faces_e_nada_liga_sozinho() {
+        let lista = montar_com(
+            Ok(vec![fila("Com"), fila("Sem")]),
+            Ok(Perfis::new()),
+            |fila| fila.nome == "Com",
+        );
+        assert!(linha(&lista, "fila:Com").duas_faces);
+        assert!(!linha(&lista, "fila:Sem").duas_faces);
+        assert_eq!(linha(&lista, "fila:Com").modo, Modo::SemPerfil);
+    }
+
+    #[test]
+    fn automatica_simulada_aparece_com_o_gesto_do_jato() {
+        let lista = montar(Ok(Vec::new()), Ok(Perfis::new()));
+        let simulada = linha(&lista, ID_SIMULADA_AUTOMATICA);
+        assert_eq!(simulada.modo, Modo::Automatico);
+        assert_eq!(simulada.nome, "Simulada — Automática");
+        assert_eq!(simulada.gesto_manual, Some("jato"));
+        assert!(simulada.duas_faces);
+        assert_eq!(simulada.tipo, Tipo::Simulada);
+    }
+
+    #[test]
+    fn perfil_automatico_mostra_o_modelo_e_o_gesto_dos_outros_papeis() {
+        let mut perfis = Perfis::new();
+        perfis.definir_automatico("Sala", Some(ModeloImpressora::Laser));
+        let lista = montar_com(Ok(vec![fila("Sala")]), Ok(perfis), |_| true);
+        let sala = linha(&lista, "fila:Sala");
+        assert_eq!(sala.modo, Modo::Automatico);
+        assert_eq!(sala.gesto_manual, Some("laser"));
+    }
+
+    #[test]
+    fn perfil_manual_nao_diz_gesto_a_parte() {
+        let mut perfis = Perfis::new();
+        perfis.definir_modelo("Sala", ModeloImpressora::Laser);
+        let lista = montar_com(Ok(vec![fila("Sala")]), Ok(perfis), |_| true);
+        assert_eq!(linha(&lista, "fila:Sala").gesto_manual, None);
+        assert_eq!(linha(&lista, "fila:Sala").modo, Modo::Laser);
+    }
+
+    #[test]
+    fn gravar_cada_escolha_e_recusar_o_codigo_desconhecido() {
+        assert_eq!(ler_escolha("automatico"), Some(Escolha::Automatico(None)));
+        assert_eq!(
+            ler_escolha("automatico:laser"),
+            Some(Escolha::Automatico(Some(ModeloImpressora::Laser)))
+        );
+        assert_eq!(
+            ler_escolha("jato"),
+            Some(Escolha::Manual(ModeloImpressora::JatoDeTinta))
+        );
+        for ruim in [
+            "",
+            "automatico:",
+            "automatico:outro",
+            "automatico:automatico",
+            "AUTOMATICO",
+        ] {
+            assert_eq!(ler_escolha(ruim), None, "{ruim}");
+        }
+    }
+
+    #[test]
+    fn lista_nao_espera_o_driver_que_nao_responde_nem_pergunta_a_fila_offline() {
+        let consulta: &'static ConsultaDeDuasFaces =
+            Box::leak(Box::new(ConsultaDeDuasFaces::padrao()));
+        let longe = Fila {
+            estado: Estado::de_bits(0x0000_0080),
+            ..fila("Longe")
+        };
+        let perguntadas = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let registro = std::sync::Arc::clone(&perguntadas);
+        let lista = montar_perguntando(
+            consulta,
+            Ok(vec![fila("Perto"), longe]),
+            Ok(Perfis::new()),
+            move |fila: &Fila| {
+                registro.lock().unwrap().push(fila.nome.clone());
+                Some(true)
+            },
+        );
+        assert_eq!(*perguntadas.lock().unwrap(), ["Perto".to_owned()]);
+        assert!(linha(&lista, "fila:Perto").duas_faces);
+        assert!(!linha(&lista, "fila:Longe").duas_faces);
+        assert!(lista.avisos.is_empty(), "sem resposta nao e erro");
+        assert!(linha(&lista, ID_SIMULADA_AUTOMATICA).duas_faces);
+    }
+}
+
+#[cfg(test)]
 mod testes {
     use super::*;
     use plots_core::PerfilImpressora;
@@ -468,11 +662,15 @@ mod testes {
                 Some(Recusa::Fax),
                 None,
                 None,
+                None,
                 None
             ]
         );
         liberar_filas_que_pedem_arquivo(&mut lista);
-        assert_eq!(recusas(&lista), [None, Some(Recusa::Fax), None, None, None]);
+        assert_eq!(
+            recusas(&lista),
+            [None, Some(Recusa::Fax), None, None, None, None]
+        );
     }
 
     #[test]
@@ -501,7 +699,13 @@ mod testes {
         let nomes: Vec<&str> = lista.impressoras.iter().map(|i| i.nome.as_str()).collect();
         assert_eq!(
             nomes,
-            ["Laser", "Jato", "Simulada — Traseira", "Simulada — Gaveta"]
+            [
+                "Laser",
+                "Jato",
+                "Simulada — Traseira",
+                "Simulada — Gaveta",
+                "Simulada — Automática"
+            ]
         );
         assert!(lista.avisos.is_empty());
         assert_eq!(lista.impressoras[0].nivel, Nivel::Pronta);
@@ -513,11 +717,13 @@ mod testes {
     #[test]
     fn simuladas_tem_o_modo_fixo_que_o_nome_diz() {
         let lista = montar(Ok(Vec::new()), Ok(Perfis::new()));
-        assert_eq!(lista.impressoras.len(), 2);
+        assert_eq!(lista.impressoras.len(), 3);
         assert_eq!(lista.impressoras[0].modo, Modo::Jato);
         assert_eq!(lista.impressoras[0].tipo, Tipo::Simulada);
         assert_eq!(lista.impressoras[1].modo, Modo::Laser);
         assert_eq!(lista.impressoras[1].tipo, Tipo::Simulada);
+        assert_eq!(lista.impressoras[2].modo, Modo::Automatico);
+        assert_eq!(lista.impressoras[2].tipo, Tipo::Simulada);
     }
 
     #[test]
@@ -664,7 +870,7 @@ mod testes {
     #[test]
     fn falha_de_perfis_vira_aviso_e_nao_diz_que_a_fila_nao_tem_perfil() {
         let lista = montar(Ok(vec![fila("Laser", 0)]), Err(falha_de_toml()));
-        assert_eq!(lista.impressoras.len(), 3);
+        assert_eq!(lista.impressoras.len(), 4);
         assert_eq!(lista.impressoras[0].modo, Modo::Desconhecido);
         assert_eq!(lista.impressoras[1].modo, Modo::Jato);
         assert_eq!(
@@ -714,7 +920,7 @@ mod testes {
     #[test]
     fn falha_nas_filas_mantem_as_simuladas_e_mostra_o_codigo() {
         let lista = montar(Err(ErroFilas::Sistema(0x8007_06BA)), Ok(Perfis::new()));
-        assert_eq!(lista.impressoras.len(), 2);
+        assert_eq!(lista.impressoras.len(), 3);
         assert_eq!(
             lista.avisos,
             [Aviso {
@@ -745,7 +951,7 @@ mod testes {
     #[test]
     fn fora_do_windows_so_as_simuladas_e_sem_aviso() {
         let lista = montar(Err(ErroFilas::NaoSuportado), Ok(Perfis::new()));
-        assert_eq!(lista.impressoras.len(), 2);
+        assert_eq!(lista.impressoras.len(), 3);
         assert!(lista.avisos.is_empty());
     }
 
@@ -755,14 +961,14 @@ mod testes {
             Err(ErroFilas::Resposta("forma estranha")),
             Err(falha_de_toml()),
         );
-        assert_eq!(lista.impressoras.len(), 2);
+        assert_eq!(lista.impressoras.len(), 3);
         assert_eq!(lista.avisos.len(), 2);
     }
 
     #[test]
     fn leitura_interrompida_mantem_as_simuladas_e_avisa() {
         let lista = sem_leitura();
-        assert_eq!(lista.impressoras.len(), 2);
+        assert_eq!(lista.impressoras.len(), 3);
         assert_eq!(lista.avisos[0].codigo, CodigoAviso::Filas);
     }
 
@@ -770,7 +976,7 @@ mod testes {
     fn fila_real_com_nome_de_simulada_nao_se_confunde_com_ela() {
         let lista = montar(Ok(vec![fila("Simulada — Gaveta", 0)]), Ok(Perfis::new()));
         let ids: HashSet<&str> = lista.impressoras.iter().map(|i| i.id.as_str()).collect();
-        assert_eq!(ids.len(), 3);
+        assert_eq!(ids.len(), 4);
         assert_eq!(lista.impressoras[0].tipo, Tipo::Fila);
         assert_eq!(lista.impressoras[0].modo, Modo::SemPerfil);
     }
@@ -781,7 +987,7 @@ mod testes {
             Ok(vec![fila("A", 0), fila("A", OFFLINE)]),
             Ok(Perfis::new()),
         );
-        assert_eq!(lista.impressoras.len(), 3);
+        assert_eq!(lista.impressoras.len(), 4);
         assert_eq!(lista.impressoras[0].nivel, Nivel::Pronta);
     }
 

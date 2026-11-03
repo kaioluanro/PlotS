@@ -132,9 +132,10 @@ export function semFilasQueSairam(
 export function ajustesSemLinha(
   salvas: ReadonlySet<string>,
   impressoras: readonly Impressora[],
+  dispensadas: ReadonlySet<string> = new Set(),
 ): string[] {
   const comLinha = nomesComLinha(impressoras);
-  return [...salvas].filter((fila) => !comLinha.has(fila));
+  return [...salvas].filter((fila) => !comLinha.has(fila) && !dispensadas.has(fila));
 }
 
 export function semAviso(
@@ -172,8 +173,17 @@ export function linhaDoAjusteNoEnvio(
   filas: ReadonlySet<string>,
   idioma: Idioma = idiomaAtual,
 ): string | null {
-  const algum = destinos.some((destino) => temPreferencias(destino) && filas.has(destino.nome));
-  return algum ? traduzir(idioma, "preferencias.envio.linha") : null;
+  const nomes = destinos.filter((destino) => temPreferencias(destino) && filas.has(destino.nome)).map((destino) => destino.nome);
+  if (nomes.length === 0) return null;
+  return destinos.length === 1 ? traduzir(idioma, "preferencias.envio.linha") : traduzir(idioma, "preferencias.envio.varios", { nomes: nomes.join(", ") });
+}
+
+export function conteudoDoApagarAjuste(nome: string): ConteudoConfirmacao {
+  return {
+    ...conteudoDoVoltarAoPadrao(nome),
+    titulo: "preferencias.apagarDialogo.titulo",
+    fechar: "preferencias.apagar",
+  };
 }
 
 /** O que o dialogo diz antes de apagar o ajuste salvo. */

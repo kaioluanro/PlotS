@@ -73,6 +73,7 @@ export function CartaoImpressao({ cartao, aoComandar, aoPedirCancelar, aoDispens
   const linhas = linhasDoCartao(cartao);
   const raiz = useRef<HTMLElement>(null);
   const topo = useRef<HTMLDivElement>(null);
+  const linhaDoEstado = useRef<HTMLParagraphElement>(null);
   const pedeAcao = cartaoPedeAcao(cartao);
   const desenho = desenhoDoCartao(cartao);
   // Quando o cartao passa a pedir algo, a lista desce ate ele; o foco de quem usa o teclado fica onde esta.
@@ -107,16 +108,19 @@ export function CartaoImpressao({ cartao, aoComandar, aoPedirCancelar, aoDispens
       },
     );
   }, [pedeAcao, cartao.estado.tipo]);
-  // A faixa do nome tem 1 ou 2 linhas: as acoes precisam da altura dela para parar logo abaixo.
+  // Nome e estado podem ter 2 linhas: o estado e as acoes precisam dessas alturas para parar logo abaixo.
   useEffect(() => {
     const faixa = topo.current;
-    if (!faixa || typeof ResizeObserver === "undefined") return;
+    const estado = linhaDoEstado.current;
+    if (!faixa || !estado || typeof ResizeObserver === "undefined") return;
     const medir = () => {
       raiz.current?.style.setProperty("--altura-da-faixa", `${faixa.offsetHeight}px`);
+      raiz.current?.style.setProperty("--altura-do-estado", `${estado.offsetHeight}px`);
     };
     medir();
     const observador = new ResizeObserver(medir);
     observador.observe(faixa);
+    observador.observe(estado);
     return () => observador.disconnect();
   }, []);
   const classeDoBotao = `${botoes.botao} ${botoes.secundario} ${styles.botaoDoCartao}`;
@@ -137,7 +141,7 @@ export function CartaoImpressao({ cartao, aoComandar, aoPedirCancelar, aoDispens
         </span>
         {cartao.simulada && <span className={styles.selo}>{t("cartao.selo")}</span>}
       </div>
-      <p className={styles.estado} aria-live="polite">
+      <p ref={linhaDoEstado} className={styles.estado} aria-live="polite">
         <span className={`${styles.ponto} ${CLASSE_DO_TOM[tomDoCartao(cartao)]}`} aria-hidden="true" />
         <span>{textoDoEstadoDoCartao(cartao)}</span>
       </p>

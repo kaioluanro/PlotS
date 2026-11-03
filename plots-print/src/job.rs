@@ -6,6 +6,8 @@ use plots_core::{Lote, Pagina};
 pub enum Passada {
     Frente,
     Verso,
+    /// Um trabalho só, em que a impressora imprime as duas faces de cada folha sozinha.
+    DuasFaces,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EstadoEnvio {
@@ -30,6 +32,8 @@ pub enum EstadoJob {
     FrenteEnviada,
     AguardandoRecolocacao,
     VersoEnviado,
+    /// O lote inteiro foi em um trabalho só: quando a fila confirmar, ele acabou.
+    DuasFacesEnviadas,
     Concluido,
     Erro,
 }
@@ -86,7 +90,10 @@ impl<B: Backend> Job<B> {
     pub fn cancelar_envio(&mut self) -> Result<(), ErroJob<B::Erro>> {
         if !matches!(
             self.estado,
-            EstadoJob::FrenteEnviada | EstadoJob::VersoEnviado | EstadoJob::Erro
+            EstadoJob::FrenteEnviada
+                | EstadoJob::VersoEnviado
+                | EstadoJob::DuasFacesEnviadas
+                | EstadoJob::Erro
         ) {
             return Err(ErroJob::EstadoInvalido(self.estado));
         }
@@ -94,28 +101,35 @@ impl<B: Backend> Job<B> {
         self.estado = EstadoJob::Pronto;
         Ok(())
     }
+    /// Envia a primeira etapa do lote atual. Um lote em duas faces só tem esta etapa: o lote
+    /// inteiro vai em um trabalho, sem recolocação nem verso.
     pub fn enviar_frente(&mut self) -> Result<(), ErroJob<B::Erro>> {
         if self.estado != EstadoJob::Pronto {
             return Err(ErroJob::EstadoInvalido(self.estado));
         }
-        if let Err(e) = self
-            .backend
-            .enviar(Passada::Frente, &self.lotes[self.atual].passada1)
-        {
+        let Some(lote) = self.lotes.get(self.atual) else {
+            return Err(ErroJob::EstadoInvalido(self.estado));
+        };
+        let (passada, depois) = if lote.duas_faces {
+            (Passada::DuasFaces, EstadoJob::DuasFacesEnviadas)
+        } else {
+            (Passada::Frente, EstadoJob::FrenteEnviada)
+        };
+        if let Err(e) = self.backend.enviar(passada, &lote.passada1) {
             self.estado = EstadoJob::Erro;
             return Err(ErroJob::Backend(e));
         }
-        self.estado = EstadoJob::FrenteEnviada;
+        self.estado = depois;
         Ok(())
     }
     pub fn enviar_verso(&mut self) -> Result<(), ErroJob<B::Erro>> {
         if self.estado != EstadoJob::AguardandoRecolocacao {
             return Err(ErroJob::EstadoInvalido(self.estado));
         }
-        if let Err(e) = self
-            .backend
-            .enviar(Passada::Verso, &self.lotes[self.atual].passada2)
-        {
+        let Some(lote) = self.lotes.get(self.atual) else {
+            return Err(ErroJob::EstadoInvalido(self.estado));
+        };
+        if let Err(e) = self.backend.enviar(Passada::Verso, &lote.passada2) {
             self.estado = EstadoJob::Erro;
             return Err(ErroJob::Backend(e));
         }
@@ -127,7 +141,7 @@ impl<B: Backend> Job<B> {
     pub fn atualizar(&mut self) -> Result<EstadoJob, ErroJob<B::Erro>> {
         if !matches!(
             self.estado,
-            EstadoJob::FrenteEnviada | EstadoJob::VersoEnviado
+            EstadoJob::FrenteEnviada | EstadoJob::VersoEnviado | EstadoJob::DuasFacesEnviadas
         ) {
             return Err(ErroJob::EstadoInvalido(self.estado));
         }
@@ -189,14 +203,13 @@ impl SimBackend {
 impl Backend for SimBackend {
     type Erro = ErroSimulacao;
     fn enviar(&mut self, passada: Passada, paginas: &[Pagina]) -> Result<(), Self::Erro> {
+        if passada != Passada::Verso && self.simulador.estado() == Estado::Concluido {
+            self.ultimo_lote = Some(self.simulador.retirar_lote()?);
+        }
         match passada {
-            Passada::Frente => {
-                if self.simulador.estado() == Estado::Concluido {
-                    self.ultimo_lote = Some(self.simulador.retirar_lote()?);
-                }
-                self.simulador.imprimir_frente(paginas)
-            }
+            Passada::Frente => self.simulador.imprimir_frente(paginas),
             Passada::Verso => self.simulador.imprimir_verso(paginas),
+            Passada::DuasFaces => self.simulador.imprimir_duas_faces(paginas),
         }
     }
     fn consultar(&mut self) -> Result<EstadoEnvio, Self::Erro> {
@@ -223,6 +236,68 @@ mod tests {
     fn lotes() -> Vec<Lote> {
         plano_documento(4, 1, OrdemPassadas::default(), PerfilImpressora::default()).unwrap()
     }
+    fn lotes_em_duas_faces(paginas: usize, folhas: usize) -> Vec<Lote> {
+        plano_documento(
+            paginas,
+            folhas,
+            OrdemPassadas::default(),
+            PerfilImpressora::default(),
+        )
+        .unwrap()
+        .into_iter()
+        .map(|lote| {
+            let passada1 = lote
+                .paginas
+                .iter()
+                .copied()
+                .filter(|pagina| pagina.numero.is_some())
+                .collect();
+            Lote {
+                passada1,
+                passada2: Vec::new(),
+                duas_faces: true,
+                ..lote
+            }
+        })
+        .collect()
+    }
+
+    #[test]
+    fn lote_em_duas_faces_vai_em_um_trabalho_e_acaba_sem_verso() {
+        let mut job = Job::novo(
+            SimBackend::novo(Mecanica::traseira()),
+            lotes_em_duas_faces(4, 1),
+        )
+        .unwrap();
+        for indice in 0..2 {
+            job.enviar_frente().unwrap();
+            assert_eq!(job.estado(), EstadoJob::DuasFacesEnviadas);
+            assert!(job.enviar_verso().is_err(), "não há verso a enviar");
+            let esperado = if indice == 0 {
+                EstadoJob::Pronto
+            } else {
+                EstadoJob::Concluido
+            };
+            assert_eq!(job.atualizar().unwrap(), esperado);
+        }
+        assert_eq!(job.backend().simulador().pilha().len(), 1);
+    }
+
+    #[test]
+    fn lote_em_duas_faces_pode_ser_cancelado_e_volta_ao_mesmo_lote() {
+        let mut job = Job::novo(
+            SimBackend::novo(Mecanica::traseira()),
+            lotes_em_duas_faces(4, 1),
+        )
+        .unwrap();
+        job.enviar_frente().unwrap();
+        job.cancelar_envio().unwrap();
+        assert_eq!(job.estado(), EstadoJob::Pronto);
+        assert_eq!(job.lote_atual(), 0);
+        job.enviar_frente().unwrap();
+        assert_eq!(job.estado(), EstadoJob::DuasFacesEnviadas);
+    }
+
     #[test]
     fn exige_confirmacao_e_permite_lotes_sequenciais() {
         let mut job = Job::novo(SimBackend::novo(Mecanica::gaveta()), lotes()).unwrap();

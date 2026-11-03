@@ -3,7 +3,7 @@ import { nomeDeExibicao, textoDoEstado, type Impressora } from "./impressoras";
 import { filasComAjusteAgora, linhaDoAjusteNoEnvio } from "./preferencias";
 import type { Aba } from "./tabs";
 
-export type Passada = "frente" | "verso";
+export type Passada = "frente" | "verso" | "duas_faces";
 
 export interface Motivo {
   codigo: string;
@@ -65,6 +65,9 @@ export interface Cartao {
   faixasNoDocumento?: readonly FaixaDoLote[];
   /** O driver nao aceitou o ajuste salvo: este trabalho saiu com o padrao da impressora. */
   ajusteRecusado?: boolean;
+  loteAutomatico?: boolean;
+  anteriorAutomatico?: boolean;
+  temAutomatico?: boolean;
 }
 
 /** De qual a qual pagina vai um lote, com os numeros do documento. */
@@ -86,6 +89,7 @@ const MOTIVOS_SEM_TRABALHO: ReadonlySet<string> = new Set([
   "interrompido",
   "ocupada",
   "documento_mudou",
+  "duas_faces_recusadas",
 ]);
 
 /**
@@ -290,8 +294,11 @@ export function estadoDoEnvio(
   // O rotulo e a confirmacao seguem quem recebe de fato: uma fila invalida marcada nao muda nada.
   const base = destinos.length > 0 ? destinos : marcadas;
   const soSimuladas = base.length > 0 && base.every((i) => i.tipo === "simulada");
+  const soAutomaticas = base.length > 0 && base.every((i) => i.modo === "automatico");
   const rotulo =
-    destinos.length > 0
+    soAutomaticas
+      ? traduzir(idioma, soSimuladas ? "modo.automatico.simular" : "modo.automatico.enviar")
+      : destinos.length > 0
       ? traduzir(idioma, soSimuladas ? "cartao.simular.frenteContagem" : "imprimir.frenteContagem", {
           n: String(destinos.length),
         })
@@ -318,9 +325,12 @@ export function estadoDoEnvio(
   return { rotulo, motivo, desabilitado: destinos.length === 0, destinos };
 }
 
-/** So o envio real pede confirmacao: a simulacao nao manda nada a lugar nenhum. */
+/**
+ * O envio real pede confirmacao, e a impressora automatica tambem, mesmo simulada: e la que a pessoa
+ * le quais paginas saem por qual fluxo. As outras simuladas nao mandam nada a lugar nenhum.
+ */
 export function precisaConfirmar(destinos: readonly Impressora[]): boolean {
-  return destinos.some((impressora) => impressora.tipo === "fila");
+  return destinos.some((impressora) => impressora.tipo === "fila" || impressora.modo === "automatico");
 }
 
 const CHAVES_DE_PAPEL: ReadonlyMap<string, Chave> = new Map<string, Chave>([
@@ -441,7 +451,9 @@ export function nomeDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual): stri
   if (!cartao.simulada) return cartao.nome;
   return traduzir(
     idioma,
-    cartao.impressora === "simulada:gaveta"
+    cartao.impressora === "simulada:automatica"
+      ? "impressora.simulada.automatica"
+      : cartao.impressora === "simulada:gaveta"
       ? "impressora.simulada.gaveta"
       : "impressora.simulada.traseira",
   );
@@ -483,7 +495,7 @@ const SEM_RESPOSTA: OrientacaoDoAviso = {
 };
 
 /** Na passada de verso, a entrada so tem o maco impresso: folha em branco ali desalinha o lote. */
-const ORIENTACOES: ReadonlyMap<string, Readonly<Record<Passada, OrientacaoDoAviso>>> = new Map([
+const ORIENTACOES: ReadonlyMap<string, Readonly<Record<"frente" | "verso", OrientacaoDoAviso>>> = new Map([
   [
     "sem_papel",
     {
@@ -555,6 +567,7 @@ const CHAVES_DE_MOTIVO: ReadonlyMap<string, Chave> = new Map<string, Chave>([
   ["fila_pede_arquivo", "cartao.motivo.filaPedeArquivo"],
   ["ocupada", "cartao.motivo.ocupada"],
   ["documento_mudou", "modo.motivo.documentoMudou"],
+  ["duas_faces_recusadas", "modo.automatico.recusado"],
 ]);
 
 function comInicialMaiuscula(texto: string): string {
@@ -571,6 +584,8 @@ function comPontoFinal(texto: string): string {
  * idiomas, a frase traduzida pelo codigo, para nao misturar dois idiomas na mesma linha.
  */
 export function textoDoMotivo(motivo: Motivo, idioma: Idioma = idiomaAtual): string {
+  // A frase de quem recusou nao diz o que fazer: aqui, o caminho e outro modelo.
+  if (motivo.codigo === "duas_faces_recusadas") return traduzir(idioma, "modo.automatico.recusado");
   if (motivo.codigo === "fila" && motivo.texto !== "") {
     if (idioma === "pt-BR") return comPontoFinal(comInicialMaiuscula(motivo.texto));
     const traduzido = MOTIVOS_DA_FILA_EM_INGLES.reduce(
@@ -623,9 +638,22 @@ function listaDeFaces(faces: readonly FaceDaSequencia[], idioma: Idioma): string
   return girada ? `${numeros} ${traduzir(idioma, "cartao.sequencia.girada")}` : numeros;
 }
 
+function folhasDoTrabalho(faces: readonly FaceDaSequencia[]): string {
+  const folhas: string[] = [];
+  for (let indice = 0; indice < faces.length; indice += 2) {
+    const par = faces.slice(indice, indice + 2).map((face) => face.numero ?? "");
+    folhas.push(par.join("|"));
+  }
+  return folhas.join(", ");
+}
+
 /** So a simulacao mostra a ordem: e o que ela existe para conferir. */
 export function sequenciaDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual): string[] {
   if (cartao.sequencia === null) return [];
+  // Um trabalho so, sem verso a parte: o que se confere sao as folhas que ele forma.
+  if (cartao.sequencia.verso.length === 0 && (cartao.loteAutomatico || cartao.temAutomatico)) {
+    return [traduzir(idioma, "modo.automatico.folhas", { lista: folhasDoTrabalho(cartao.sequencia.frente) })];
+  }
   return [
     traduzir(idioma, "cartao.sequencia.frente", {
       lista: listaDeFaces(cartao.sequencia.frente, idioma),
@@ -663,6 +691,7 @@ export function linhasDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual): Li
     case "preparando":
       return [linha(em("cartao.preparando"), "contexto")];
     case "imprimindo":
+      if (cartao.loteAutomatico) return [linha(em("modo.automatico.imprimindo"), "contexto")];
       if (cartao.simulada) {
         return [
           linha(
@@ -694,7 +723,7 @@ export function linhasDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual): Li
     }
     case "proximo_lote": {
       const linhas = [
-        linha(em(cartao.simulada ? "cartao.verso.simulado" : "cartao.verso.confirmado"), "ressalva"),
+        linha(em(cartao.anteriorAutomatico ? "modo.automatico.trechoConcluido" : cartao.simulada ? "cartao.verso.simulado" : "cartao.verso.confirmado"), "ressalva"),
       ];
       const retirar = fraseDeRetirar(cartao, idioma);
       if (retirar !== null) linhas.push(linha(retirar, "contexto"));
@@ -708,12 +737,12 @@ export function linhasDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual): Li
         linhas.push(linha(em("cartao.proximo.semTroca"), "contexto"));
       }
       linhas.push(
-        linha(em(cartao.simulada ? "cartao.proximo.cliqueSimulado" : "cartao.proximo.clique"), "acao"),
+        linha(em(cartao.loteAutomatico ? "modo.automatico.proximo" : cartao.simulada ? "cartao.proximo.cliqueSimulado" : "cartao.proximo.clique"), "acao"),
       );
       return linhas;
     }
     case "aviso": {
-      const orientacao = ORIENTACOES.get(estado.motivo.codigo)?.[estado.passada];
+      const orientacao = ORIENTACOES.get(estado.motivo.codigo)?.[cartao.loteAutomatico || estado.passada === "duas_faces" ? "frente" : estado.passada];
       const linhas = orientacao
         ? [linha(em(orientacao.forte), "contexto"), linha(em(orientacao.instrucao), "acao")]
         : [linha(textoDoMotivo(estado.motivo, idioma), "contexto")];
@@ -728,12 +757,20 @@ export function linhasDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual): Li
       return linhas;
     }
     case "erro":
+      // Os lotes anteriores ja estao na bandeja: dizer que nada saiu faria a pessoa imprimir tudo de novo.
+      if (estado.motivo.codigo === "duas_faces_recusadas" && cartao.lote > 1) {
+        return [linha(em("modo.automatico.recusadoNoMeio"), "contexto")];
+      }
       return [linha(textoDoMotivo(estado.motivo, idioma), "contexto")];
     case "concluido": {
       const linhas = [
         linha(em(cartao.simulada ? "cartao.concluido.simulado" : "cartao.concluido"), "contexto"),
       ];
-      if (cartao.viraParaLer) linhas.push(linha(em("cartao.virarParaLer"), "acao"));
+      // Com um trecho automatico, como o maco saiu nao se sabe, mesmo que o ultimo lote tenha sido manual.
+      if (cartao.temAutomatico) {
+        linhas.push(linha(em(cartao.total >= 2 ? "modo.automatico.finalVarios" : "modo.automatico.final"), "acao"));
+      }
+      else if (cartao.viraParaLer) linhas.push(linha(em("cartao.virarParaLer"), "acao"));
       return linhas;
     }
     case "cancelado":
@@ -775,7 +812,7 @@ export function acoesDoCartao(cartao: Cartao): AcoesDoCartao {
   return {
     frente: estado.tipo === "proximo_lote",
     verso: {
-      visivel: emFrente || emVerso || estado.tipo === "aguardando",
+      visivel: !cartao.loteAutomatico && (emFrente || emVerso || estado.tipo === "aguardando"),
       liberado: estado.tipo === "aguardando",
     },
     // Sem lote ainda, a preparacao falhou: nao ha o que refazer sem pedir de novo. Thread morta
@@ -793,6 +830,7 @@ export function rotuloDoVerso(cartao: Cartao, idioma: Idioma = idiomaAtual): str
 }
 
 export function rotuloDaFrente(cartao: Cartao, idioma: Idioma = idiomaAtual): string {
+  if (cartao.loteAutomatico) return traduzir(idioma, cartao.simulada ? "modo.automatico.simular" : "modo.automatico.enviar");
   return traduzir(idioma, cartao.simulada ? "cartao.simular.frente" : "imprimir.frente");
 }
 
@@ -802,6 +840,8 @@ export interface ResumoDoEnvio {
   papeis: PapelDoCartao[];
   paresMistos: [number, number][];
   assinado: boolean;
+  fluxos?: { automatico: boolean; inicio: number; fim: number }[];
+  lotesAutomaticos?: number;
 }
 
 /** As linhas da confirmacao: quem recebe, quantas paginas e em que papel. */
@@ -813,19 +853,43 @@ export function linhasDoEnvio(
 ): { linhas: string[]; notas: string[] } {
   const reais = destinos.filter((impressora) => impressora.tipo === "fila");
   const simuladas = destinos.length - reais.length;
+  const automaticas = destinos.filter((impressora) => impressora.modo === "automatico");
+  const soAutomaticas = destinos.length > 0 && automaticas.length === destinos.length;
+  // Sem gesto, folhas por lote nao limita nada: quem so tem automaticas ve os trabalhos que elas fazem.
+  const lotes = soAutomaticas ? (resumo.lotesAutomaticos ?? resumo.lotes) : resumo.lotes;
   const linhas = [
-    ...reais.map((impressora) => nomeDeExibicao(impressora, idioma)),
-    traduzir(idioma, resumo.lotes === 1 ? "cartao.envio.paginasUmLote" : "cartao.envio.paginas", {
+    ...(reais.length > 0 ? reais : destinos).map((impressora) => nomeDeExibicao(impressora, idioma)),
+    traduzir(idioma, lotes === 1 ? "cartao.envio.paginasUmLote" : "cartao.envio.paginas", {
       paginas: String(resumo.paginas),
-      lotes: String(resumo.lotes),
+      lotes: String(lotes),
     }),
     traduzir(idioma, "cartao.envio.papel", {
       lista: resumo.papeis.map((papel) => nomeDoPapel(papel, idioma)).join(", "),
     }),
   ];
-  const doAjuste = linhaDoAjusteNoEnvio(reais, filasComAjuste, idioma);
+  const doAjuste = linhaDoAjusteNoEnvio(destinos, filasComAjuste, idioma);
   if (doAjuste !== null) linhas.push(doAjuste);
   const notas: string[] = [];
+  if (automaticas.length > 0) {
+    const fluxos = resumo.fluxos ?? [];
+    // Sozinha, nao ha de quem mais falar; com outra impressora, a linha diz de qual ela fala.
+    const sozinha = destinos.length === 1;
+    const nomes = new Intl.ListFormat(idioma, { style: "long", type: "conjunction" }).format(
+      automaticas.map((impressora) => nomeDeExibicao(impressora, idioma)),
+    );
+    for (const fluxo of fluxos) {
+      const chave: Chave = fluxo.automatico
+        ? sozinha ? "modo.automatico.trecho" : "modo.automatico.trechoNela"
+        : sozinha ? "modo.automatico.manual" : "modo.automatico.manualNela";
+      notas.push(
+        traduzir(idioma, chave, {
+          nomes,
+          paginas: textoDasPaginas({ lote: 0, inicio: fluxo.inicio, fim: fluxo.fim }, idioma),
+        }),
+      );
+    }
+    if (fluxos.some((fluxo) => fluxo.automatico)) notas.push(traduzir(idioma, "modo.automatico.papelNormal"));
+  }
   if (resumo.papeis.length > 1) notas.push(traduzir(idioma, "cartao.envio.variosPapeis"));
   for (const [a, b] of resumo.paresMistos) {
     notas.push(traduzir(idioma, "cartao.envio.misto", { a: String(a), b: String(b) }));
@@ -834,6 +898,7 @@ export function linhasDoEnvio(
   if (reais.some((impressora) => impressora.modo === "jato" || impressora.modo === "laser")) {
     notas.push(traduzir(idioma, "modo.seletor.nota"));
   }
-  if (simuladas > 0) notas.push(traduzir(idioma, "cartao.envio.simuladas"));
+  if (reais.length === 0) notas.push(traduzir(idioma, "modo.automatico.soSimuladas"));
+  else if (simuladas > 0) notas.push(traduzir(idioma, "cartao.envio.simuladas"));
   return { linhas, notas };
 }

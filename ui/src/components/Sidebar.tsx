@@ -18,7 +18,7 @@ import {
   type Comando,
 } from "../cartoes";
 import { envioComDivisao } from "../confirmacao";
-import { t } from "../i18n";
+import { idiomaAtual, t, type Chave } from "../i18n";
 import {
   envioComIntervalo,
   lerIntervaloDaAba,
@@ -59,6 +59,7 @@ import {
   ajustesSemLinha,
   aoVoltarOFoco,
   avisosSemLinha,
+  conteudoDoApagarAjuste,
   conteudoDoVoltarAoPadrao,
   temPreferencias,
   textoDoAvisoDoAjuste,
@@ -124,6 +125,7 @@ export function Sidebar({
 }: Props) {
   const idExplicacao = useId();
   const marcadas = aba?.impressorasMarcadas ?? [];
+  const marcadasNaLista = impressoras.filter((impressora) => marcadas.includes(impressora.id));
   const espera = useEsperaDoErro(aba);
   const botao = envioComDivisao(
     envioComIntervalo(estadoDoEnvio(aba, impressoras, ocupadas), aba, espera.estado),
@@ -140,6 +142,7 @@ export function Sidebar({
   const preferencias = usePreferencias(lendo, impressoras);
   const botaoAtualizar = useRef<HTMLButtonElement>(null);
   const [pedidoDeVolta, setPedidoDeVolta] = useState<PedidoDeVolta | null>(null);
+  const [dispensados, setDispensados] = useState<ReadonlySet<string>>(new Set());
   const idDaLinhaComFalha = linhaDaFalha(falhaAoGravar, impressoras);
   const haSeletor = impressoras.some(
     (impressora) => estadoDoSeletor(impressora, undefined) !== null,
@@ -212,29 +215,19 @@ export function Sidebar({
           />
         ))}
         {!lendo &&
-          ajustesSemLinha(preferencias.salvas, impressoras).map((fila) => (
-            <div key={`sem-linha-${fila}`} className={styles.ajusteSemLinha}>
-              <SlidersHorizontal size={12} className={styles.iconeNota} aria-hidden="true" />
-              <span className={styles.ajusteSemLinhaTexto}>
-                {t("preferencias.salvo.semFila", { nome: fila })}
-              </span>
-              <button
-                type="button"
-                className={styles.voltarAoPadrao}
-                aria-label={t("preferencias.voltar.rotulo", { nome: fila })}
-                title={t("preferencias.voltar.rotulo", { nome: fila })}
-                onClick={(evento) =>
+          ajustesSemLinha(preferencias.salvas, impressoras, dispensados).map((fila) => (
+            <AjusteSemLinha key={`sem-linha-${fila}`} fila={fila}
+              aoDispensar={() => { botaoAtualizar.current?.focus(); setDispensados((atuais) => new Set([...atuais, fila])); }}
+              aoApagar={(origem) =>
                   setPedidoDeVolta({
                     fila,
                     nome: fila,
-                    origem: evento.currentTarget,
+                    origem,
                     destino: () => botaoAtualizar.current,
+                    semLinha: true,
                   })
                 }
-              >
-                {t("preferencias.voltar")}
-              </button>
-            </div>
+            />
           ))}
         {!lendo && impressoras.length === 0 && avisos.length === 0 && (
           <p className={styles.vazia}>{t("lateral.vazia")}</p>
@@ -303,7 +296,22 @@ export function Sidebar({
             aoDefinir={aoDefinirIntervalo}
           />
           {/* A chave recria o campo: o rascunho digitado em uma aba nao passa para a outra. */}
-          <CampoLote key={aba?.id ?? "sem-aba"} aba={aba} aoDefinir={aoDefinirLote} />
+          <CampoLote
+            key={aba?.id ?? "sem-aba"}
+            aba={aba}
+            aoDefinir={aoDefinirLote}
+            nota={
+              marcadasNaLista.some((impressora) => impressora.modo === "automatico")
+                ? aba?.modo === "divisao" && marcadas.length >= 2
+                  ? "modo.automatico.loteDivisao"
+                  : "modo.automatico.lote"
+                : null
+            }
+            soAutomaticas={
+              marcadasNaLista.length > 0 &&
+              marcadasNaLista.every((impressora) => impressora.modo === "automatico")
+            }
+          />
           {blocoModo}
         </div>
         <div className={styles.grupoEnvio}>
@@ -327,7 +335,7 @@ export function Sidebar({
         </div>
       </div>
       <ConfirmDialog
-        conteudo={pedidoDeVolta === null ? null : conteudoDoVoltarAoPadrao(pedidoDeVolta.nome)}
+        conteudo={pedidoDeVolta === null ? null : pedidoDeVolta.semLinha ? conteudoDoApagarAjuste(pedidoDeVolta.nome) : conteudoDoVoltarAoPadrao(pedidoDeVolta.nome)}
         aoCancelar={() => setPedidoDeVolta(null)}
         aoConfirmar={() => {
           if (pedidoDeVolta === null) return;
@@ -403,6 +411,16 @@ interface PedidoDeVolta {
   nome: string;
   origem: HTMLElement;
   destino: () => HTMLElement | null;
+  semLinha?: boolean;
+}
+
+export function AjusteSemLinha({ fila, aoApagar, aoDispensar }: { fila: string; aoApagar: (origem: HTMLElement) => void; aoDispensar: () => void }) {
+  return <div className={styles.ajusteSemLinha}>
+    <SlidersHorizontal size={12} className={styles.iconeNota} aria-hidden="true" />
+    <span className={styles.ajusteSemLinhaTexto}>{t("preferencias.salvo.semFila", { nome: fila })}</span>
+    <button type="button" className={styles.dispensarAviso} aria-label={t("preferencias.aviso.dispensar", { nome: fila })} onClick={aoDispensar}><X size={14} aria-hidden="true" /></button>
+    <button type="button" className={styles.voltarAoPadrao} onClick={(evento) => aoApagar(evento.currentTarget)}>{t("preferencias.apagar")}</button>
+  </div>;
 }
 
 const CLASSE_DO_NIVEL = {
@@ -443,7 +461,7 @@ export function LinhaImpressora({
   const estado = textoDoEstado(impressora);
   const seletor = estadoDoSeletor(impressora, gravando);
   const modelo = eModelo(impressora.modo) ? nomeDoModelo(impressora.modo) : null;
-  const face = modelo === null ? null : t("modo.entrada");
+  const face = modelo === null || impressora.modo === "automatico" ? null : t("modo.entrada");
   const classes = [styles.linha];
   if (marcada) classes.push(styles.marcada);
   if (desabilitada) classes.push(styles.inerte);
@@ -494,7 +512,7 @@ export function LinhaImpressora({
   const modoDaLinha = (
     <>
     {seletor !== null && (
-      <span className={styles.seletorCaixa}>
+      <span className={`${styles.seletorCaixa} ${impressora.modo === "automatico" ? styles.seletorCaixaLargo : ""}`}>
         {/* Nao usa `disabled` ao gravar: o foco de quem usa o teclado ficaria perdido. */}
         <select
           className={styles.seletor}
@@ -606,6 +624,28 @@ export function LinhaImpressora({
           )}
         </div>
         {real && <div className={`${styles.fileira} ${styles.fileiraDoModo}`}>{modoDaLinha}</div>}
+        {real && impressora.modo === "automatico" && (
+          <label className={`${styles.fileira} ${styles.fileiraDoGesto}`}>
+            <span className={styles.gestoRotulo}>{t("modo.gestoManual")}</span>
+            <span className={styles.seletorCaixa}>
+              <select
+                className={styles.seletor}
+                value={impressora.gestoManual ?? "jato"}
+                disabled={gravando !== undefined}
+                onChange={(evento) =>
+                  aoEscolherModelo(
+                    impressora.nome,
+                    evento.target.value === "laser" ? "automatico:laser" : "automatico:jato",
+                  )
+                }
+              >
+                <option value="jato">{nomeDoModelo("jato")}</option>
+                <option value="laser">{nomeDoModelo("laser")}</option>
+              </select>
+              <ChevronDown size={10} className={styles.setaSeletor} aria-hidden="true" />
+            </span>
+          </label>
+        )}
         <div className={`${styles.fileira} ${styles.fileiraDoEstado}`}>
           <label htmlFor={idCaixa} className={classesDoEstado.join(" ")} title={estado}>
             <span
@@ -625,7 +665,7 @@ export function LinhaImpressora({
         {comAjuste && (
           <AjusteDaLinha
             nome={nome}
-            duasFaces={duasFaces}
+            duasFaces={duasFaces && impressora.modo !== "automatico"}
             aoVoltar={(origem) =>
               aoPedirVolta({
                 fila: impressora.nome,
@@ -741,13 +781,18 @@ function AvisoTexto({ aviso }: { aviso: Aviso }) {
 interface PropsCampo {
   aba: Aba | null;
   aoDefinir: (tamanho: number) => void;
+  /** Vale para o que esta marcado agora; sem nada a acrescentar, nao ha nota. */
+  nota: Chave | null;
+  /** Todas as marcadas imprimem sozinhas: o resumo nao fala em lotes. */
+  soAutomaticas: boolean;
 }
 
-function CampoLote({ aba, aoDefinir }: PropsCampo) {
+export function CampoLote({ aba, aoDefinir, nota, soAutomaticas }: PropsCampo) {
   const valor = aba?.tamanhoLote ?? LOTE_PADRAO;
   const desabilitado = aba === null;
   const id = useId();
   const idDica = useId();
+  const idNota = useId();
   const [texto, setTexto] = useState(String(valor));
 
   useEffect(() => setTexto(String(valor)), [valor]);
@@ -759,6 +804,9 @@ function CampoLote({ aba, aoDefinir }: PropsCampo) {
     setTexto(String(confirmado));
     if (confirmado !== valor) aoDefinir(confirmado);
   };
+
+  // A nota segue na pagina mesmo escondida na janela curta: o campo continua descrito por ela.
+  const descricoes = [...(invalido ? [idDica] : []), ...(nota === null ? [] : [idNota])];
 
   const passo = (delta: number) => {
     const limitado = limitarAoIntervaloDoLote((interpretarLote(texto) ?? valor) + delta);
@@ -788,7 +836,7 @@ function CampoLote({ aba, aoDefinir }: PropsCampo) {
           aria-valuemax={LOTE_MAXIMO}
           aria-valuenow={valor}
           aria-invalid={invalido}
-          aria-describedby={invalido ? idDica : undefined}
+          aria-describedby={descricoes.length > 0 ? descricoes.join(" ") : undefined}
           {...{ [ATRIBUTO_MENU_DE_CONTEXTO]: "" }}
           onChange={(evento) => {
             setTexto(evento.target.value);
@@ -806,7 +854,12 @@ function CampoLote({ aba, aoDefinir }: PropsCampo) {
           }}
         />
       </div>
-      <AbaixoDoLote aba={aba} invalido={invalido} idDica={idDica} />
+      <AbaixoDoLote aba={aba} invalido={invalido} idDica={idDica} soAutomaticas={soAutomaticas} />
+      {nota !== null && (
+        <p id={idNota} className={styles.notaDoLote}>
+          {t(nota)}
+        </p>
+      )}
     </div>
   );
 }
@@ -815,10 +868,12 @@ function AbaixoDoLote({
   aba,
   invalido,
   idDica,
+  soAutomaticas,
 }: {
   aba: Aba | null;
   invalido: boolean;
   idDica: string;
+  soAutomaticas: boolean;
 }) {
   const conteudo = conteudoAbaixoDoLote(invalido, aba?.paginas ?? null);
   if (conteudo === "erro") {
@@ -844,5 +899,5 @@ function AbaixoDoLote({
   }
   const contadas = paginasDoResumo(lerIntervaloDaAba(aba));
   if (contadas === null) return null;
-  return <p className={styles.resumo}>{resumoDoLote(contadas, aba.tamanhoLote)}</p>;
+  return <p className={styles.resumo}>{resumoDoLote(contadas, aba.tamanhoLote, idiomaAtual, soAutomaticas)}</p>;
 }

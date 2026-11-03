@@ -94,6 +94,9 @@ struct EntradaArquivo {
     /// Fica como valor solto para que um tipo errado não recuse o arquivo inteiro.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     modelo: Option<toml::Value>,
+    /// Ausente em arquivos antigos. Valor solto, como `modelo`: um tipo errado vale como ausente.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    automatico: Option<toml::Value>,
 }
 
 const VIRADA_LATERAL: &str = "lateral";
@@ -120,9 +123,11 @@ fn borda_lida(valor: &toml::Value) -> Option<BordaEntrada> {
 /// Um perfil que se diz do modelo precisa ter os valores dele: a interface mostraria um modelo
 /// e a impressão seguiria outros valores.
 fn modelo_confere(entrada: &EntradaPerfil) -> bool {
-    entrada
-        .modelo
-        .is_none_or(|modelo| modelo.perfil() == entrada.perfil)
+    let gesto_conhecido = !entrada.automatico || entrada.modelo.is_some();
+    gesto_conhecido
+        && entrada
+            .modelo
+            .is_none_or(|modelo| modelo.perfil() == entrada.perfil)
 }
 
 /// Lê a entrada sem recusar o arquivo por causa dela: o modelo que não se sustenta some e os
@@ -156,11 +161,19 @@ impl From<EntradaArquivo> for EntradaPerfil {
             .and_then(toml::Value::as_str)
             .and_then(ModeloImpressora::de_codigo)
             .filter(|modelo| bordas_validas && modelo.perfil() == perfil);
+        // Sem o gesto dos outros papeis, o perfil nao se sustenta como automatico.
+        let automatico = modelo.is_some()
+            && entrada
+                .automatico
+                .as_ref()
+                .and_then(toml::Value::as_bool)
+                .unwrap_or(false);
         EntradaPerfil {
             apelido: entrada.apelido,
             perfil,
             gesto_texto: entrada.gesto_texto,
             modelo,
+            automatico,
         }
     }
 }
@@ -189,6 +202,7 @@ impl From<&EntradaPerfil> for EntradaArquivo {
             modelo: entrada
                 .modelo
                 .map(|modelo| toml::Value::String(modelo.codigo().to_owned())),
+            automatico: entrada.automatico.then_some(toml::Value::Boolean(true)),
         }
     }
 }

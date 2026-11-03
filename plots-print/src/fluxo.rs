@@ -5,7 +5,8 @@
 use crate::job::{Backend, ErroJob, EstadoEnvio, EstadoJob, Job, Passada, SimBackend};
 use crate::{conferir_folhas, ErroSimulacao, Mecanica, Recolocacao, Veredito};
 use plots_core::{
-    FormatoPapel, Lote, LotePapel, ModeloImpressora, Pagina, Papel, TOLERANCIA_PAPEL_MM,
+    papel_aceita_duas_faces, reconhecer_papel, DimensoesPagina, FormatoPapel, Lote, LotePapel,
+    ModeloImpressora, Pagina, Papel, TOLERANCIA_PAPEL_MM,
 };
 use std::time::Duration;
 
@@ -86,6 +87,7 @@ pub fn lotes_do_plano(lotes: &[LotePapel]) -> Vec<LoteDoFluxo> {
                     .collect(),
                 passada1: lote.passada1.clone(),
                 passada2: lote.passada2.clone(),
+                duas_faces: lote.duas_faces,
             },
         })
         .collect()
@@ -314,6 +316,36 @@ impl<B: Backend + DescreveFalha> Condutor<B> {
         self.lotes.get(indice)
     }
 
+    /// O lote atual sai em um trabalho só, com as duas faces, sem gesto no meio.
+    pub fn lote_em_duas_faces(&self) -> bool {
+        self.lote().is_some_and(|item| item.lote.duas_faces)
+    }
+
+    /// O lote que acabou de terminar saiu em duas faces.
+    pub fn terminado_em_duas_faces(&self) -> bool {
+        self.lote_terminado()
+            .is_some_and(|item| item.lote.duas_faces)
+    }
+
+    /// Algum lote deste documento sai em duas faces.
+    pub fn tem_lote_em_duas_faces(&self) -> bool {
+        self.lotes.iter().any(|item| item.lote.duas_faces)
+    }
+
+    /// Algum lote deste documento pede o gesto manual.
+    pub fn tem_lote_manual(&self) -> bool {
+        self.lotes.iter().any(|item| !item.lote.duas_faces)
+    }
+
+    /// Dois lotes automáticos seguidos, no mesmo papel, não têm o que esperar de ninguém. Outro
+    /// papel ou o fluxo manual pedem alguém na entrada da impressora.
+    pub fn proximo_segue_sozinho(&self) -> bool {
+        self.estado() == EstadoJob::Pronto
+            && self.lote_em_duas_faces()
+            && self.terminado_em_duas_faces()
+            && self.troca_de_papel().is_none()
+    }
+
     /// Papel a colocar antes do lote atual, quando ele é outro que o do lote anterior.
     pub fn troca_de_papel(&self) -> Option<Papel> {
         let atual = self.lotes.get(self.job.lote_atual())?;
@@ -351,7 +383,9 @@ impl<B: Backend + DescreveFalha> Condutor<B> {
             return Passo::TempoEsgotado;
         }
         match self.job.atualizar() {
-            Ok(EstadoJob::FrenteEnviada | EstadoJob::VersoEnviado) => {
+            Ok(
+                EstadoJob::FrenteEnviada | EstadoJob::VersoEnviado | EstadoJob::DuasFacesEnviadas,
+            ) => {
                 self.erros_seguidos = 0;
                 match self.job.backend().motivo() {
                     Some(motivo) => {
@@ -419,6 +453,9 @@ impl DescreveFalha for SimBackend {
 pub struct SimGuiado {
     sim: SimBackend,
     gesto: Recolocacao,
+    /// Medidas do documento, na simulada que imprime as duas faces sozinha. Sem elas, a simulada
+    /// só imprime uma face por vez, e um pedido de duas faces é recusado.
+    medidas_em_duas_faces: Option<Vec<DimensoesPagina>>,
 }
 
 impl SimGuiado {
@@ -426,6 +463,39 @@ impl SimGuiado {
         Self {
             sim: SimBackend::novo(mecanica),
             gesto,
+            medidas_em_duas_faces: None,
+        }
+    }
+
+    /// Simulada que imprime as duas faces sozinha, com o gesto manual para os outros papéis.
+    pub fn automatica(
+        mecanica: Mecanica,
+        gesto: Recolocacao,
+        medidas: Vec<DimensoesPagina>,
+    ) -> Self {
+        Self {
+            medidas_em_duas_faces: Some(medidas),
+            ..Self::novo(mecanica, gesto)
+        }
+    }
+
+    /// Como a impressora de referência, recusa em duas faces o papel que não seja A4 ou Carta.
+    fn conferir_duas_faces(&self, paginas: &[Pagina]) -> Result<(), ErroSimulacao> {
+        let medidas = self
+            .medidas_em_duas_faces
+            .as_deref()
+            .ok_or(ErroSimulacao::DuasFacesRecusadas)?;
+        let aceita = paginas.iter().all(|pagina| {
+            pagina
+                .numero
+                .and_then(|numero| medidas.get(numero.checked_sub(1)?))
+                .and_then(|medida| reconhecer_papel(*medida).ok())
+                .is_some_and(|papel| papel_aceita_duas_faces(&papel))
+        });
+        if aceita {
+            Ok(())
+        } else {
+            Err(ErroSimulacao::DuasFacesRecusadas)
         }
     }
 }
@@ -433,8 +503,10 @@ impl SimGuiado {
 impl Backend for SimGuiado {
     type Erro = ErroSimulacao;
     fn enviar(&mut self, passada: Passada, paginas: &[Pagina]) -> Result<(), ErroSimulacao> {
-        if passada == Passada::Verso {
-            self.sim.recolocar(self.gesto)?;
+        match passada {
+            Passada::Frente => {}
+            Passada::Verso => self.sim.recolocar(self.gesto)?,
+            Passada::DuasFaces => self.conferir_duas_faces(paginas)?,
         }
         self.sim.enviar(passada, paginas)
     }

@@ -37,6 +37,8 @@ pub enum ErroEnvio {
     },
     /// O driver não aceitou imprimir em uma face só.
     SimplexNaoAceito,
+    /// O driver não aceitou imprimir nas duas faces, ou nem declara ter o recurso.
+    DuasFacesNaoAceitas,
     /// O driver devolveu outro valor em um campo que o envio precisa fixar.
     ValorNaoAceito {
         campo: &'static str,
@@ -122,6 +124,9 @@ impl std::fmt::Display for ErroEnvio {
             ),
             Self::SimplexNaoAceito => {
                 f.write_str("o driver não aceitou imprimir em uma face só; nada foi enviado")
+            }
+            Self::DuasFacesNaoAceitas => {
+                f.write_str("o driver não aceitou imprimir nas duas faces; nada foi enviado")
             }
             Self::ValorNaoAceito {
                 campo,

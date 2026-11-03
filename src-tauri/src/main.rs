@@ -3,6 +3,7 @@
 mod abertura;
 mod comandos_trabalho;
 mod documento;
+mod duas_faces;
 mod fechamento;
 mod grupos;
 mod impressoras;
