@@ -75,8 +75,30 @@ pub fn operacoes_da_virada(virada: Virada) -> Vec<Operacao> {
     }
 }
 
-/// O gesto de quatro campos. Três vêm da instrução; `borda_que_entra` não existe nela, porque o
-/// programa só distingue aresta curta de longa, e precisa ser dado por quem chama.
+/// O gesto de quatro campos, como o programa o publica, sem nada dado por quem chama.
+pub fn gesto_publicado(instrucao: Instrucao) -> Gesto {
+    Gesto {
+        entrada: match instrucao.entrada {
+            fluxo::EntradaDoMaco::Traseira => Entrada::Traseira,
+            fluxo::EntradaDoMaco::Gaveta => Entrada::Gaveta,
+            fluxo::EntradaDoMaco::Manual => Entrada::Manual,
+        },
+        face_impressa: match instrucao.face_impressa {
+            fluxo::FaceImpressa::ParaFrente => FaceNaEntrada::ParaFrente,
+            fluxo::FaceImpressa::ParaTras => FaceNaEntrada::ParaTras,
+            fluxo::FaceImpressa::ParaCima => FaceNaEntrada::ParaCima,
+            fluxo::FaceImpressa::ParaBaixo => FaceNaEntrada::ParaBaixo,
+        },
+        borda_que_entra: match instrucao.borda_que_entra {
+            fluxo::BordaQueEntra::Topo => BordaQueEntra::Topo,
+            fluxo::BordaQueEntra::Base => BordaQueEntra::Base,
+        },
+        inverter_ordem: instrucao.inverter_ordem,
+    }
+}
+
+/// O gesto de quatro campos com a entrada e a borda escolhidas por quem chama, para testar
+/// hipóteses que o programa não afirma.
 pub fn gesto_da_instrucao(
     instrucao: Instrucao,
     entrada: Entrada,

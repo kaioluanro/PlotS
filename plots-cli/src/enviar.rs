@@ -3,14 +3,18 @@
 //! A saída nunca diz que algo saiu no papel: a confirmação do spooler só garante a entrega.
 
 use crate::calibrar::{caminho_perfis, carregar_perfis, MSG_RESPOSTA_INVALIDA};
+use crate::canal::{
+    linha_de_fim, linha_de_inicio, linha_do_gesto, Canal, LeituraDoMaco, PREFIXO_DA_FILA,
+};
 use crate::geracao::{self, Documento};
-use crate::imprimir::aviso_de_modelo_nao_medido;
+use crate::imprimir::{aviso_de_modelo_nao_medido, mecanica_coerente};
 use crate::{listar, ImpressoraVirtual};
-use plots_core::{ModeloImpressora, OrdemPassadas};
+use plots_core::distribuicao::{distribuir_lotes, ModoDistribuicao};
+use plots_core::{ModeloImpressora, OrdemPassadas, PerfilImpressora};
 use plots_print::fluxo::{
     frases_de_recolocacao_do_modelo, nome_do_papel, vira_para_ler, CondicaoDoAviso, Condutor,
-    DescreveFalha, Espera, LoteDoFluxo, Passo, FRASE_DA_CALIBRACAO, FRASE_ESPERAR_FOLHA,
-    FRASE_VIRAR_PARA_LER,
+    DescreveFalha, EntradaDoMaco, Espera, Instrucao, LoteDoFluxo, Passo, FRASE_DA_CALIBRACAO,
+    FRASE_ESPERAR_FOLHA, FRASE_VIRAR_PARA_LER,
 };
 use plots_print::job::{Backend, ErroJob};
 use plots_windows::{Fila, RecusaDeFila};
@@ -36,6 +40,53 @@ pub(crate) struct Pedido {
     pub ordem: OrdemPassadas,
     pub perfis: Option<PathBuf>,
     pub arquivo_saida: Option<PathBuf>,
+    pub teste: Option<OpcoesDoTeste>,
+}
+
+/// O que `--teste` recebeu. Sem a opção, nada do modo de teste roda.
+pub(crate) struct OpcoesDoTeste {
+    /// Só os lotes desta parte, como na divisão entre filas: índice a partir de 1 e total.
+    pub parte: Option<(usize, usize)>,
+}
+
+/// Espera do modo de teste: a fila é virtual, e passar disso é trabalho preso.
+#[cfg_attr(not(windows), allow(dead_code))]
+const ESPERA_DO_TESTE: Espera = Espera {
+    intervalo: Duration::from_millis(100),
+    consultas: 3_000,
+};
+
+/// Quem recebe os avisos do modo de teste. A saída fica no canal do simulador; os testes trocam.
+pub(crate) trait PublicaGesto {
+    fn gesto(&self, lote: usize) -> Result<(), String>;
+    fn fim(&self) -> Result<(), String>;
+}
+
+/// O modo de teste ligado ao canal do simulador.
+struct TesteNoCanal<'a> {
+    canal: Canal,
+    fila: &'a str,
+    instrucao: Instrucao,
+    leitura: LeituraDoMaco,
+    lotes: usize,
+}
+
+impl PublicaGesto for TesteNoCanal<'_> {
+    fn gesto(&self, lote: usize) -> Result<(), String> {
+        self.canal
+            .publicar(&linha_do_gesto(self.fila, lote, &self.instrucao))
+    }
+    fn fim(&self) -> Result<(), String> {
+        self.canal
+            .publicar(&linha_de_fim(self.fila, self.lotes, self.leitura))
+    }
+}
+
+/// O modo de teste, com o número no documento de cada lote enviado.
+#[cfg_attr(not(windows), allow(dead_code))]
+struct ModoDeTeste<'a> {
+    publica: &'a dyn PublicaGesto,
+    numeros: Vec<usize>,
 }
 
 /// O que o fluxo precisa saber da fila, sem depender do Windows.
@@ -45,6 +96,41 @@ struct Destino<'a> {
     gesto_texto: Option<&'a str>,
     /// Modelo do perfil salvo, que manda no gesto e não foi medido na máquina.
     modelo: Option<ModeloImpressora>,
+    /// Com o modo de teste, nada é perguntado e o gesto é publicado.
+    teste: Option<ModoDeTeste<'a>>,
+}
+
+/// A instrução que o modo de teste publica. Com modelo, a dele; sem modelo, a da mecânica que
+/// confere com o perfil, sem afirmar a entrada.
+fn instrucao_do_teste(
+    modelo: Option<ModeloImpressora>,
+    perfil: PerfilImpressora,
+    ordem: OrdemPassadas,
+    fila: &str,
+) -> Result<Instrucao, String> {
+    if let Some(modelo) = modelo {
+        return Ok(Instrucao::do_modelo(modelo));
+    }
+    let mecanica = mecanica_coerente(&perfil, ordem)
+        .ok_or_else(|| format!("o perfil salvo de '{fila}' não confere com nenhuma mecânica"))?;
+    Ok(Instrucao::do_perfil(
+        EntradaDoMaco::Manual,
+        mecanica,
+        perfil,
+    ))
+}
+
+/// Índices, no plano do documento, dos lotes desta parte.
+fn indices_da_parte(total: usize, parte: Option<(usize, usize)>) -> Result<Vec<usize>, String> {
+    let Some((indice, partes)) = parte else {
+        return Ok((0..total).collect());
+    };
+    let atribuicoes = distribuir_lotes(total, partes, ModoDistribuicao::Divisao)
+        .map_err(|erro| format!("não deu para repartir os lotes: {erro:?}"))?;
+    atribuicoes
+        .get(indice.saturating_sub(1))
+        .map(|atribuicao| atribuicao.indices_lotes().collect())
+        .ok_or_else(|| "--parte fora da divisão".to_string())
 }
 
 /// Executa o envio real: nada é enviado sem a resposta do usuário.
@@ -55,6 +141,11 @@ pub(crate) fn executar(
 ) -> Result<(), String> {
     if ImpressoraVirtual::de_nome(&pedido.nome).is_some() {
         return Err(MSG_SEM_SIMULAR.into());
+    }
+    if pedido.teste.is_some() && !pedido.nome.starts_with(PREFIXO_DA_FILA) {
+        return Err(format!(
+            "--teste só envia às filas do PlotSim, com o nome começando em \"{PREFIXO_DA_FILA}\""
+        ));
     }
     if pedido.tamanho == 0 {
         return Err("--lote deve ser maior que zero".into());
@@ -93,12 +184,64 @@ pub(crate) fn executar(
         .map_err(|e| e.to_string())?;
     }
     let lotes = geracao::lotes_do_plano(&plano);
+    let Some(opcoes) = &pedido.teste else {
+        let destino = Destino {
+            fila: &pedido.nome,
+            gesto_texto: perfil.gesto_texto.as_deref(),
+            modelo: perfil.modelo,
+            teste: None,
+        };
+        return enviar_com_o_sistema(&pedido, &fila, documento, lotes, &destino, entrada, saida);
+    };
+    let numeros = indices_da_parte(lotes.len(), opcoes.parte)?;
+    let lotes = selecionar_lotes(lotes, &numeros);
+    if lotes.is_empty() {
+        return writeln!(saida, "Nada a enviar nesta parte.").map_err(|e| e.to_string());
+    }
+    let canal = Canal::do_simulador();
+    canal.publicar(&linha_de_inicio(&pedido.nome, lotes.len()))?;
+    let leitura = match perfil.modelo {
+        Some(modelo) if vira_para_ler(modelo) => LeituraDoMaco::Virando,
+        Some(_) => LeituraDoMaco::ComoSaiu,
+        None => LeituraDoMaco::SemInstrucao,
+    };
+    let publica = TesteNoCanal {
+        canal,
+        fila: &pedido.nome,
+        instrucao: instrucao_do_teste(perfil.modelo, perfil.perfil, pedido.ordem, &pedido.nome)?,
+        leitura,
+        lotes: lotes.len(),
+    };
     let destino = Destino {
         fila: &pedido.nome,
         gesto_texto: perfil.gesto_texto.as_deref(),
         modelo: perfil.modelo,
+        teste: Some(ModoDeTeste {
+            publica: &publica,
+            numeros: numeros.iter().map(|n| n.saturating_add(1)).collect(),
+        }),
     };
-    enviar_com_o_sistema(&pedido, &fila, documento, lotes, &destino, entrada, saida)
+    // Sem ninguém para responder: um aviso da fila encerra sem apagar o trabalho.
+    let mut sem_respostas = std::io::empty();
+    enviar_com_o_sistema(
+        &pedido,
+        &fila,
+        documento,
+        lotes,
+        &destino,
+        &mut sem_respostas,
+        saida,
+    )
+}
+
+/// Fica só com os lotes indicados, na ordem do documento.
+fn selecionar_lotes(lotes: Vec<LoteDoFluxo>, indices: &[usize]) -> Vec<LoteDoFluxo> {
+    lotes
+        .into_iter()
+        .enumerate()
+        .filter(|(indice, _)| indices.contains(indice))
+        .map(|(_, lote)| lote)
+        .collect()
 }
 
 /// Escolhe a fila do pedido na lista do sistema, com a recusa escrita para o terminal.
@@ -151,11 +294,16 @@ fn enviar_com_o_sistema(
         pedido.arquivo_saida.as_deref(),
     )
     .map_err(|e| e.to_string())?;
+    let espera = if destino.teste.is_some() {
+        ESPERA_DO_TESTE
+    } else {
+        plots_print::fluxo::ESPERA_REAL
+    };
     conduzir(
         backend,
         lotes,
         destino,
-        &plots_print::fluxo::ESPERA_REAL,
+        &espera,
         std::thread::sleep,
         entrada,
         saida,
@@ -215,7 +363,7 @@ where
         }
         writeln!(saida, "  Frente: {}", listar(&lote.passada1)).map_err(|e| e.to_string())?;
         let pergunta = format!("Enviar a frente do lote {numero} para {fila}? (s/n): ");
-        if !confirmar(entrada, saida, &pergunta)? {
+        if destino.teste.is_none() && !confirmar(entrada, saida, &pergunta)? {
             return Err(format!(
                 "envio cancelado no lote {numero} de {total}: a frente deste lote não foi enviada"
             ));
@@ -236,9 +384,13 @@ where
         .map_err(|e| e.to_string())?;
         writeln!(saida, "  {FRASE_ESPERAR_FOLHA}").map_err(|e| e.to_string())?;
         escrever_recolocacao(destino, saida)?;
+        if let Some(teste) = &destino.teste {
+            let no_documento = teste.numeros.get(indice).copied().unwrap_or(numero);
+            teste.publica.gesto(no_documento)?;
+        }
         writeln!(saida, "  Verso: {}", listar(&lote.passada2)).map_err(|e| e.to_string())?;
         let pergunta = format!("Enviar o verso do lote {numero} para {fila}? (s/n): ");
-        if !confirmar(entrada, saida, &pergunta)? {
+        if destino.teste.is_none() && !confirmar(entrada, saida, &pergunta)? {
             return Err(format!(
                 "envio cancelado no lote {numero} de {total}: a frente foi enviada, o verso não"
             ));
@@ -265,6 +417,9 @@ where
     .map_err(|e| e.to_string())?;
     if destino.modelo.is_some_and(vira_para_ler) {
         writeln!(saida, "{FRASE_VIRAR_PARA_LER}").map_err(|e| e.to_string())?;
+    }
+    if let Some(teste) = &destino.teste {
+        teste.publica.fim()?;
     }
     Ok(())
 }
@@ -571,6 +726,8 @@ mod testes {
         Enviou(Passada, Vec<Option<usize>>),
         Consultou,
         Cancelou,
+        Publicou(usize),
+        Terminou,
     }
 
     /// O que uma consulta do backend falso responde.
@@ -733,6 +890,7 @@ mod testes {
             fila: "Fila de Teste",
             gesto_texto: Some("Vire o maço."),
             modelo,
+            teste: None,
         };
         let espera = Espera {
             intervalo: Duration::ZERO,
@@ -1385,5 +1543,230 @@ mod testes {
             enviadas,
             [&vec![Some(2)], &vec![Some(1)], &vec![None], &vec![Some(3)]]
         );
+    }
+
+    /// Modo de teste com o canal trocado: registra na mesma lista dos envios, para ver a ordem.
+    struct PublicaFalso {
+        eventos: Rc<RefCell<Vec<Evento>>>,
+        recusa: Option<&'static str>,
+    }
+
+    impl PublicaGesto for PublicaFalso {
+        fn gesto(&self, lote: usize) -> Result<(), String> {
+            self.eventos.borrow_mut().push(Evento::Publicou(lote));
+            match self.recusa {
+                Some(motivo) => Err(motivo.to_string()),
+                None => Ok(()),
+            }
+        }
+        fn fim(&self) -> Result<(), String> {
+            self.eventos.borrow_mut().push(Evento::Terminou);
+            Ok(())
+        }
+    }
+
+    fn rodar_em_teste(
+        paginas: usize,
+        numeros: Vec<usize>,
+        recusa: Option<&'static str>,
+    ) -> (Result<(), String>, Vec<Evento>, String) {
+        let eventos = Rc::new(RefCell::new(Vec::new()));
+        let backend = Falso {
+            eventos: Rc::clone(&eventos),
+            respostas: VecDeque::new(),
+            erro_ao_enviar: None,
+            motivo: None,
+            condicao: None,
+            mensagem: None,
+            saiu_da_fila: false,
+        };
+        let lotes = geracao::lotes_do_plano(&geracao::Plano {
+            lotes: plano_lotes_por_papel(
+                &vec![A4; paginas],
+                1,
+                OrdemPassadas::default(),
+                PerfilImpressora::default(),
+            )
+            .unwrap(),
+            pares_mistos: Vec::new(),
+        });
+        let publica = PublicaFalso {
+            eventos: Rc::clone(&eventos),
+            recusa,
+        };
+        let destino = Destino {
+            fila: "PlotSim — Jato",
+            gesto_texto: None,
+            modelo: Some(ModeloImpressora::JatoDeTinta),
+            teste: Some(ModoDeTeste {
+                publica: &publica,
+                numeros,
+            }),
+        };
+        let espera = Espera {
+            intervalo: Duration::ZERO,
+            consultas: 5,
+        };
+        let mut saida = Vec::new();
+        let resultado = conduzir(
+            backend,
+            lotes,
+            &destino,
+            &espera,
+            |_| {},
+            &mut std::io::empty(),
+            &mut saida,
+        );
+        let eventos = eventos.borrow().clone();
+        (resultado, eventos, String::from_utf8(saida).unwrap())
+    }
+
+    fn sem_consultas(eventos: Vec<Evento>) -> Vec<Evento> {
+        eventos
+            .into_iter()
+            .filter(|evento| *evento != Evento::Consultou)
+            .collect()
+    }
+
+    #[test]
+    fn em_teste_nada_e_perguntado_e_o_gesto_sai_antes_do_verso() {
+        let (resultado, eventos, saida) = rodar_em_teste(4, vec![3, 7], None);
+        assert_eq!(resultado, Ok(()));
+        assert!(!saida.contains("(s/n)"), "{saida}");
+        assert_eq!(
+            sem_consultas(eventos),
+            vec![
+                Evento::Enviou(Passada::Frente, vec![Some(2)]),
+                Evento::Publicou(3),
+                Evento::Enviou(Passada::Verso, vec![Some(1)]),
+                Evento::Enviou(Passada::Frente, vec![Some(4)]),
+                Evento::Publicou(7),
+                Evento::Enviou(Passada::Verso, vec![Some(3)]),
+                Evento::Terminou,
+            ]
+        );
+    }
+
+    #[test]
+    fn se_o_simulador_recusar_o_gesto_o_verso_nao_parte() {
+        let (resultado, eventos, _) = rodar_em_teste(2, vec![1], Some("não deu"));
+        assert_eq!(resultado, Err("não deu".to_string()));
+        assert_eq!(
+            sem_consultas(eventos),
+            vec![
+                Evento::Enviou(Passada::Frente, vec![Some(2)]),
+                Evento::Publicou(1),
+            ]
+        );
+    }
+
+    #[test]
+    fn sem_a_opcao_o_fluxo_continua_perguntando() {
+        let rodada = rodar(2, "n\n");
+        assert!(rodada.saida.contains("(s/n)"), "{}", rodada.saida);
+        assert!(rodada
+            .eventos
+            .iter()
+            .all(|evento| !matches!(evento, Evento::Publicou(_) | Evento::Terminou)));
+    }
+
+    #[test]
+    fn a_instrucao_do_teste_vem_do_modelo_ou_da_mecanica_do_perfil() {
+        let fila = "PlotSim — X";
+        let ordem = OrdemPassadas::default();
+        let jato = ModeloImpressora::JatoDeTinta;
+        assert_eq!(
+            instrucao_do_teste(Some(jato), jato.perfil(), ordem, fila),
+            Ok(Instrucao::do_modelo(jato))
+        );
+        let sem_modelo = instrucao_do_teste(None, jato.perfil(), ordem, fila).unwrap();
+        assert_eq!(sem_modelo.entrada, EntradaDoMaco::Manual);
+        assert_eq!(sem_modelo.virada, Instrucao::do_modelo(jato).virada);
+        assert_eq!(sem_modelo.lado, Instrucao::do_modelo(jato).lado);
+    }
+
+    /// A borda da regra e o gesto do perfil têm de apontar o mesmo lado em toda mecânica que o
+    /// programa aceita para um perfil: se discordassem, a frase e o dado diriam coisas diferentes.
+    #[test]
+    fn em_todo_perfil_aceito_a_regra_da_borda_fecha_com_o_gesto() {
+        use plots_core::{GestoRecolocar, ViradaMaco};
+        use plots_print::fluxo::Virada;
+        let viradas = [
+            (ViradaMaco::NaoVirar, Virada::NaoVirar),
+            (ViradaMaco::PelaLateral, Virada::PelaLateral),
+            (ViradaMaco::PelaBordaDeCima, Virada::PelaBordaDeCima),
+        ];
+        for (virada, esperada) in viradas {
+            for bits in 0u8..8 {
+                let perfil = PerfilImpressora {
+                    passada1_inversa: bits & 1 != 0,
+                    passada2_inversa: bits & 2 != 0,
+                    verso_girar_180: bits & 4 != 0,
+                    gesto_recolocar: GestoRecolocar {
+                        virada,
+                        ..GestoRecolocar::default()
+                    },
+                };
+                let Ok(instrucao) =
+                    instrucao_do_teste(None, perfil, OrdemPassadas::default(), "PlotSim — X")
+                else {
+                    continue;
+                };
+                assert_eq!(instrucao.virada, esperada, "{perfil:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_parte_escolhe_os_lotes_como_a_divisao() {
+        assert_eq!(indices_da_parte(3, None).unwrap(), vec![0, 1, 2]);
+        assert_eq!(indices_da_parte(5, Some((1, 2))).unwrap(), vec![0, 2, 4]);
+        assert_eq!(indices_da_parte(5, Some((2, 2))).unwrap(), vec![1, 3]);
+        assert!(indices_da_parte(2, Some((3, 2))).is_err());
+    }
+
+    #[test]
+    fn teste_recusa_fila_de_fora_antes_de_ler_qualquer_coisa() {
+        let args: Vec<String> = [
+            "imprimir",
+            "nao-existe.pdf",
+            "--impressora",
+            "Microsoft Print to PDF",
+            "--lote",
+            "1",
+            "--teste",
+        ]
+        .map(String::from)
+        .to_vec();
+        let erro = crate::executar_com_io(&args, &mut std::io::empty(), &mut Vec::new());
+        let erro = erro.unwrap_err();
+        assert!(erro.contains("só envia às filas do PlotSim"), "{erro}");
+    }
+
+    #[test]
+    fn opcoes_do_teste_nao_valem_fora_dele_nem_com_o_simulado() {
+        let tentar = |extras: &[&str]| {
+            let mut args: Vec<String> = [
+                "imprimir",
+                "a.pdf",
+                "--impressora",
+                "PlotSim — X",
+                "--lote",
+                "1",
+            ]
+            .map(String::from)
+            .to_vec();
+            args.extend(extras.iter().map(|texto| (*texto).to_string()));
+            crate::executar_com_io(&args, &mut std::io::empty(), &mut Vec::new()).unwrap_err()
+        };
+        assert!(tentar(&["--parte", "1/2"]).contains("--parte só vale com --teste"));
+        for extras in [
+            &["--teste", "--simular"][..],
+            &["--teste", "--saida", "x"][..],
+            &["--teste", "--arquivo-saida", "x"][..],
+            &["--teste", "--folhas-finais"][..],
+        ] {
+            assert!(tentar(extras).contains("não se combina"), "{extras:?}");
+        }
     }
 }

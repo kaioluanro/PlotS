@@ -349,6 +349,10 @@ fn instrucao_de_cada_modelo_bate_com_as_frases_do_terminal() {
     assert_eq!(
         Instrucao::do_modelo(ModeloImpressora::JatoDeTinta),
         Instrucao {
+            entrada: EntradaDoMaco::Traseira,
+            face_impressa: FaceImpressa::ParaTras,
+            borda_que_entra: BordaQueEntra::Base,
+            inverter_ordem: false,
             lado: Lado::Baixo,
             virada: Virada::PelaBordaDeCima
         }
@@ -356,6 +360,10 @@ fn instrucao_de_cada_modelo_bate_com_as_frases_do_terminal() {
     assert_eq!(
         Instrucao::do_modelo(ModeloImpressora::Laser),
         Instrucao {
+            entrada: EntradaDoMaco::Gaveta,
+            face_impressa: FaceImpressa::ParaBaixo,
+            borda_que_entra: BordaQueEntra::Base,
+            inverter_ordem: false,
             lado: Lado::Baixo,
             virada: Virada::NaoVirar
         }
@@ -518,4 +526,99 @@ fn a_conferencia_olha_o_par_e_o_lugar_da_folha_na_leitura() {
     assert_eq!(folhas_certas_na_ordem(&par_trocado, &esperados), (0, 2));
 
     assert_eq!(folhas_certas_na_ordem(&[], &[]), (0, 0));
+}
+
+/// Todas as mecânicas possíveis, com e sem o giro feito pela própria máquina.
+fn todas_as_mecanicas() -> impl Iterator<Item = Mecanica> {
+    (0u8..32).map(|bits| Mecanica {
+        saida_face_impressa_para_cima: bits & 1 != 0,
+        saida_no_topo: bits & 2 != 0,
+        imprime_face_para_cima: bits & 4 != 0,
+        entrada_pelo_topo: bits & 8 != 0,
+        giro_segunda_passada: bits & 16 != 0,
+    })
+}
+
+const GESTOS_POSSIVEIS: [(bool, bool, Virada); 4] = [
+    (true, true, Virada::PelaBordaDeCima),
+    (true, false, Virada::PelaLateral),
+    (false, false, Virada::NaoVirar),
+    (false, true, Virada::Girar),
+];
+
+#[test]
+fn a_virada_e_o_lado_saem_dos_quatro_campos_em_qualquer_mecanica() {
+    for mecanica in todas_as_mecanicas() {
+        for (virar_maco, girar_180, virada) in GESTOS_POSSIVEIS {
+            let gesto = Recolocacao {
+                virar_maco,
+                girar_180,
+                ..Recolocacao::default()
+            };
+            let instrucao = Instrucao::do_gesto(mecanica, gesto);
+            assert_eq!(instrucao.virada, virada, "{mecanica:?} {gesto:?}");
+            let lado = if mecanica.saida_face_impressa_para_cima != virar_maco {
+                Lado::Cima
+            } else {
+                Lado::Baixo
+            };
+            assert_eq!(instrucao.lado, lado, "{mecanica:?} {gesto:?}");
+            let de_novo = Instrucao::dos_campos(
+                mecanica,
+                instrucao.entrada,
+                instrucao.face_impressa,
+                instrucao.borda_que_entra,
+                instrucao.inverter_ordem,
+            );
+            assert_eq!(de_novo, instrucao);
+        }
+    }
+}
+
+#[test]
+fn as_frases_visiveis_continuam_as_mesmas() {
+    let (gesto, colocacao) = frases_de_recolocacao_do_modelo(ModeloImpressora::JatoDeTinta);
+    assert_eq!(
+        gesto,
+        "Vire o maço pela borda de cima, como um bloco de notas."
+    );
+    assert_eq!(
+        colocacao,
+        "Depois, sem mudar a ordem das folhas, coloque na entrada com a face impressa para baixo."
+    );
+    let (gesto, colocacao) = frases_de_recolocacao_do_modelo(ModeloImpressora::Laser);
+    assert_eq!(gesto, "Não vire nem gire o maço.");
+    assert_eq!(
+        colocacao,
+        "Depois, sem mudar a ordem das folhas, coloque na entrada com a face impressa para baixo."
+    );
+}
+
+#[test]
+fn a_borda_segue_o_giro_do_verso() {
+    assert_eq!(BordaQueEntra::da_regra(false), BordaQueEntra::Topo);
+    assert_eq!(BordaQueEntra::da_regra(true), BordaQueEntra::Base);
+    let sem_giro = PerfilImpressora {
+        verso_girar_180: false,
+        ..ModeloImpressora::Laser.perfil()
+    };
+    let instrucao = Instrucao::do_perfil(EntradaDoMaco::Manual, Mecanica::gaveta(), sem_giro);
+    assert_eq!(instrucao.borda_que_entra, BordaQueEntra::Topo);
+    // Sem giro no plano e com a máquina girando sozinha, o verso ainda chega girado.
+    let maquina_que_gira = Mecanica {
+        giro_segunda_passada: true,
+        ..Mecanica::gaveta()
+    };
+    let instrucao = Instrucao::do_perfil(EntradaDoMaco::Manual, maquina_que_gira, sem_giro);
+    assert_eq!(instrucao.borda_que_entra, BordaQueEntra::Base);
+    assert_eq!(instrucao.entrada, EntradaDoMaco::Manual);
+    assert_eq!(instrucao.face_impressa, FaceImpressa::ParaBaixo);
+}
+
+#[test]
+fn nos_dois_modelos_a_regra_e_o_gesto_apontam_a_mesma_borda() {
+    for modelo in [ModeloImpressora::JatoDeTinta, ModeloImpressora::Laser] {
+        let pelo_gesto = Instrucao::do_gesto(Mecanica::do_modelo(modelo), modelo.gesto().into());
+        assert_eq!(pelo_gesto, Instrucao::do_modelo(modelo), "{modelo:?}");
+    }
 }

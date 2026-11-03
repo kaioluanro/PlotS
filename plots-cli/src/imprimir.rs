@@ -1,7 +1,8 @@
 //! Comando `imprimir`: grava as passadas e conduz a impressão simulada, lote a lote.
 
 use crate::calibrar::{caminho_perfis, carregar_perfis};
-use crate::enviar::{Pedido, MSG_SEM_SIMULAR};
+use crate::canal::analisar_parte;
+use crate::enviar::{OpcoesDoTeste, Pedido, MSG_SEM_SIMULAR};
 use crate::geracao::{self, Documento, Opcoes};
 use crate::{contagem_de_corretas, listar, nome_do_modelo, relatar_folhas, ImpressoraVirtual};
 use plots_core::{plano_documento, Lote, ModeloImpressora, OrdemPassadas, PerfilImpressora};
@@ -45,15 +46,16 @@ pub(crate) fn executar(
     let (mut impressora, mut tamanho, mut diretorio, mut ordem, mut perfis) =
         (None, None, None, None, None);
     let mut arquivo_saida: Option<PathBuf> = None;
-    let (mut folhas_finais, mut simular) = (false, false);
+    let (mut folhas_finais, mut simular, mut teste) = (false, false, false);
+    let mut parte = None;
     let mut i = 2;
     while i < args.len() {
         let chave = &args[i];
-        if chave == "--simular" || chave == "--folhas-finais" {
-            let marca = if chave == "--simular" {
-                &mut simular
-            } else {
-                &mut folhas_finais
+        if chave == "--simular" || chave == "--folhas-finais" || chave == "--teste" {
+            let marca = match chave.as_str() {
+                "--simular" => &mut simular,
+                "--teste" => &mut teste,
+                _ => &mut folhas_finais,
             };
             if *marca {
                 return Err(format!("{chave} foi informado mais de uma vez"));
@@ -80,6 +82,7 @@ pub(crate) fn executar(
             "--arquivo-saida" if arquivo_saida.is_none() => {
                 arquivo_saida = Some(PathBuf::from(valor))
             }
+            "--parte" if parte.is_none() => parte = Some(analisar_parte(valor)?),
             _ => return Err(format!("opção desconhecida ou repetida: {chave}")),
         }
         i += 2;
@@ -87,6 +90,15 @@ pub(crate) fn executar(
     let nome = impressora.ok_or("informe --impressora NOME")?;
     let tamanho = tamanho.ok_or("informe --lote K")?;
     let ordem = ordem.unwrap_or_default();
+    if parte.is_some() && !teste {
+        return Err("--parte só vale com --teste".into());
+    }
+    if teste && (simular || arquivo_saida.is_some() || diretorio.is_some() || folhas_finais) {
+        return Err(
+            "--teste não se combina com --simular, --saida, --folhas-finais nem --arquivo-saida"
+                .into(),
+        );
+    }
     if !simular {
         if ImpressoraVirtual::de_nome(&nome).is_some() {
             return Err(MSG_SEM_SIMULAR.into());
@@ -107,6 +119,7 @@ pub(crate) fn executar(
             ordem,
             perfis,
             arquivo_saida,
+            teste: teste.then_some(OpcoesDoTeste { parte }),
         };
         return crate::enviar::executar(pedido, entrada, saida);
     }

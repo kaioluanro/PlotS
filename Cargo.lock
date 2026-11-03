@@ -2692,6 +2692,7 @@ dependencies = [
  "pdfium-render",
  "plots-pdf",
  "plots-windows",
+ "plotsim-physics",
  "serde",
  "toml 1.1.6+spec-1.1.0",
  "windows",
@@ -2704,6 +2705,15 @@ dependencies = [
  "plots-core",
  "plots-print",
  "proptest",
+]
+
+[[package]]
+name = "plotsim-suite"
+version = "0.1.0"
+dependencies = [
+ "plotsim-core",
+ "plotsim-physics",
+ "windows",
 ]
 
 [[package]]

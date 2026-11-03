@@ -3,8 +3,10 @@
 //! Criar ou remover uma fila muda o Windows do usuário, então só acontece a pedido, só em filas
 //! com o prefixo do simulador e com a porta dentro da pasta dele.
 
+pub mod canal;
 pub mod filas;
 pub mod leitor;
+pub mod marca;
 pub mod modo;
 pub mod nome;
 pub mod pastas;

@@ -137,3 +137,33 @@ fn a_borda_que_fecha_com_o_plano_e_a_que_a_instrucao_faz_entrar() {
         );
     }
 }
+
+#[test]
+fn o_gesto_publicado_pelo_programa_fecha_a_matriz_dos_dois_modelos() {
+    for modelo in [ModeloImpressora::JatoDeTinta, ModeloImpressora::Laser] {
+        let gesto = gesto_publicado(Instrucao::do_modelo(modelo));
+        assert_eq!(
+            gesto,
+            gesto_do_modelo(modelo, borda_que_fecha(modelo.perfil()))
+        );
+        for total in PAGINAS {
+            for lote in LOTES {
+                let maco = juntar(plano(total, lote, modelo.perfil()).iter().map(|l| {
+                    executar_lote(
+                        l,
+                        modo_do_modelo(modelo),
+                        &Recoloca::PeloGesto(gesto),
+                        leitura_do_modelo(modelo),
+                        Defeito::Nenhum,
+                    )
+                }));
+                let total = u32::try_from(total).expect("total cabe em u32");
+                assert_eq!(
+                    conferir(&maco, total),
+                    vec![],
+                    "{modelo:?}, {total}, lote {lote}"
+                );
+            }
+        }
+    }
+}

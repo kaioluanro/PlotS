@@ -6,7 +6,7 @@ use crate::job::{Backend, ErroJob, EstadoEnvio, EstadoJob, Job, Passada, SimBack
 use crate::{conferir_folhas, ErroSimulacao, Folha, Mecanica, Recolocacao, Veredito};
 use plots_core::{
     papel_aceita_duas_faces, reconhecer_papel, DimensoesPagina, FormatoPapel, Lote, LotePapel,
-    ModeloImpressora, Pagina, Papel, TOLERANCIA_PAPEL_MM,
+    ModeloImpressora, Pagina, Papel, PerfilImpressora, TOLERANCIA_PAPEL_MM,
 };
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -148,23 +148,192 @@ pub enum Virada {
     Girar,
 }
 
-/// As duas linhas da recolocação, em forma de dados, para cada interface pôr no seu idioma.
+/// Por onde o maço volta à máquina. Sem modelo, o perfil não afirma a entrada: vale `Manual`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EntradaDoMaco {
+    Traseira,
+    Gaveta,
+    Manual,
+}
+
+/// Para onde a face impressa olha na entrada. Na traseira a folha fica de pé: a frente da máquina
+/// corresponde ao que na gaveta é para cima.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FaceImpressa {
+    ParaFrente,
+    ParaTras,
+    ParaCima,
+    ParaBaixo,
+}
+
+impl FaceImpressa {
+    const fn do_lado(entrada: EntradaDoMaco, lado: Lado) -> Self {
+        match (entrada, lado) {
+            (EntradaDoMaco::Traseira, Lado::Cima) => Self::ParaFrente,
+            (EntradaDoMaco::Traseira, Lado::Baixo) => Self::ParaTras,
+            (_, Lado::Cima) => Self::ParaCima,
+            (_, Lado::Baixo) => Self::ParaBaixo,
+        }
+    }
+
+    const fn lado(self) -> Lado {
+        match self {
+            Self::ParaFrente | Self::ParaCima => Lado::Cima,
+            Self::ParaTras | Self::ParaBaixo => Lado::Baixo,
+        }
+    }
+}
+
+/// Borda da página impressa que entra primeiro, contando que a máquina põe o topo da imagem na
+/// aresta que entra primeiro. Essa é uma convenção: nada aqui mede a máquina.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BordaQueEntra {
+    Topo,
+    Base,
+}
+
+impl BordaQueEntra {
+    /// Sem giro no verso, a aresta que entrou primeiro entra primeiro de novo; com giro, a oposta.
+    pub const fn da_regra(verso_girado: bool) -> Self {
+        if verso_girado {
+            Self::Base
+        } else {
+            Self::Topo
+        }
+    }
+
+    const fn oposta(self) -> Self {
+        match self {
+            Self::Topo => Self::Base,
+            Self::Base => Self::Topo,
+        }
+    }
+}
+
+/// A recolocação como dado: os quatro primeiros campos dizem tudo o que a pessoa precisa fazer, e
+/// `lado` e `virada` saem só deles, para cada interface pôr no seu idioma.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Instrucao {
+    pub entrada: EntradaDoMaco,
+    pub face_impressa: FaceImpressa,
+    pub borda_que_entra: BordaQueEntra,
+    pub inverter_ordem: bool,
     pub lado: Lado,
     pub virada: Virada,
 }
 
 impl Instrucao {
-    pub fn do_gesto(mecanica: Mecanica, gesto: Recolocacao) -> Self {
+    /// Monta a instrução a partir dos campos. A virada é o que leva o maço, como ele saiu, até a
+    /// face e a borda pedidas.
+    pub fn dos_campos(
+        mecanica: Mecanica,
+        entrada: EntradaDoMaco,
+        face_impressa: FaceImpressa,
+        borda_que_entra: BordaQueEntra,
+        inverter_ordem: bool,
+    ) -> Self {
+        let lado = face_impressa.lado();
+        let vira = lado_na_saida(mecanica) != lado;
+        let troca_a_borda = borda_que_entra != borda_na_saida(mecanica);
+        let virada = match (vira, troca_a_borda) {
+            (true, true) => Virada::PelaBordaDeCima,
+            (true, false) => Virada::PelaLateral,
+            (false, false) => Virada::NaoVirar,
+            (false, true) => Virada::Girar,
+        };
         Self {
-            lado: lado_na_entrada(mecanica, gesto),
-            virada: virada_do_gesto(gesto),
+            entrada,
+            face_impressa,
+            borda_que_entra,
+            inverter_ordem,
+            lado,
+            virada,
         }
     }
 
+    /// O que um gesto faz com o maço nesta mecânica, sem saber como o plano mandou o verso.
+    pub fn do_gesto(mecanica: Mecanica, gesto: Recolocacao) -> Self {
+        let borda = if gesto.girar_180 {
+            borda_na_saida(mecanica).oposta()
+        } else {
+            borda_na_saida(mecanica)
+        };
+        let entrada = entrada_da_mecanica(mecanica);
+        Self::dos_campos(
+            mecanica,
+            entrada,
+            FaceImpressa::do_lado(entrada, lado_na_entrada(mecanica, gesto)),
+            borda,
+            gesto.inverter_ordem,
+        )
+    }
+
+    /// A instrução de um perfil: a face vem do gesto, e a borda, da regra aplicada ao giro que a
+    /// segunda passada recebe, somando o do plano e o que a própria máquina faz.
+    pub fn do_perfil(entrada: EntradaDoMaco, mecanica: Mecanica, perfil: PerfilImpressora) -> Self {
+        let gesto = Recolocacao::from(perfil.gesto_recolocar);
+        let giro = perfil.verso_girar_180 != mecanica.giro_segunda_passada;
+        Self::dos_campos(
+            mecanica,
+            entrada,
+            FaceImpressa::do_lado(entrada, lado_na_entrada(mecanica, gesto)),
+            BordaQueEntra::da_regra(giro),
+            gesto.inverter_ordem,
+        )
+    }
+
     pub fn do_modelo(modelo: ModeloImpressora) -> Self {
-        Self::do_gesto(Mecanica::do_modelo(modelo), modelo.gesto().into())
+        let entrada = match modelo {
+            ModeloImpressora::JatoDeTinta => EntradaDoMaco::Traseira,
+            ModeloImpressora::Laser => EntradaDoMaco::Gaveta,
+        };
+        Self::do_perfil(entrada, Mecanica::do_modelo(modelo), modelo.perfil())
+    }
+
+    /// Primeira linha da recolocação: vire, gire, ou não toque o maço antes de colocá-lo.
+    pub const fn frase_do_gesto(&self) -> &'static str {
+        match self.virada {
+            Virada::PelaBordaDeCima => "Vire o maço pela borda de cima, como um bloco de notas.",
+            Virada::PelaLateral => "Vire o maço pela lateral, como a página de um livro.",
+            Virada::NaoVirar => "Não vire nem gire o maço.",
+            Virada::Girar => "Gire o maço 180°, sem virá-lo.",
+        }
+    }
+
+    /// Frase de colocação: vem depois do gesto, e diz o lado da face impressa.
+    pub fn frase_de_colocacao(&self) -> String {
+        let lado = match self.lado {
+            Lado::Cima => "cima",
+            Lado::Baixo => "baixo",
+        };
+        format!(
+            "Depois, sem mudar a ordem das folhas, coloque na entrada com a face impressa para {lado}."
+        )
+    }
+}
+
+const fn lado_na_saida(mecanica: Mecanica) -> Lado {
+    if mecanica.saida_face_impressa_para_cima {
+        Lado::Cima
+    } else {
+        Lado::Baixo
+    }
+}
+
+/// A borda que fica na frente da folha ao sair: no caminho reto, a aresta que entrou primeiro; na
+/// curva em U, a oposta.
+const fn borda_na_saida(mecanica: Mecanica) -> BordaQueEntra {
+    BordaQueEntra::da_regra(mecanica.curva_em_u())
+}
+
+/// Só as duas mecânicas conhecidas afirmam a entrada.
+fn entrada_da_mecanica(mecanica: Mecanica) -> EntradaDoMaco {
+    if mecanica == Mecanica::traseira() {
+        EntradaDoMaco::Traseira
+    } else if mecanica == Mecanica::gaveta() {
+        EntradaDoMaco::Gaveta
+    } else {
+        EntradaDoMaco::Manual
     }
 }
 
@@ -178,52 +347,30 @@ fn lado_na_entrada(mecanica: Mecanica, gesto: Recolocacao) -> Lado {
     }
 }
 
-/// Os gestos dos modelos só viram, viram e giram, ou não tocam o maço.
-fn virada_do_gesto(gesto: Recolocacao) -> Virada {
-    match (gesto.virar_maco, gesto.girar_180) {
-        (true, true) => Virada::PelaBordaDeCima,
-        (true, false) => Virada::PelaLateral,
-        (false, false) => Virada::NaoVirar,
-        (false, true) => Virada::Girar,
-    }
-}
-
 /// Frase de colocação: vem depois do gesto, e diz o lado conforme a saída da impressora.
 pub fn gesto_de_recolocacao(mecanica: Mecanica, gesto: Recolocacao) -> String {
-    let lado = match lado_na_entrada(mecanica, gesto) {
-        Lado::Cima => "cima",
-        Lado::Baixo => "baixo",
-    };
-    format!(
-        "Depois, sem mudar a ordem das folhas, coloque na entrada com a face impressa para {lado}."
-    )
+    Instrucao::do_gesto(mecanica, gesto).frase_de_colocacao()
 }
 
-/// Primeira linha da recolocação, dita pelo gesto: vire, gire, ou não toque o maço antes de colocá-lo.
+/// Primeira linha da recolocação, dita pelo gesto. A virada não depende da mecânica: ela só compara
+/// o maço antes e depois do gesto.
 pub fn texto_do_gesto(gesto: Recolocacao) -> &'static str {
-    match virada_do_gesto(gesto) {
-        Virada::PelaBordaDeCima => "Vire o maço pela borda de cima, como um bloco de notas.",
-        Virada::PelaLateral => "Vire o maço pela lateral, como a página de um livro.",
-        Virada::NaoVirar => "Não vire nem gire o maço.",
-        Virada::Girar => "Gire o maço 180°, sem virá-lo.",
-    }
+    Instrucao::do_gesto(Mecanica::traseira(), gesto).frase_do_gesto()
 }
 
 /// As linhas da recolocação, na ordem física: primeiro o gesto, depois a colocação na entrada.
 pub fn linhas_de_recolocacao(mecanica: Mecanica, gesto: Recolocacao) -> [String; 2] {
+    let instrucao = Instrucao::do_gesto(mecanica, gesto);
     [
-        texto_do_gesto(gesto).to_owned(),
-        gesto_de_recolocacao(mecanica, gesto),
+        instrucao.frase_do_gesto().to_owned(),
+        instrucao.frase_de_colocacao(),
     ]
 }
 
 /// As duas linhas da recolocação de um modelo, na ordem física: o gesto e a colocação.
 pub fn frases_de_recolocacao_do_modelo(modelo: ModeloImpressora) -> (&'static str, String) {
-    let gesto = Recolocacao::from(modelo.gesto());
-    (
-        texto_do_gesto(gesto),
-        gesto_de_recolocacao(Mecanica::do_modelo(modelo), gesto),
-    )
+    let instrucao = Instrucao::do_modelo(modelo);
+    (instrucao.frase_do_gesto(), instrucao.frase_de_colocacao())
 }
 
 /// Na saída com a face impressa para baixo, o maço final precisa ser virado para a leitura.

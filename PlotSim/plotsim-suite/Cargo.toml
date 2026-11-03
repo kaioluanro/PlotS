@@ -1,0 +1,20 @@
+[package]
+name = "plotsim-suite"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[[bin]]
+name = "plotsim"
+path = "src/main.rs"
+
+[lib]
+name = "plotsim_suite"
+path = "src/lib.rs"
+
+[dependencies]
+plotsim-core = { path = "../plotsim-core" }
+plotsim-physics = { path = "../plotsim-physics" }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "=0.62.2", default-features = false, features = ["Win32_Foundation", "Win32_System_Console"] }
