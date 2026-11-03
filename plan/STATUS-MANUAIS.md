@@ -27,6 +27,7 @@ Requisitos: OK 51 · PARTIAL 33 · MISSING 6 · BUG 0 · N/A 3 (93). Detalhes em
 | [Preferências do driver](20-preferencias-do-driver.md) | — | — | — | — | — | Em andamento |
 | [Frente e verso automático](21-frente-e-verso-automatico.md) | — | — | — | — | — | Em andamento |
 | [Opções de envio e histórico](22-opcoes-de-envio-e-historico.md) | — | — | — | — | — | Em andamento |
+| [PlotSim](23-plotsim.md) | — | — | — | — | — | Em andamento |
 
 ## Lotes
 
