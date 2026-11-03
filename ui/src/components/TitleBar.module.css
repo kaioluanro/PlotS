@@ -10,27 +10,22 @@
   user-select: none;
 }
 
+/* O icone ja traz o quadrado escuro e a borda: serve nos dois temas, sem fundo por tras. */
 .marca {
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  width: 17px;
-  height: 17px;
+  width: 20px;
+  height: 20px;
   margin-right: 4px;
-  color: var(--fg);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-mark);
 }
 
-.marca svg {
+.marca img {
+  display: block;
+  width: 20px;
+  height: 20px;
   pointer-events: none;
-}
-
-/* A folha da frente recorta a de tras com a cor da barra, para as duas se separarem. */
-.folhaFrente {
-  fill: var(--bg-elevated);
-  stroke: currentColor;
-  stroke-width: 1.5;
+  -webkit-user-drag: none;
 }
 
 .botaoIcone {
@@ -273,10 +268,6 @@
 }
 
 @media (forced-colors: active) {
-  .folhaFrente {
-    fill: Canvas;
-  }
-
   .aba {
     border: 1px solid CanvasText;
   }

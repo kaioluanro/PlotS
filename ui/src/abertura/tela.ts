@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import { idiomaAtual } from "../i18n";
+import splash from "../../assets/splash.png";
+import { idiomaAtual, t } from "../i18n";
 import { acompanharTemaDoSistema } from "../theme";
 import "../theme.css";
-import { MARCA_PROVISORIA } from "./marca";
 import "./tela.css";
 import { fracaoDoProgresso, linhaDeEstado, textoDoTempo, type Andamento } from "./textos";
 
@@ -14,13 +14,14 @@ acompanharTemaDoSistema();
 function montar(raiz: HTMLElement) {
   raiz.className = "abertura";
 
-  const imagem = document.createElement("div");
+  // A imagem traz o nome, a frase e o autor; o texto alternativo diz o mesmo para quem nao a ve.
+  const imagem = document.createElement("img");
   imagem.className = "abertura-imagem";
-  imagem.innerHTML = MARCA_PROVISORIA;
-  const nome = document.createElement("span");
-  nome.className = "abertura-nome";
-  nome.textContent = "PlotS";
-  imagem.append(nome);
+  imagem.src = splash;
+  imagem.alt = t("abertura.imagem.alt");
+  imagem.width = 480;
+  imagem.height = 300;
+  imagem.draggable = false;
 
   const barra = document.createElement("div");
   barra.className = "abertura-barra";
@@ -41,7 +42,12 @@ function montar(raiz: HTMLElement) {
   tempo.setAttribute("aria-hidden", "true");
   linha.append(texto, tempo);
 
-  raiz.append(imagem, barra, linha);
+  // O andamento fica sobre a faixa vazia no pe da imagem.
+  const rodape = document.createElement("div");
+  rodape.className = "abertura-rodape";
+  rodape.append(barra, linha);
+
+  raiz.append(imagem, rodape);
 
   let etapaAtual: string | null = null;
   let desde = Date.now();

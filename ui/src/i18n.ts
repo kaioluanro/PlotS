@@ -192,6 +192,7 @@ const ptBR = {
     "O documento demorou mais de 10 segundos para abrir. Se ele não aparecer, use Abrir PDF.",
   "abertura.limite.componente":
     "A verificação do componente de impressão demorou mais de 10 segundos. Se a impressão falhar, reinstale o PlotS.",
+  "abertura.imagem.alt": "PlotS: frente e verso, sempre na ordem. Por Kaio Luan.",
   "cartao.secao": "Em andamento",
   "cartao.simular.frente": "Simular frente",
   "cartao.simular.frenteContagem": "Simular frente ({n})",
@@ -739,6 +740,7 @@ const en: Record<Chave, string> = {
     "The document took more than 10 seconds to open. If it does not appear, use Open PDF.",
   "abertura.limite.componente":
     "Checking the printing component took more than 10 seconds. If printing fails, reinstall PlotS.",
+  "abertura.imagem.alt": "PlotS: front and back, always in order. By Kaio Luan.",
   "cartao.secao": "In progress",
   "cartao.simular.frente": "Simulate front",
   "cartao.simular.frenteContagem": "Simulate front ({n})",

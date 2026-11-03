@@ -1,6 +1,7 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Copy, History, Minus, PanelLeftClose, PanelLeftOpen, Plus, Square, X } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import marca from "../../assets/marca.png";
 import { assinar } from "../backend";
 import { situacaoDaAba } from "../cartoes";
 import { t } from "../i18n";
@@ -127,10 +128,7 @@ export function TitleBar({
   return (
     <header className={styles.barra} data-tauri-drag-region>
       <div className={styles.marca} data-tauri-drag-region aria-hidden="true">
-        <svg viewBox="0 0 16 16" width="11" height="11">
-          <rect x="2" y="5" width="9" height="10" rx="1" fill="currentColor" />
-          <rect x="5.5" y="1.5" width="9" height="10" rx="1" className={styles.folhaFrente} />
-        </svg>
+        <img src={marca} alt="" width={20} height={20} draggable={false} />
       </div>
       <button
         type="button"

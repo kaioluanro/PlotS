@@ -17,6 +17,7 @@
         "width": 480,
         "height": 300,
         "center": true,
+        "backgroundColor": "#0d0e12",
         "resizable": false,
         "maximizable": false,
         "minimizable": false,

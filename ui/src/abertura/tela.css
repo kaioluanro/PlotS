@@ -1,9 +1,20 @@
+/*
+ * A tela de abertura e sempre escura, como a imagem: o fundo e o texto por cima dela nao seguem o
+ * tema do sistema. O fundo tem a cor media da imagem, para nao haver faixa nem clarao ao abrir.
+ */
+:root {
+  --abertura-fundo: #0d0e12;
+  --abertura-texto: #c8c8d0;
+  --abertura-trilho: #2a2d33;
+  --abertura-preenchimento: #f3f4f6;
+}
+
 html,
 body {
   margin: 0;
   height: 100%;
-  background: var(--bg);
-  color: var(--fg);
+  background: var(--abertura-fundo);
+  color: var(--abertura-texto);
   font-family: var(--font-sans);
   overflow: hidden;
   user-select: none;
@@ -11,29 +22,29 @@ body {
 }
 
 .abertura {
-  display: flex;
-  flex-direction: column;
+  position: relative;
   height: 100%;
+  background: var(--abertura-fundo);
 }
 
 .abertura-imagem {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  -webkit-user-drag: none;
 }
 
-.abertura-nome {
-  font-size: 40px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1;
+.abertura-rodape {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
 }
 
 .abertura-barra {
   height: 2px;
-  background: var(--border);
+  background: var(--abertura-trilho);
   overflow: hidden;
 }
 
@@ -41,7 +52,7 @@ body {
   display: block;
   height: 100%;
   width: 100%;
-  background: var(--accent);
+  background: var(--abertura-preenchimento);
   transform-origin: left center;
   transform: scaleX(0);
   transition: transform var(--anim-normal) var(--ease-out-fluid);
@@ -56,7 +67,7 @@ body {
   font-family: var(--font-mono);
   font-size: 11px;
   line-height: 16px;
-  color: var(--fg-faint);
+  color: var(--abertura-texto);
 }
 
 .abertura-tempo {
