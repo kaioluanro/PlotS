@@ -71,7 +71,6 @@ Depois da primeira versão: impressora virtual, Linux e macOS, divisão por velo
 ## Bloqueado ou dependente do usuário
 
 - Impressora real, que o usuário não tem à mão: confirmação dos planos `04-calibracao`, `07-cli-impressao` e `08-impressao-windows`.
-- Imagem da tela de abertura: plano `10-splash`.
 - Executar o instalador em máquina ou conta de teste: plano `17-acabamento`.
 - Conferir a janela real do driver, com OK e Cancelar: plano `20-preferencias-do-driver`.
 - Conferir o frente e verso automático em impressora com duas faces: plano `21-frente-e-verso-automatico`.

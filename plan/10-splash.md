@@ -19,7 +19,7 @@ A janela principal só aparece pronta, e uma falha de carregamento vira aviso, n
 
 ## Depende de
 
-`09-janela-e-abas`. **Pendência do usuário:** a imagem já existe ou precisa ser criada?
+`09-janela-e-abas`. A imagem e o ícone foram entregues pelo usuário em `imgs/` em 2026-11-03.
 
 ## Requisitos
 
