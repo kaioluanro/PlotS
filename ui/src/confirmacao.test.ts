@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { conteudoDaConfirmacao } from "./confirmacao";
+import type { Cartao } from "./cartoes";
+import { conteudoDaConfirmacao, conteudoDoCancelamento, conteudoDoEnvio } from "./confirmacao";
 import { traducoes } from "./i18n";
 import { estadoInicial, reduzirAbas, type EstadoAbas } from "./tabs";
 
@@ -60,11 +61,78 @@ describe("textos da confirmacao", () => {
   });
 
   it("nomeia o documento em ingles do jeito pedido", () => {
-    expect(traducoes.en["confirmar.texto"]).toBe("{nome} is still printing.");
+    expect(traducoes.en["confirmar.texto"]).toBe("The print of {nome} has not finished.");
   });
 
   it("a acao segura da janela e nomeada nos dois idiomas", () => {
     expect(traducoes["pt-BR"]["confirmar.janela.manter"]).toBe("Manter janela aberta");
     expect(traducoes["pt-BR"]["confirmar.janela.titulo"]).toBe("Fechar janela com impressão em andamento?");
+  });
+});
+
+describe("texto do fechamento segundo o estado real", () => {
+  const trabalho = (simulada: boolean, tipo: "aguardando" | "imprimindo", aba = 1): Cartao => ({
+    aba,
+    impressora: simulada ? "simulada:gaveta" : "fila:A",
+    nome: "A",
+    simulada,
+    lote: 1,
+    total: 1,
+    papel: null,
+    estado: tipo === "imprimindo" ? { tipo, passada: "frente" } : { tipo },
+    recolocar: null,
+    trocaDePapel: null,
+    resultado: null,
+    sequencia: null,
+    viraParaLer: false,
+  });
+
+  function comTrabalhos(...cartoes: Cartao[]): EstadoAbas {
+    let estado = reduzirAbas(estadoInicial, {
+      tipo: "abrir",
+      documento: { caminho: "C:\\a.pdf", nome: "a.pdf" },
+    });
+    for (const cartao of cartoes) estado = reduzirAbas(estado, { tipo: "cartao", cartao });
+    return estado;
+  }
+
+  it("so simulacao nao fala em fila, nem na aba nem na janela", () => {
+    const estado = comTrabalhos(trabalho(true, "aguardando"));
+    const aba = conteudoDaConfirmacao(reduzirAbas(estado, { tipo: "pedir_fechamento", id: 1 }));
+    expect(aba?.consequencia).toBe("cartao.fechar.consequenciaSimulacao");
+    expect(aba?.titulo).toBe("cartao.fechar.tituloSimulacao");
+    const janela = conteudoDaConfirmacao(reduzirAbas(estado, { tipo: "pedir_fechamento_janela" }));
+    expect(janela?.consequencia).toBe("cartao.fechar.consequenciaSimulacao");
+    expect(janela?.titulo).toBe("cartao.fechar.janelaTituloSimulacao");
+  });
+
+  it("trabalho real, mesmo junto de simulacao, continua falando da fila", () => {
+    const estado = reduzirAbas(
+      comTrabalhos(trabalho(false, "aguardando"), trabalho(true, "aguardando")),
+      { tipo: "pedir_fechamento", id: 1 },
+    );
+    expect(conteudoDaConfirmacao(estado)?.consequencia).toBe("confirmar.consequencia");
+  });
+
+  it("fechar a janela com passada indo para a fila avisa que ela pode ficar incompleta", () => {
+    const estado = reduzirAbas(comTrabalhos(trabalho(false, "imprimindo")), {
+      tipo: "pedir_fechamento_janela",
+    });
+    expect(conteudoDaConfirmacao(estado)?.consequencia).toBe("cartao.fechar.consequenciaEnviando");
+    expect(traducoes["pt-BR"]["cartao.fechar.consequenciaEnviando"]).toContain("incompleto");
+    expect(traducoes.en["cartao.fechar.consequenciaEnviando"]).toContain("incomplete");
+  });
+});
+
+describe("dialogos do envio e do cancelamento", () => {
+  it("a confirmacao do envio avanca, e o cancelamento pede o tom de perigo", () => {
+    const envio = conteudoDoEnvio(["Sala"], ["nota"]);
+    expect(envio.confirmaAvancando).toBe(true);
+    expect(envio.linhas).toEqual(["Sala"]);
+    expect(envio.notas).toEqual(["nota"]);
+    const cancelamento = conteudoDoCancelamento("Sala", false);
+    expect(cancelamento.confirmaAvancando).toBeUndefined();
+    expect(cancelamento.texto).toBe("cartao.cancelarDialogo.texto");
+    expect(conteudoDoCancelamento("Sala", true).texto).toBe("cartao.cancelarDialogo.textoSimulado");
   });
 });

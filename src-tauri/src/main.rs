@@ -1,11 +1,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod abertura;
+mod comandos_trabalho;
 mod documento;
 mod fechamento;
 mod impressoras;
 mod janela;
+mod leitura_pdf;
 mod lote;
+mod trabalhos;
 
 use abertura::{Andamento, Passagem};
 use documento::{Documento, ErroDocumento};
@@ -131,6 +134,7 @@ fn main() -> ExitCode {
     let resultado = tauri::Builder::default()
         .manage(Mutex::new(EsperaDeResposta::default()))
         .manage(Mutex::new(abertura::Estado::default()))
+        .manage(trabalhos::Gerente::default())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if let Some(principal) = app.get_webview_window("main") {
@@ -153,12 +157,16 @@ fn main() -> ExitCode {
             abrir_documento,
             andamento_da_abertura,
             caminhos_iniciais,
+            comandos_trabalho::comandar_trabalho,
             contar_paginas,
             definir_modelo,
             interface_montou,
+            comandos_trabalho::iniciar_impressao,
             limitar_lote,
             listar_impressoras,
-            pedido_de_fechamento_recebido
+            pedido_de_fechamento_recebido,
+            comandos_trabalho::resumo_do_envio,
+            comandos_trabalho::soltar_trabalhos
         ])
         .run(tauri::generate_context!());
 

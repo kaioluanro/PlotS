@@ -22,6 +22,7 @@ use pdfium_render::prelude::{
 };
 use plots_core::{DimensoesPagina, Pagina};
 use plots_pdf::PdfOrigem;
+use plots_print::fluxo::DescreveFalha;
 use plots_print::job::{Backend, EstadoEnvio, Passada};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -235,6 +236,15 @@ fn rasterizar(
     Ok(pixels)
 }
 
+impl DescreveFalha for BackendWindows {
+    fn motivo(&self) -> Option<String> {
+        self.motivo_atual().map(str::to_string)
+    }
+    fn trabalho_saiu_da_fila(&self) -> bool {
+        self.saiu_da_fila()
+    }
+}
+
 impl Backend for BackendWindows {
     type Erro = ErroEnvio;
 
@@ -314,11 +324,22 @@ impl Backend for BackendWindows {
 
     fn cancelar(&mut self) -> Result<(), ErroEnvio> {
         self.repetir_lote = true;
-        let Some(trabalho) = self.trabalho.take() else {
-            return Ok(());
-        };
-        self.impressora.cancelar(trabalho)
+        cancelar_trabalho(&mut self.trabalho, |id| self.impressora.cancelar(id))
     }
+}
+
+/// Pede o cancelamento do trabalho guardado. O id só sai depois que a fila confirma: se o
+/// cancelamento falhar, a próxima tentativa ainda tem como alcançar o trabalho.
+fn cancelar_trabalho<F>(trabalho: &mut Option<u32>, cancelar: F) -> Result<(), ErroEnvio>
+where
+    F: FnOnce(u32) -> Result<(), ErroEnvio>,
+{
+    let Some(id) = *trabalho else {
+        return Ok(());
+    };
+    cancelar(id)?;
+    *trabalho = None;
+    Ok(())
 }
 
 #[cfg(test)]

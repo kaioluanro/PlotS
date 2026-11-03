@@ -695,9 +695,7 @@ fn gesto_das_simuladas_indica_o_lado_que_o_simulador_confere() {
         let perfis = pasta.caminho().join("perfis.toml");
         let (resultado, saida) = imprimir_simulado(&pasta, impressora, &perfis);
         assert!(resultado.is_ok(), "{saida}");
-        let esperado = format!(
-            "Pegue o maço como saiu, não embaralhe, e coloque na entrada com a face impressa para {lado}."
-        );
+        let esperado = format!("Depois, sem mudar a ordem das folhas, coloque na entrada com a face impressa para {lado}.");
         assert!(saida.contains(&esperado), "{impressora}\n{saida}");
     }
 }
@@ -731,7 +729,7 @@ fn jato_mostra_a_virada_pela_borda_de_cima_na_segunda_linha() {
     assert!(resultado.is_ok(), "{saida}");
     assert!(
         saida.contains(
-            "  Pegue o maço como saiu, não embaralhe, e coloque na entrada com a face impressa para baixo.\n  Vire o maço pela borda de cima, como um bloco de notas.\n"
+            "  Vire o maço pela borda de cima, como um bloco de notas.\n  Depois, sem mudar a ordem das folhas, coloque na entrada com a face impressa para baixo.\n"
         ),
         "{saida}"
     );
@@ -745,7 +743,7 @@ fn laser_mostra_que_o_maco_nao_e_virado() {
     assert!(resultado.is_ok(), "{saida}");
     assert!(
         saida.contains(
-            "  Pegue o maço como saiu, não embaralhe, e coloque na entrada com a face impressa para baixo.\n  Não vire o maço.\n"
+            "  Não vire o maço.\n  Depois, sem mudar a ordem das folhas, coloque na entrada com a face impressa para baixo.\n"
         ),
         "{saida}"
     );
@@ -763,7 +761,7 @@ fn linha_na_gaveta_so_aparece_na_gaveta_simulada() {
     let (resultado, gaveta) = imprimir_simulado(&pasta, "gaveta", &perfis);
     assert!(resultado.is_ok(), "{gaveta}");
     assert!(
-        gaveta.contains("Na gaveta, vire o maço antes de ler as folhas."),
+        gaveta.contains("Vire o maço antes de ler as folhas."),
         "{gaveta}"
     );
 
@@ -1088,7 +1086,7 @@ fn imprimir_com_jato_vira_pela_borda_de_cima_e_confere_as_seis_paginas() {
     assert!(saida.contains("  Verso: 5, 3, 1\n"), "{saida}");
     assert!(
         saida.contains(
-            "coloque na entrada com a face impressa para baixo.\n  Vire o maço pela borda de cima, como um bloco de notas.\n"
+            "  Vire o maço pela borda de cima, como um bloco de notas.\n  Depois, sem mudar a ordem das folhas, coloque na entrada com a face impressa para baixo.\n"
         ),
         "{saida}"
     );
@@ -1107,13 +1105,15 @@ fn imprimir_com_laser_nao_vira_e_confere_as_seis_paginas() {
     assert!(saida.contains("  Frente: 6, 4, 2\n"), "{saida}");
     assert!(saida.contains("  Verso: 1, 3, 5\n"), "{saida}");
     assert!(
-        saida.contains("coloque na entrada com a face impressa para baixo.\n  Não vire o maço.\n"),
+        saida.contains(
+            "  Não vire o maço.\n  Depois, sem mudar a ordem das folhas, coloque na entrada com a face impressa para baixo.\n"
+        ),
         "{saida}"
     );
     assert!(saida.contains("3 de 3 folhas corretas"), "{saida}");
     assert!(!saida.contains("coerente com o perfil salvo"), "{saida}");
     assert!(
-        saida.contains("Na gaveta, vire o maço antes de ler as folhas."),
+        saida.contains("Vire o maço antes de ler as folhas."),
         "{saida}"
     );
 }

@@ -1,0 +1,166 @@
+.cartao {
+  display: flex;
+  flex-direction: column;
+  /* Oito pixels separam os grupos: nome, estado, dados, sequencia, frases, resultado e acoes. */
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.topo {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.nome {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.selo {
+  flex-shrink: 0;
+  padding: 0 4px;
+  color: var(--fg-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 14px;
+  background: var(--status-stopped-soft);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+}
+
+.estado {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.ponto {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-top: 4px;
+  border-radius: 50%;
+}
+
+.pontoAtivo {
+  background: var(--status-working);
+}
+
+.pontoEspera {
+  background: var(--status-waiting);
+}
+
+.pontoProblema {
+  background: var(--status-offline);
+}
+
+.pontoParado {
+  background: var(--status-stopped);
+}
+
+.dados {
+  margin: 0;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 15px;
+  overflow-wrap: anywhere;
+}
+
+.frases,
+.sequencia {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.frases:empty {
+  display: none;
+}
+
+.frase,
+.fraseForte,
+.fraseRessalva {
+  margin: 0;
+  font-size: 11px;
+  line-height: 15px;
+}
+
+/* Contexto e o que o cartao explica; a ressalva da fila fica abaixo, em tom mais discreto. */
+.frase {
+  color: var(--fg);
+}
+
+.fraseRessalva {
+  color: var(--fg-muted);
+}
+
+.fraseForte {
+  color: var(--fg);
+}
+
+/* A acao que o usuario precisa fazer agora: a linha mais forte do cartao. */
+.fraseAcao {
+  margin: 0;
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.resultado {
+  margin: 0;
+  color: var(--fg);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 15px;
+}
+
+.acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.acoes:empty {
+  display: none;
+}
+
+/* Botao do cartao: alvo de 28 px de altura, mesmo quando o tema ou a fonte encolhem. */
+.cartao .botaoDoCartao {
+  min-height: 28px;
+  padding: 4px 10px;
+}
+
+@media (forced-colors: active) {
+  .cartao,
+  .selo {
+    border-color: CanvasText;
+  }
+
+  .ponto {
+    background: CanvasText;
+    forced-color-adjust: none;
+  }
+}

@@ -154,6 +154,24 @@
   outline: none;
 }
 
+/* Ponto de estado da aba: a forma muda com a cor. Cheio pede acao; vazado segue em curso. */
+.pontoAba {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  border-radius: 50%;
+}
+
+.pontoPedeAcao {
+  background: var(--status-waiting);
+}
+
+.pontoEmCurso {
+  border: 2px solid var(--status-working);
+}
+
 .textoAba {
   min-width: 0;
   overflow: hidden;
@@ -297,4 +315,12 @@
     outline: 1px solid Highlight;
     outline-offset: -1px;
   }
+}
+
+@media (forced-colors: active) {
+  .pontoAba { forced-color-adjust: none; }
+  .pontoPedeAcao { background: CanvasText; }
+  .pontoEmCurso { border-color: CanvasText; }
+  .abaAtiva .pontoPedeAcao { background: HighlightText; }
+  .abaAtiva .pontoEmCurso { border-color: HighlightText; }
 }

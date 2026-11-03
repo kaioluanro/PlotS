@@ -2,10 +2,11 @@
 
 use crate::MSG_AVISO_IMPARES;
 use plots_core::{
-    pares_com_orientacao_mista, plano_lotes_por_papel, DimensoesPagina, Lote, LotePapel,
-    OrdemPassadas, Pagina, Papel, PerfilImpressora,
+    pares_com_orientacao_mista, plano_lotes_por_papel, DimensoesPagina, LotePapel, OrdemPassadas,
+    PerfilImpressora,
 };
 use plots_pdf::{FaceFinal, FolhaFinal, PdfOrigem};
+use plots_print::fluxo::{self, LoteDoFluxo};
 use plots_print::{Marca, Mecanica, Recolocacao, Simulador};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -79,34 +80,9 @@ pub(crate) fn planejar(
     })
 }
 
-/// Um lote na forma que o controle de trabalhos usa, com o papel em que ele sai.
-#[derive(Clone)]
-pub(crate) struct LoteDoPlano {
-    pub papel: Papel,
-    pub lote: Lote,
-}
-
 /// Lotes do plano, cada um com o seu papel.
-pub(crate) fn lotes_do_plano(plano: &Plano) -> Vec<LoteDoPlano> {
-    plano
-        .lotes
-        .iter()
-        .map(|lote| LoteDoPlano {
-            papel: lote.papel,
-            lote: Lote {
-                paginas: lote
-                    .paginas
-                    .iter()
-                    .map(|numero| Pagina {
-                        numero: *numero,
-                        girar_180: false,
-                    })
-                    .collect(),
-                passada1: lote.passada1.clone(),
-                passada2: lote.passada2.clone(),
-            },
-        })
-        .collect()
+pub(crate) fn lotes_do_plano(plano: &Plano) -> Vec<LoteDoFluxo> {
+    fluxo::lotes_do_plano(&plano.lotes)
 }
 
 /// Gera os PDFs de cada lote em memória, com os nomes que `gerar-pdf` usa.

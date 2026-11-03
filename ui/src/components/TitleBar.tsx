@@ -2,6 +2,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Copy, Minus, PanelLeftClose, PanelLeftOpen, Plus, Square, X } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { assinar } from "../backend";
+import { situacaoDaAba } from "../cartoes";
 import { t } from "../i18n";
 import { indiceDeTabulacao, vizinhaPorSeta, type Aba } from "../tabs";
 import styles from "./TitleBar.module.css";
@@ -163,6 +164,25 @@ export function TitleBar({
                   onClick={() => aoAtivar(aba.id)}
                   onKeyDown={(evento) => aoTeclarNaAba(evento, posicao)}
                 >
+                  {(() => {
+                    // Cheio pede acao; vazado segue em curso. O texto vai junto, para nao depender da cor.
+                    const situacao = situacaoDaAba(aba);
+                    if (situacao === null) return null;
+                    const rotulo = t(
+                      situacao === "pede_acao" ? "barra.aba.aguardando" : "barra.aba.emCurso",
+                      { nome: aba.documento.nome },
+                    );
+                    return (
+                      <span
+                        role="img"
+                        aria-label={rotulo}
+                        title={rotulo}
+                        className={`${styles.pontoAba} ${
+                          situacao === "pede_acao" ? styles.pontoPedeAcao : styles.pontoEmCurso
+                        }`}
+                      />
+                    );
+                  })()}
                   <span className={styles.textoAba}>{aba.documento.nome}</span>
                 </button>
                 <button

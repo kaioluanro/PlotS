@@ -185,10 +185,15 @@
   --border-subtle: #e6eaf0;
   --border-accent: rgba(24, 24, 27, 0.22);
 
-  --status-working: #10b981;
-  --status-working-soft: rgba(16, 185, 129, 0.14);
-  --status-waiting: #d97706;
-  --status-waiting-soft: rgba(217, 119, 6, 0.14);
+  /*
+   * Excecao a norma visual: no tema claro, o verde e o laranja de estado ficam mais escuros para
+   * passar de 3:1 sobre as superficies do claro (elemento grafico, WCAG 1.4.11). O tema escuro
+   * nao muda. A norma em si nao foi editada.
+   */
+  --status-working: #059669;
+  --status-working-soft: rgba(5, 150, 105, 0.14);
+  --status-waiting: #c2610a;
+  --status-waiting-soft: rgba(194, 97, 10, 0.14);
   --status-stopped: #5f5f68;
   --status-stopped-soft: rgba(95, 95, 104, 0.12);
   --status-disabled: #a1a1aa;

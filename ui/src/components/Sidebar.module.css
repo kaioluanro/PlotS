@@ -89,8 +89,27 @@
   min-height: 0;
   padding: 4px;
   overflow-y: auto;
+  /* A barra ocupa o mesmo espaco com ou sem rolagem: a lista nao pula quando um cartao aparece. */
+  scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--fg-muted) 40%, transparent) transparent;
+}
+
+.emAndamento {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 4px 10px;
+}
+
+.tituloSecao {
+  margin: 0;
+  padding-left: 4px;
+  color: var(--fg-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .ocultoVisual {
@@ -690,5 +709,18 @@
   .campoInvalido,
   .campoInvalido:hover:not(:disabled) {
     border-color: Highlight;
+  }
+}
+
+/* Em altura curta, com um cartao na tela, o cartao ganha o espaco: lote e resumo saem da frente. */
+@media (max-height: 560px) {
+  .lateral[data-com-cartao] .lote,
+  .lateral[data-com-cartao] .resumo {
+    display: none;
+  }
+
+  /* Sem destino e com todas as marcadas ocupadas, o rodape so repetiria o motivo: o cartao fica com o espaco. */
+  .lateral[data-sem-destino] .rodape {
+    display: none;
   }
 }

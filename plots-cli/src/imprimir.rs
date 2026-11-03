@@ -5,6 +5,9 @@ use crate::enviar::{Pedido, MSG_SEM_SIMULAR};
 use crate::geracao::{self, Documento, Opcoes};
 use crate::{listar, nome_do_modelo, relatar_folhas, ImpressoraVirtual};
 use plots_core::{plano_documento, Lote, ModeloImpressora, OrdemPassadas, PerfilImpressora};
+use plots_print::fluxo::{
+    linhas_de_recolocacao, pares_esperados, FRASE_DA_CALIBRACAO, FRASE_VIRAR_PARA_LER,
+};
 use plots_print::job::{EstadoJob, Job, SimBackend};
 use plots_print::{conferir_folhas, Mecanica, Recolocacao, Simulador, Veredito};
 use std::io::{BufRead, Write};
@@ -163,8 +166,7 @@ pub(crate) fn executar(
         .collect();
     conduzir_lotes(&fila, lotes, &diretorio, entrada, saida)?;
     if !fila.de_perfil_salvo && !fila.mecanica.saida_face_impressa_para_cima {
-        writeln!(saida, "Na gaveta, vire o maço antes de ler as folhas.")
-            .map_err(|e| e.to_string())?;
+        writeln!(saida, "{FRASE_VIRAR_PARA_LER}").map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -204,18 +206,14 @@ fn conduzir_lotes(
         .map_err(|e| e.to_string())?;
         let gesto = fila.gesto;
         if fila.de_perfil_salvo {
-            writeln!(
-                saida,
-                "  Pegue o maço como saiu, não embaralhe, e recoloque do mesmo jeito que na calibração."
-            )
-            .map_err(|e| e.to_string())?;
+            writeln!(saida, "  {FRASE_DA_CALIBRACAO}").map_err(|e| e.to_string())?;
             if let Some(texto) = &fila.gesto_texto {
                 writeln!(saida, "  {texto}").map_err(|e| e.to_string())?;
             }
         } else {
-            writeln!(saida, "  {}", gesto_de_recolocacao(fila.mecanica, gesto))
-                .map_err(|e| e.to_string())?;
-            writeln!(saida, "  {}", texto_do_gesto(gesto)).map_err(|e| e.to_string())?;
+            for linha in linhas_de_recolocacao(fila.mecanica, gesto) {
+                writeln!(saida, "  {linha}").map_err(|e| e.to_string())?;
+            }
         }
         write!(
             saida,
@@ -267,44 +265,6 @@ pub(crate) fn aviso_de_modelo_nao_medido(modelo: ModeloImpressora) -> String {
         "Modelo {}: não foi medido nesta máquina. É um ponto de partida; confira com 2 ou 3 folhas.",
         nome_do_modelo(modelo)
     )
-}
-
-/// As duas linhas da recolocação de um modelo: o lado que entra e como virar.
-pub(crate) fn frases_de_recolocacao_do_modelo(modelo: ModeloImpressora) -> (String, &'static str) {
-    let gesto = Recolocacao::from(modelo.gesto());
-    (
-        gesto_de_recolocacao(Mecanica::do_modelo(modelo), gesto),
-        texto_do_gesto(gesto),
-    )
-}
-
-/// Frase fixa do gesto de recolocação, com o lado conforme a saída da impressora.
-fn gesto_de_recolocacao(mecanica: Mecanica, gesto: Recolocacao) -> String {
-    let lado = if face_impressa_para_cima_na_entrada(mecanica, gesto) {
-        "cima"
-    } else {
-        "baixo"
-    };
-    format!(
-        "Pegue o maço como saiu, não embaralhe, e coloque na entrada com a face impressa para {lado}."
-    )
-}
-
-/// Face impressa para cima quando o maço entra de novo: a saída da impressora, invertida
-/// quando o gesto vira o maço. O simulador faz a mesma inversão em `recolocar`.
-fn face_impressa_para_cima_na_entrada(mecanica: Mecanica, gesto: Recolocacao) -> bool {
-    mecanica.saida_face_impressa_para_cima != gesto.virar_maco
-}
-
-/// Segunda linha da recolocação das simuladas, dita pelo gesto do modelo. Os gestos dos
-/// modelos só viram, viram e giram, ou não tocam o maço.
-fn texto_do_gesto(gesto: Recolocacao) -> &'static str {
-    match (gesto.virar_maco, gesto.girar_180) {
-        (true, true) => "Vire o maço pela borda de cima, como um bloco de notas.",
-        (true, false) => "Vire o maço pela lateral, como a página de um livro.",
-        (false, false) => "Não vire o maço.",
-        (false, true) => "Gire o maço 180°, sem virá-lo.",
-    }
 }
 
 /// Gesto de recolocação registrado no perfil salvo.
@@ -414,7 +374,7 @@ fn sequencia_confere(
             return false;
         }
         let pilha = sim.folhas_para_leitura();
-        conferir_folhas(&pilha, &crate::pares_esperados(&lote.paginas))
+        conferir_folhas(&pilha, &pares_esperados(&lote.paginas))
             .iter()
             .all(|veredito| matches!(veredito, Veredito::Certa))
     })
@@ -423,6 +383,7 @@ fn sequencia_confere(
 #[cfg(test)]
 mod testes {
     use super::*;
+    use plots_print::fluxo::{gesto_de_recolocacao, texto_do_gesto};
 
     #[test]
     fn frase_sobre_o_envio_acompanha_o_envio_ligado() {
@@ -511,11 +472,11 @@ mod testes {
         let sem_virar = Recolocacao::default();
         assert_eq!(
             gesto_de_recolocacao(Mecanica::traseira(), virando),
-            "Pegue o maço como saiu, não embaralhe, e coloque na entrada com a face impressa para baixo."
+            "Depois, sem mudar a ordem das folhas, coloque na entrada com a face impressa para baixo."
         );
         assert_eq!(
             gesto_de_recolocacao(Mecanica::traseira(), sem_virar),
-            "Pegue o maço como saiu, não embaralhe, e coloque na entrada com a face impressa para cima."
+            "Depois, sem mudar a ordem das folhas, coloque na entrada com a face impressa para cima."
         );
     }
 

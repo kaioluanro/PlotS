@@ -4,8 +4,6 @@ import {
   confirmarLote,
   conteudoAbaixoDoLote,
   contarLotes,
-  estadoDoBotao,
-  impressorasValidas,
   interpretarLote,
   liberaMenuDeContexto,
   LOTE_MAXIMO,
@@ -72,28 +70,6 @@ describe("resumo do lote", () => {
     expect(resumoDoLote(1, 10, "pt-BR")).toBe("1 pág · 1 lote");
     expect(resumoDoLote(24, 10, "en")).toBe("24 pages · 2 batches");
     expect(resumoDoLote(1, 10, "en")).toBe("1 page · 1 batch");
-  });
-});
-
-describe("botao de imprimir", () => {
-  it("fica desabilitado em qualquer contagem e diz por que", () => {
-    for (const marcadas of [0, 1, 2, 50]) {
-      const botao = estadoDoBotao(marcadas, "pt-BR");
-      expect(botao.desabilitado).toBe(true);
-      expect(botao.titulo).toContain("ainda não está disponível");
-    }
-  });
-
-  it("mostra a contagem so quando ha impressora marcada", () => {
-    expect(estadoDoBotao(0, "pt-BR").rotulo).toBe("Imprimir frente");
-    expect(estadoDoBotao(2, "pt-BR").rotulo).toBe("Imprimir frente (2)");
-    expect(estadoDoBotao(2, "en").rotulo).toBe("Print front (2)");
-  });
-
-  it("nao conta fila marcada que saiu da lista", () => {
-    const lista = [impressora("fila:A"), impressora("simulada:traseira")];
-    expect(impressorasValidas(["fila:A", "fila:Sumiu"], lista)).toEqual(["fila:A"]);
-    expect(impressorasValidas([], lista)).toEqual([]);
   });
 });
 

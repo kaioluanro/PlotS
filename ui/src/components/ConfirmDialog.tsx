@@ -57,9 +57,21 @@ export function ConfirmDialog({ conteudo, aoCancelar, aoConfirmar }: Props) {
               <Dialog.Description asChild>
                 <div ref={corpo} className={styles.corpo}>
                   <p className={styles.texto}>{t(visivel.texto, visivel.parametros)}</p>
+                  {visivel.linhas && (
+                    <ul className={styles.linhas}>
+                      {visivel.linhas.map((linha, indice) => (
+                        <li key={`${indice}-${linha}`}>{linha}</li>
+                      ))}
+                    </ul>
+                  )}
                   {visivel.consequencia !== null && (
                     <p className={styles.texto}>{t(visivel.consequencia)}</p>
                   )}
+                  {visivel.notas?.map((nota, indice) => (
+                    <p key={`${indice}-${nota}`} className={styles.nota}>
+                      {nota}
+                    </p>
+                  ))}
                 </div>
               </Dialog.Description>
               <div className={styles.rodape}>
@@ -68,7 +80,7 @@ export function ConfirmDialog({ conteudo, aoCancelar, aoConfirmar }: Props) {
                 </Dialog.Close>
                 <button
                   type="button"
-                  className={`${botoes.botao} ${botoes.perigo}`}
+                  className={`${botoes.botao} ${visivel.confirmaAvancando ? botoes.primario : botoes.perigo}`}
                   onClick={() => {
                     confirmado.current = true;
                     aoConfirmar();

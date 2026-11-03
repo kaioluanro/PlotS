@@ -20,8 +20,24 @@ import { DocumentArea, ID_AREA_DOCUMENTO } from "./components/DocumentArea";
 import { ID_LATERAL, Sidebar } from "./components/Sidebar";
 import { focarAbaAtiva, TitleBar } from "./components/TitleBar";
 import {
+  cartaoInterrompido,
+  cartaoSemResposta,
+  cartoesRecusados,
+  estadoDoEnvio,
+  impressorasOcupadas,
+  linhasDoEnvio,
+  nomeDoCartao,
+  precisaConfirmar,
+  type Cartao,
+  type Comando,
+} from "./cartoes";
+import {
   conteudoDaConfirmacao,
+  conteudoDaReimpressao,
   conteudoDaSubstituicao,
+  conteudoDoCancelamento,
+  conteudoDoEnvio,
+  type ConteudoConfirmacao,
   type PedidoDeSubstituicao,
 } from "./confirmacao";
 import { mensagemDeErro } from "./erros";
@@ -31,6 +47,7 @@ import {
   gravarEscolha,
   liberaMenuDeContexto,
   type Aviso,
+  type Impressora,
   type ListaImpressoras,
   type Modelo,
 } from "./impressoras";
@@ -40,7 +57,15 @@ import {
   deveOuvirFechamentoJanela,
   estadoInicial,
   reduzirAbas,
+  type Aba,
 } from "./tabs";
+import {
+  comandarTrabalho,
+  iniciarImpressao,
+  ouvirCartoes,
+  resumoDoEnvio,
+  soltarTrabalhos,
+} from "./trabalhos";
 
 export function App() {
   const [estado, despachar] = useReducer(reduzirAbas, estadoInicial);
@@ -58,12 +83,26 @@ export function App() {
   const [gravacoes, setGravacoes] = useState<ReadonlyMap<string, Modelo>>(new Map());
   const [falhaAoGravar, setFalhaAoGravar] = useState<Aviso | null>(null);
   const [substituicao, setSubstituicao] = useState<PedidoDeSubstituicao | null>(null);
+  const [pedidoDeEnvio, setPedidoDeEnvio] = useState<{
+    conteudo: ConteudoConfirmacao;
+    aba: Aba;
+    destinos: readonly Impressora[];
+  } | null>(null);
+  const [cartaoACancelar, setCartaoACancelar] = useState<Cartao | null>(null);
+  const [cartaoAReimprimir, setCartaoAReimprimir] = useState<Cartao | null>(null);
+  const preparandoEnvio = useRef(false);
   const filasGravando = useRef(new Set<string>());
   const ultimaLeitura = useRef(0);
   const contagensPedidas = useRef(new Set<number>());
   const filaDeContagens = useRef<Promise<void>>(Promise.resolve());
   // Qualquer dialogo aberto impede que atalhos e arrastos ajam por tras dele.
-  const confirmando = confirmacao !== null || filaACalibrar !== null || substituicao !== null;
+  const confirmando =
+    confirmacao !== null ||
+    filaACalibrar !== null ||
+    substituicao !== null ||
+    pedidoDeEnvio !== null ||
+    cartaoACancelar !== null ||
+    cartaoAReimprimir !== null;
   const abaAtiva = estado.abas.find((aba) => aba.id === estado.ativa) ?? null;
   const idAtiva = estado.ativa;
 
@@ -146,6 +185,52 @@ export function App() {
     },
     [atualizarLista],
   );
+
+  // Os trabalhos continuam em qualquer aba: o evento diz a quem cada cartao pertence.
+  useEffect(() => assinar(ouvirCartoes((cartao) => despachar({ tipo: "cartao", cartao }))), []);
+
+  const iniciar = useCallback((aba: Aba, destinos: readonly Impressora[]) => {
+    iniciarImpressao(
+      aba.id,
+      aba.documento.caminho,
+      aba.tamanhoLote,
+      destinos.map((destino) => destino.id),
+    )
+      .then((aceitas) => {
+        // Quem nao foi aceito ja tinha um trabalho: o cartao diz isso, em vez de sumir em silencio.
+        for (const cartao of cartoesRecusados(aba.id, destinos, aceitas)) {
+          despachar({ tipo: "cartao", cartao });
+        }
+      })
+      .catch(() => {
+        for (const destino of destinos) {
+          despachar({ tipo: "cartao", cartao: cartaoSemResposta(aba.id, destino) });
+        }
+      });
+  }, []);
+
+  const comandar = useCallback((cartao: Cartao, comando: Comando) => {
+    comandarTrabalho(cartao.impressora, comando).catch(() => {
+      // A thread ja morreu: o cartao encerra sem diálogo e libera a impressora.
+      despachar({ tipo: "cartao", cartao: cartaoInterrompido(cartao) });
+    });
+  }, []);
+
+  const aoComandarCartao = useCallback(
+    (cartao: Cartao, comando: Comando) => {
+      // Numa fila real, reimprimir cancela o que resta do lote: so depois de perguntar.
+      if (comando === "reimprimir" && !cartao.simulada) {
+        setCartaoAReimprimir(cartao);
+        return;
+      }
+      comandar(cartao, comando);
+    },
+    [comandar],
+  );
+
+  const dispensar = useCallback((cartao: Cartao) => {
+    despachar({ tipo: "dispensar_cartao", id: cartao.aba, impressora: cartao.impressora });
+  }, []);
 
   // Uma contagem por vez: varios PDFs grandes abertos juntos nao disputam a memoria.
   const abas = estado.abas;
@@ -267,6 +352,8 @@ export function App() {
     const alvo = window as unknown as {
       __plotsE2e?: {
         marcarImpressao(emAndamento: boolean): void;
+        aplicarCartao(cartao: Cartao): void;
+        abaAtiva(): number | null;
         definirLista(nova: ListaImpressoras): void;
         abrir(caminho: string): void;
         definirLendo(lendo: boolean): void;
@@ -276,6 +363,12 @@ export function App() {
     };
     alvo.__plotsE2e = {
       definirLista: setLista,
+      aplicarCartao(cartao) {
+        despachar({ tipo: "cartao", cartao });
+      },
+      abaAtiva() {
+        return estado.ativa;
+      },
       abrir(caminho) {
         void abrirCaminhos({ caminhos: [caminho], cortado: false });
       },
@@ -296,6 +389,28 @@ export function App() {
     };
   }, [estado.ativa, abrirCaminhos]);
 
+  const ocupadas = impressorasOcupadas(estado.abas);
+
+  const aoImprimir = () => {
+    const { destinos, desabilitado } = estadoDoEnvio(abaAtiva, lista.impressoras, ocupadas);
+    if (abaAtiva === null || desabilitado || preparandoEnvio.current) return;
+    if (!precisaConfirmar(destinos)) {
+      iniciar(abaAtiva, destinos);
+      return;
+    }
+    const aba = abaAtiva;
+    preparandoEnvio.current = true;
+    resumoDoEnvio(aba.documento.caminho, aba.tamanhoLote)
+      .then((resumo) => {
+        const { linhas, notas } = linhasDoEnvio(destinos, resumo);
+        setPedidoDeEnvio({ conteudo: conteudoDoEnvio(linhas, notas), aba, destinos });
+      })
+      .catch((falha: unknown) => setErro(mensagemDeErro(falha)))
+      .finally(() => {
+        preparandoEnvio.current = false;
+      });
+  };
+
   const aoAlternarImpressora = (impressora: string) => {
     if (idAtiva !== null) despachar({ tipo: "alternar_impressora", id: idAtiva, impressora });
   };
@@ -306,6 +421,10 @@ export function App() {
 
   const aoConfirmar = () => {
     if (!estado.confirmandoJanela) {
+      // Os trabalhos da aba param de ser acompanhados; o que ja esta na fila continua la.
+      if (estado.aguardandoConfirmacao !== null) {
+        soltarTrabalhos(estado.aguardandoConfirmacao).catch(() => undefined);
+      }
       despachar({ tipo: "confirmar_fechamento" });
       return;
     }
@@ -346,6 +465,11 @@ export function App() {
             aoAlternar={aoAlternarImpressora}
             aoDefinirLote={aoDefinirLote}
             aoCalibrar={setFilaACalibrar}
+            ocupadas={ocupadas}
+            aoImprimir={aoImprimir}
+            aoComandar={aoComandarCartao}
+            aoPedirCancelar={setCartaoACancelar}
+            aoDispensar={dispensar}
           />
         )}
         <DocumentArea
@@ -373,6 +497,42 @@ export function App() {
         aoConfirmar={() => {
           if (substituicao !== null) aoEscolherModelo(substituicao.fila, substituicao.modelo);
           setSubstituicao(null);
+        }}
+      />
+      <ConfirmDialog
+        conteudo={confirmacao === null ? (pedidoDeEnvio?.conteudo ?? null) : null}
+        aoCancelar={() => setPedidoDeEnvio(null)}
+        aoConfirmar={() => {
+          if (pedidoDeEnvio !== null) iniciar(pedidoDeEnvio.aba, pedidoDeEnvio.destinos);
+          setPedidoDeEnvio(null);
+        }}
+      />
+      <ConfirmDialog
+        conteudo={
+          confirmacao === null && cartaoACancelar !== null
+            ? conteudoDoCancelamento(nomeDoCartao(cartaoACancelar), cartaoACancelar.simulada)
+            : null
+        }
+        aoCancelar={() => setCartaoACancelar(null)}
+        aoConfirmar={() => {
+          if (cartaoACancelar !== null) comandar(cartaoACancelar, "cancelar");
+          setCartaoACancelar(null);
+        }}
+      />
+      <ConfirmDialog
+        conteudo={
+          confirmacao === null && cartaoAReimprimir !== null
+            ? conteudoDaReimpressao(
+                nomeDoCartao(cartaoAReimprimir),
+                cartaoAReimprimir.lote,
+                cartaoAReimprimir.total,
+              )
+            : null
+        }
+        aoCancelar={() => setCartaoAReimprimir(null)}
+        aoConfirmar={() => {
+          if (cartaoAReimprimir !== null) comandar(cartaoAReimprimir, "reimprimir");
+          setCartaoAReimprimir(null);
         }}
       />
     </div>

@@ -251,3 +251,26 @@ fn fila_de_pdf_nao_tem_trabalho_sobrando() {
     eprintln!("trabalhos na fila de PDF: {trabalhos}");
     assert_eq!(trabalhos, 0);
 }
+
+#[test]
+fn cancelamento_recusado_guarda_o_trabalho_para_a_proxima_tentativa() {
+    let mut trabalho = Some(42);
+    let recusado = cancelar_trabalho(&mut trabalho, |_| Err(ErroEnvio::SemTrabalho));
+    assert!(recusado.is_err());
+    assert_eq!(trabalho, Some(42));
+    let mut pedidos = Vec::new();
+    let aceito = cancelar_trabalho(&mut trabalho, |id| {
+        pedidos.push(id);
+        Ok(())
+    });
+    assert!(aceito.is_ok());
+    assert_eq!(pedidos, vec![42]);
+    assert_eq!(trabalho, None);
+}
+
+#[test]
+fn sem_trabalho_guardado_nao_pede_cancelamento() {
+    let mut trabalho = None;
+    let resultado = cancelar_trabalho(&mut trabalho, |_| Err(ErroEnvio::SemTrabalho));
+    assert!(resultado.is_ok());
+}

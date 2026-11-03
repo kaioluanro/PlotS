@@ -1,5 +1,12 @@
 import { Check, ChevronDown, CircleAlert, LoaderCircle, RefreshCw } from "lucide-react";
 import { Fragment, useEffect, useId, useRef, useState } from "react";
+import {
+  cartaoEmAndamento,
+  estadoDoEnvio,
+  marcadasTodasOcupadas,
+  type Cartao,
+  type Comando,
+} from "../cartoes";
 import { t } from "../i18n";
 import {
   abrirListaPeloTeclado,
@@ -10,9 +17,7 @@ import {
   conteudoAbaixoDoLote,
   eModelo,
   ESPERA_DO_INDICADOR_MS,
-  estadoDoBotao,
   estadoDoSeletor,
-  impressorasValidas,
   indicaGravacao,
   interpretarEscolha,
   interpretarLote,
@@ -34,6 +39,7 @@ import {
 } from "../impressoras";
 import type { Aba } from "../tabs";
 import botoes from "./Botao.module.css";
+import { CartaoImpressao } from "./CartaoImpressao";
 import styles from "./Sidebar.module.css";
 
 export const ID_LATERAL = "barra-lateral";
@@ -53,6 +59,12 @@ interface Props {
   aoPedirSubstituicao: (fila: string, modelo: Modelo) => void;
   aoDefinirLote: (tamanho: number) => void;
   aoCalibrar: (fila: string) => void;
+  /** Impressoras com trabalho em andamento em qualquer aba. */
+  ocupadas: ReadonlySet<string>;
+  aoImprimir: () => void;
+  aoComandar: (cartao: Cartao, comando: Comando) => void;
+  aoPedirCancelar: (cartao: Cartao) => void;
+  aoDispensar: (cartao: Cartao) => void;
 }
 
 export function Sidebar({
@@ -68,10 +80,16 @@ export function Sidebar({
   aoPedirSubstituicao,
   aoDefinirLote,
   aoCalibrar,
+  ocupadas,
+  aoImprimir,
+  aoComandar,
+  aoPedirCancelar,
+  aoDispensar,
 }: Props) {
   const idExplicacao = useId();
   const marcadas = aba?.impressorasMarcadas ?? [];
-  const botao = estadoDoBotao(impressorasValidas(marcadas, impressoras).length);
+  const botao = estadoDoEnvio(aba, impressoras, ocupadas);
+  const cartoes = aba?.cartoes ?? [];
   const idBotao = useId();
   const idNotaDoModelo = useId();
   const idDaLinhaComFalha = linhaDaFalha(falhaAoGravar, impressoras);
@@ -80,7 +98,17 @@ export function Sidebar({
   );
 
   return (
-    <aside id={ID_LATERAL} className={styles.lateral} aria-labelledby="titulo-lateral">
+    <aside
+      id={ID_LATERAL}
+      className={styles.lateral}
+      aria-labelledby="titulo-lateral"
+      // Com um cartao na tela, a altura curta esconde a linha de lote e o resumo (ver o CSS).
+      data-com-cartao={cartoes.length > 0 ? "" : undefined}
+      // Com um cartao na tela e todas as marcadas ocupadas, o rodape nao tem o que oferecer: a altura curta o esconde.
+      data-sem-destino={
+        cartoes.length > 0 && marcadasTodasOcupadas(impressoras, marcadas, ocupadas) ? "" : undefined
+      }
+    >
       <div className={styles.cabecalho}>
         <h2 id="titulo-lateral" className={styles.titulo}>
           {t("lateral.titulo")}
@@ -127,6 +155,22 @@ export function Sidebar({
         {!lendo && impressoras.length === 0 && avisos.length === 0 && (
           <p className={styles.vazia}>{t("lateral.vazia")}</p>
         )}
+        {cartoes.length > 0 && (
+          <section className={styles.emAndamento} aria-labelledby="titulo-em-andamento">
+            <h3 id="titulo-em-andamento" className={styles.tituloSecao}>
+              {cartoes.some(cartaoEmAndamento) ? t("cartao.secao") : t("cartao.secao.encerrados")}
+            </h3>
+            {cartoes.map((cartao) => (
+              <CartaoImpressao
+                key={cartao.impressora}
+                cartao={cartao}
+                aoComandar={aoComandar}
+                aoPedirCancelar={aoPedirCancelar}
+                aoDispensar={aoDispensar}
+              />
+            ))}
+          </section>
+        )}
         <ul className={styles.lista}>
           {impressoras.map((impressora) => (
             <LinhaImpressora
@@ -159,14 +203,17 @@ export function Sidebar({
           type="button"
           className={`${botoes.botao} ${botoes.primario} ${styles.imprimir}`}
           disabled={botao.desabilitado}
-          title={botao.titulo}
-          aria-describedby={idBotao}
+          title={botao.motivo ?? undefined}
+          aria-describedby={botao.motivo === null ? undefined : idBotao}
+          onClick={aoImprimir}
         >
           {botao.rotulo}
         </button>
-        <p id={idBotao} className={styles.dica}>
-          {botao.titulo}
-        </p>
+        {botao.motivo !== null && (
+          <p id={idBotao} className={styles.dica}>
+            {botao.motivo}
+          </p>
+        )}
       </div>
     </aside>
   );

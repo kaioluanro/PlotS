@@ -17,6 +17,8 @@ export interface Impressora {
   nivel: Nivel;
   condicoes: CondicaoLida[];
   modo: Modo;
+  /** Esta fila nunca recebe da janela. */
+  recusa?: "pede_arquivo" | "fax";
 }
 
 export interface Aviso {
@@ -74,32 +76,6 @@ export function resumoDoLote(
     n: String(lotes),
   });
   return `${textoPaginas} · ${textoLotes}`;
-}
-
-/** Uma marca so conta enquanto a impressora continuar na lista. */
-export function impressorasValidas(
-  marcadas: readonly string[],
-  lista: readonly Impressora[],
-): string[] {
-  return marcadas.filter((id) => lista.some((impressora) => impressora.id === id));
-}
-
-export interface EstadoBotao {
-  rotulo: string;
-  titulo: string;
-  desabilitado: boolean;
-}
-
-/** O envio real ainda nao existe, entao o botao nunca fica ativo. */
-export function estadoDoBotao(marcadas: number, idioma: Idioma = idiomaAtual): EstadoBotao {
-  return {
-    rotulo:
-      marcadas > 0
-        ? traduzir(idioma, "imprimir.frenteContagem", { n: String(marcadas) })
-        : traduzir(idioma, "imprimir.frente"),
-    titulo: traduzir(idioma, "imprimir.indisponivel"),
-    desabilitado: true,
-  };
 }
 
 const CHAVES_DE_CONDICAO: ReadonlyMap<string, Chave> = new Map<string, Chave>([

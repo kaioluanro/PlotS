@@ -15,6 +15,9 @@ use std::sync::{Mutex, PoisonError};
 /// Variavel que aponta outro arquivo de perfis no lugar do arquivo do usuario.
 pub const VARIAVEL_PERFIS: &str = "PLOTS_PERFIS";
 
+/// Variavel com a pasta onde as filas gravam cada passada em arquivo. So tem efeito se definida.
+pub const VARIAVEL_ARQUIVO_SAIDA: &str = "PLOTS_ARQUIVO_SAIDA";
+
 /// Nomes iguais aos que a linha de comando reconhece para as impressoras simuladas.
 const NOME_SIMULADA_TRASEIRA: &str = "Simulada — Traseira";
 const NOME_SIMULADA_GAVETA: &str = "Simulada — Gaveta";
@@ -69,6 +72,17 @@ pub struct Impressora {
     pub nivel: Nivel,
     pub condicoes: Vec<CondicaoLida>,
     pub modo: Modo,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recusa: Option<Recusa>,
+}
+
+/// Por que esta fila nunca recebe da janela, seja qual for o estado dela.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Recusa {
+    /// Sem pasta de saida, o sistema abriria um dialogo para pedir o nome do arquivo.
+    PedeArquivo,
+    Fax,
 }
 
 /// Motivo de um aviso na lista. A interface traduz o codigo.
@@ -142,9 +156,47 @@ pub fn falha_ao_gravar(fila: &str) -> Aviso {
 
 /// Le as filas e os perfis do sistema. Uma falha em qualquer um vira aviso.
 pub fn ler_do_sistema() -> ListaImpressoras {
-    let caminho = caminho_dos_perfis(std::env::var_os(VARIAVEL_PERFIS));
-    let perfis = caminho.and_then(|caminho| plots_perfis::carregar(&caminho));
-    montar(plots_windows::listar_filas(), perfis)
+    let mut lista = montar(plots_windows::listar_filas(), ler_perfis_do_sistema());
+    if pasta_de_saida(std::env::var_os(VARIAVEL_ARQUIVO_SAIDA)).is_some() {
+        liberar_filas_que_pedem_arquivo(&mut lista);
+    }
+    lista
+}
+
+/// Perfis do arquivo do usuario ou do indicado por `PLOTS_PERFIS`.
+pub fn ler_perfis_do_sistema() -> Result<Perfis, ErroPerfis> {
+    caminho_dos_perfis(std::env::var_os(VARIAVEL_PERFIS))
+        .and_then(|caminho| plots_perfis::carregar(&caminho))
+}
+
+/// Pasta de saida configurada no ambiente deste processo.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn pasta_de_saida_do_sistema() -> Option<PathBuf> {
+    pasta_de_saida(std::env::var_os(VARIAVEL_ARQUIVO_SAIDA))
+}
+
+/// Valor vazio conta como ausente.
+fn pasta_de_saida(variavel: Option<OsString>) -> Option<PathBuf> {
+    variavel
+        .filter(|valor| !valor.is_empty())
+        .map(PathBuf::from)
+}
+
+fn liberar_filas_que_pedem_arquivo(lista: &mut ListaImpressoras) {
+    for impressora in &mut lista.impressoras {
+        if impressora.recusa == Some(Recusa::PedeArquivo) {
+            impressora.recusa = None;
+        }
+    }
+}
+
+/// A fila tem algum estado que impede receber agora.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn fila_com_problema(fila: &Fila) -> bool {
+    fila.estado
+        .condicoes()
+        .iter()
+        .any(|condicao| ler_condicao(condicao).1 == Nivel::Problema)
 }
 
 /// Resposta quando a propria leitura foi interrompida: ao menos as simuladas continuam na lista.
@@ -217,6 +269,7 @@ fn simulada(id: &str, nome: &str, modo: Modo) -> Impressora {
         nivel: Nivel::Pronta,
         condicoes: Vec::new(),
         modo,
+        recusa: None,
     }
 }
 
@@ -242,7 +295,15 @@ fn impressora_da_fila(fila: &Fila, perfis: Option<&Perfis>) -> Impressora {
         nivel,
         condicoes,
         modo,
+        recusa: recusa_da_porta(&fila.porta),
     }
+}
+
+fn recusa_da_porta(porta: &str) -> Option<Recusa> {
+    if plots_windows::porta_de_fax(porta) {
+        return Some(Recusa::Fax);
+    }
+    plots_windows::porta_pede_arquivo(porta).then_some(Recusa::PedeArquivo)
 }
 
 /// O modo vem so do campo `modelo`: os valores do perfil nao dizem de que tipo a maquina e.
@@ -385,6 +446,47 @@ mod testes {
             caminho: PathBuf::from("perfis.toml"),
             detalhe: "quebrado".to_owned(),
         }
+    }
+
+    #[test]
+    fn fila_que_pede_arquivo_e_fax_ficam_recusadas_e_a_pasta_so_libera_o_arquivo() {
+        let mut arquivo = fila("Arquivo", 0);
+        arquivo.porta = "PORTPROMPT:".to_owned();
+        let mut fax = fila("Fax", 0);
+        fax.porta = "SHRFAX:".to_owned();
+        let mut lista = montar(Ok(vec![arquivo, fax, fila("Comum", 0)]), Ok(Perfis::new()));
+        let recusas = |lista: &ListaImpressoras| -> Vec<Option<Recusa>> {
+            lista.impressoras.iter().map(|i| i.recusa).collect()
+        };
+        assert_eq!(
+            recusas(&lista),
+            [
+                Some(Recusa::PedeArquivo),
+                Some(Recusa::Fax),
+                None,
+                None,
+                None
+            ]
+        );
+        liberar_filas_que_pedem_arquivo(&mut lista);
+        assert_eq!(recusas(&lista), [None, Some(Recusa::Fax), None, None, None]);
+    }
+
+    #[test]
+    fn pasta_de_saida_vazia_conta_como_ausente() {
+        assert_eq!(pasta_de_saida(None), None);
+        assert_eq!(pasta_de_saida(Some(OsString::new())), None);
+        assert_eq!(
+            pasta_de_saida(Some(OsString::from("C:/saida"))),
+            Some(PathBuf::from("C:/saida"))
+        );
+    }
+
+    #[test]
+    fn fila_offline_tem_problema_e_com_pouco_toner_nao() {
+        assert!(fila_com_problema(&fila("A", OFFLINE)));
+        assert!(!fila_com_problema(&fila("B", POUCO_TONER)));
+        assert!(!fila_com_problema(&fila("C", 0)));
     }
 
     #[test]

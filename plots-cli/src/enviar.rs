@@ -3,13 +3,16 @@
 //! A saída nunca diz que algo saiu no papel: a confirmação do spooler só garante a entrega.
 
 use crate::calibrar::{caminho_perfis, carregar_perfis, MSG_RESPOSTA_INVALIDA};
-use crate::geracao::{self, Documento, LoteDoPlano};
-use crate::imprimir::{aviso_de_modelo_nao_medido, frases_de_recolocacao_do_modelo};
+use crate::geracao::{self, Documento};
+use crate::imprimir::aviso_de_modelo_nao_medido;
 use crate::{listar, ImpressoraVirtual};
-use plots_core::{FormatoPapel, ModeloImpressora, OrdemPassadas, Papel, TOLERANCIA_PAPEL_MM};
-use plots_print::job::{Backend, ErroJob, EstadoJob, Job};
-use plots_print::Mecanica;
-use plots_windows::Fila;
+use plots_core::{ModeloImpressora, OrdemPassadas};
+use plots_print::fluxo::{
+    frases_de_recolocacao_do_modelo, nome_do_papel, vira_para_ler, Condutor, DescreveFalha, Espera,
+    LoteDoFluxo, Passo, FRASE_DA_CALIBRACAO, FRASE_ESPERAR_FOLHA, FRASE_VIRAR_PARA_LER,
+};
+use plots_print::job::{Backend, ErroJob};
+use plots_windows::{Fila, RecusaDeFila};
 use std::fmt::Display;
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
@@ -19,21 +22,10 @@ use std::time::Duration;
 pub(crate) const MSG_SEM_SIMULAR: &str =
     "as impressoras simuladas só existem com --simular; para enviar de verdade, informe uma fila com perfil salvo";
 
-const FRASE_ESPERAR_FOLHA: &str = "Espere a última folha sair antes de recolocar o maço.";
 const PERGUNTA_CANCELAR: &str = "Cancelar o trabalho na fila? (s/n): ";
 const MSG_CANCELADO: &str = "O trabalho foi cancelado ou já tinha saído da fila; folhas já entregues ao dispositivo ainda podem sair. Nada mais será enviado.";
 const MSG_DEIXADO_NA_FILA: &str =
     "O PlotS não apagou o trabalho; veja o estado com 'plots filas'. Nada mais será enviado.";
-/// Meia hora de consultas, uma a cada segundo: passa disso, o comando devolve o terminal. A
-/// espera por alguém resolver um aviso da impressora não conta.
-#[cfg_attr(not(windows), allow(dead_code))]
-const ESPERA_REAL: Espera = Espera {
-    intervalo: Duration::from_secs(1),
-    consultas: 1_800,
-};
-/// Consultas com erro, em seguida, antes de desistir de acompanhar o trabalho.
-const ERROS_DE_CONSULTA_SEGUIDOS: u32 = 30;
-
 /// O que `imprimir` recebeu para um envio real.
 pub(crate) struct Pedido {
     pub arquivo: String,
@@ -42,31 +34,6 @@ pub(crate) struct Pedido {
     pub ordem: OrdemPassadas,
     pub perfis: Option<PathBuf>,
     pub arquivo_saida: Option<PathBuf>,
-}
-
-/// Motivo que o backend sabe dar para a falha de um trabalho ou para o que a impressora espera
-/// que alguém resolva. Vazio quando o trabalho anda sem problema.
-pub(crate) trait DescreveFalha {
-    fn motivo(&self) -> Option<String>;
-    /// O trabalho já não está na fila, e por isso não há o que apagar nem cancelar.
-    fn trabalho_saiu_da_fila(&self) -> bool;
-}
-
-#[cfg(windows)]
-impl DescreveFalha for plots_windows::BackendWindows {
-    fn motivo(&self) -> Option<String> {
-        self.motivo_atual().map(str::to_string)
-    }
-    fn trabalho_saiu_da_fila(&self) -> bool {
-        self.saiu_da_fila()
-    }
-}
-
-/// Com que frequência perguntar à fila e até quando esperar.
-#[cfg_attr(not(windows), allow(dead_code))]
-struct Espera {
-    intervalo: Duration,
-    consultas: u32,
 }
 
 /// O que o fluxo precisa saber da fila, sem depender do Windows.
@@ -132,28 +99,21 @@ pub(crate) fn executar(
     enviar_com_o_sistema(&pedido, &fila, documento, lotes, &destino, entrada, saida)
 }
 
-/// Escolhe a fila do pedido na lista do sistema. O nome precisa ser exatamente igual. Fax nunca
-/// serve, e uma fila que pergunta o nome do arquivo só serve com arquivo de saída: sem ele, o
-/// Windows abriria um diálogo e o envio ficaria parado.
+/// Escolhe a fila do pedido na lista do sistema, com a recusa escrita para o terminal.
 fn decidir_fila<'a>(
     filas: &'a [Fila],
     nome: &str,
     tem_arquivo_saida: bool,
 ) -> Result<&'a Fila, String> {
-    let fila = filas.iter().find(|fila| fila.nome == nome).ok_or_else(|| {
-        format!("a fila '{nome}' não existe neste sistema; veja os nomes com 'plots filas'")
-    })?;
-    if plots_windows::porta_de_fax(&fila.porta) {
-        return Err(format!(
-            "a fila '{nome}' é um fax compartilhado; o envio não usa fax"
-        ));
-    }
-    if plots_windows::porta_pede_arquivo(&fila.porta) && !tem_arquivo_saida {
-        return Err(format!(
+    plots_windows::decidir_fila(filas, nome, tem_arquivo_saida).map_err(|recusa| match recusa {
+        RecusaDeFila::Inexistente => {
+            format!("a fila '{nome}' não existe neste sistema; veja os nomes com 'plots filas'")
+        }
+        RecusaDeFila::Fax => format!("a fila '{nome}' é um fax compartilhado; o envio não usa fax"),
+        RecusaDeFila::PedeArquivo => format!(
             "a fila '{nome}' pede o nome do arquivo em um diálogo; informe --arquivo-saida PASTA"
-        ));
-    }
-    Ok(fila)
+        ),
+    })
 }
 
 /// Lê as filas do sistema, decide e avisa se a escolhida não está pronta.
@@ -176,7 +136,7 @@ fn enviar_com_o_sistema(
     pedido: &Pedido,
     fila: &Fila,
     documento: Documento,
-    lotes: Vec<LoteDoPlano>,
+    lotes: Vec<LoteDoFluxo>,
     destino: &Destino<'_>,
     entrada: &mut impl BufRead,
     saida: &mut impl Write,
@@ -193,7 +153,7 @@ fn enviar_com_o_sistema(
         backend,
         lotes,
         destino,
-        &ESPERA_REAL,
+        &plots_print::fluxo::ESPERA_REAL,
         std::thread::sleep,
         entrada,
         saida,
@@ -205,7 +165,7 @@ fn enviar_com_o_sistema(
     _pedido: &Pedido,
     _fila: &Fila,
     _documento: Documento,
-    _lotes: Vec<LoteDoPlano>,
+    _lotes: Vec<LoteDoFluxo>,
     _destino: &Destino<'_>,
     _entrada: &mut impl BufRead,
     _saida: &mut impl Write,
@@ -213,33 +173,11 @@ fn enviar_com_o_sistema(
     Err(crate::MSG_ENVIO_INDISPONIVEL.into())
 }
 
-/// Nome do papel como o usuário o procura na gaveta.
-fn nome_do_papel(papel: &Papel) -> String {
-    match papel.formato {
-        FormatoPapel::A4 => "A4".to_string(),
-        FormatoPapel::A5 => "A5".to_string(),
-        FormatoPapel::Carta => "Carta".to_string(),
-        FormatoPapel::Oficio => "Ofício".to_string(),
-        FormatoPapel::Legal => "Legal".to_string(),
-        FormatoPapel::Personalizado => {
-            format!("{:.0} × {:.0} mm", papel.largura_mm, papel.altura_mm)
-        }
-    }
-}
-
-/// Dois lotes usam a mesma folha, mesmo que um seja retrato e o outro, paisagem.
-fn mesma_folha(a: &Papel, b: &Papel) -> bool {
-    a.formato == b.formato
-        && (a.formato != FormatoPapel::Personalizado
-            || ((a.largura_mm - b.largura_mm).abs() <= TOLERANCIA_PAPEL_MM
-                && (a.altura_mm - b.altura_mm).abs() <= TOLERANCIA_PAPEL_MM))
-}
-
 /// Fluxo de cada lote: pergunta, frente, fim do trabalho na fila, instrução, pergunta, verso.
 #[cfg_attr(not(windows), allow(dead_code))]
 fn conduzir<B>(
     backend: B,
-    lotes: Vec<LoteDoPlano>,
+    lotes: Vec<LoteDoFluxo>,
     destino: &Destino<'_>,
     espera: &Espera,
     mut dormir: impl FnMut(Duration),
@@ -254,10 +192,9 @@ where
         writeln!(saida, "{}", aviso_de_modelo_nao_medido(modelo)).map_err(|e| e.to_string())?;
     }
     let total = lotes.len();
-    let para_o_job = lotes.iter().map(|item| item.lote.clone()).collect();
-    let mut job = Job::novo(backend, para_o_job).map_err(|erro| texto_do_job(&erro))?;
-    let mut papel_anterior: Option<Papel> = None;
-    for (indice, LoteDoPlano { papel, lote }) in lotes.iter().enumerate() {
+    let mut condutor =
+        Condutor::novo(backend, lotes.clone(), *espera).map_err(|erro| texto_do_job(&erro))?;
+    for (indice, LoteDoFluxo { papel, lote }) in lotes.iter().enumerate() {
         let numero = indice + 1;
         let fila = destino.fila;
         let nome_papel = nome_do_papel(papel);
@@ -267,14 +204,13 @@ where
             lote.passada1.len()
         )
         .map_err(|e| e.to_string())?;
-        if papel_anterior.is_some_and(|anterior| !mesma_folha(&anterior, papel)) {
+        if condutor.troca_de_papel().is_some() {
             writeln!(
                 saida,
                 "  Troque o papel para {nome_papel} e retire as folhas do lote anterior."
             )
             .map_err(|e| e.to_string())?;
         }
-        papel_anterior = Some(*papel);
         writeln!(saida, "  Frente: {}", listar(&lote.passada1)).map_err(|e| e.to_string())?;
         let pergunta = format!("Enviar a frente do lote {numero} para {fila}? (s/n): ");
         if !confirmar(entrada, saida, &pergunta)? {
@@ -282,14 +218,15 @@ where
                 "envio cancelado no lote {numero} de {total}: a frente deste lote não foi enviada"
             ));
         }
-        job.enviar_frente()
+        condutor
+            .enviar_frente()
             .map_err(|erro| falha_ao_enviar("a frente", numero, &erro))?;
         escrever_aguardando(saida, "Frente", numero)?;
         let etapa = Etapa {
             passada: "a frente",
             numero,
         };
-        aguardar(&mut job, espera, &mut dormir, etapa, entrada, saida)?;
+        aguardar(&mut condutor, &mut dormir, etapa, entrada, saida)?;
         writeln!(
             saida,
             "  O trabalho da frente do lote {numero} terminou ou saiu da fila do spooler. Isso não garante que o papel já saiu."
@@ -304,14 +241,15 @@ where
                 "envio cancelado no lote {numero} de {total}: a frente foi enviada, o verso não"
             ));
         }
-        job.enviar_verso()
+        condutor
+            .enviar_verso()
             .map_err(|erro| falha_ao_enviar("o verso", numero, &erro))?;
         escrever_aguardando(saida, "Verso", numero)?;
         let etapa = Etapa {
             passada: "o verso",
             numero,
         };
-        aguardar(&mut job, espera, &mut dormir, etapa, entrada, saida)?;
+        aguardar(&mut condutor, &mut dormir, etapa, entrada, saida)?;
         writeln!(
             saida,
             "  O trabalho do verso do lote {numero} terminou ou saiu da fila do spooler."
@@ -323,12 +261,8 @@ where
         "\nOs trabalhos dos {total} lote(s) terminaram ou saíram da fila do spooler. Confira as folhas depois que a última sair."
     )
     .map_err(|e| e.to_string())?;
-    if destino
-        .modelo
-        .is_some_and(|modelo| !Mecanica::do_modelo(modelo).saida_face_impressa_para_cima)
-    {
-        writeln!(saida, "Na gaveta, vire o maço antes de ler as folhas.")
-            .map_err(|e| e.to_string())?;
+    if destino.modelo.is_some_and(vira_para_ler) {
+        writeln!(saida, "{FRASE_VIRAR_PARA_LER}").map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -336,14 +270,10 @@ where
 /// Com modelo, o gesto é o dele; sem modelo, vale o que foi feito na calibração.
 fn escrever_recolocacao(destino: &Destino<'_>, saida: &mut impl Write) -> Result<(), String> {
     if let Some(modelo) = destino.modelo {
-        let (lado, virada) = frases_de_recolocacao_do_modelo(modelo);
-        return writeln!(saida, "  {lado}\n  {virada}").map_err(|e| e.to_string());
+        let (gesto, colocacao) = frases_de_recolocacao_do_modelo(modelo);
+        return writeln!(saida, "  {gesto}\n  {colocacao}").map_err(|e| e.to_string());
     }
-    writeln!(
-        saida,
-        "  Pegue o maço como saiu, não embaralhe, e recoloque do mesmo jeito que na calibração."
-    )
-    .map_err(|e| e.to_string())?;
+    writeln!(saida, "  {FRASE_DA_CALIBRACAO}").map_err(|e| e.to_string())?;
     if let Some(texto) = destino.gesto_texto {
         writeln!(saida, "  {texto}").map_err(|e| e.to_string())?;
     }
@@ -367,12 +297,8 @@ struct Etapa {
 }
 
 /// Consulta a fila até a passada terminar. O próximo envio só é oferecido depois disso.
-///
-/// Um trabalho só sai da fila por decisão do usuário: erro ao consultar não diz nada sobre ele,
-/// então nunca leva a cancelar. O limite de consultas só vale enquanto ninguém precisa decidir.
 fn aguardar<B>(
-    job: &mut Job<B>,
-    espera: &Espera,
+    condutor: &mut Condutor<B>,
     dormir: &mut impl FnMut(Duration),
     etapa: Etapa,
     entrada: &mut impl BufRead,
@@ -383,64 +309,51 @@ where
     B::Erro: Display,
 {
     let Etapa { passada, numero } = etapa;
-    let mut restantes = espera.consultas;
-    let mut erros_seguidos = 0;
-    let mut motivo_respondido: Option<String> = None;
-    while restantes > 0 {
-        match job.atualizar() {
-            Ok(EstadoJob::FrenteEnviada | EstadoJob::VersoEnviado) => {
-                erros_seguidos = 0;
-                match job.backend().motivo() {
-                    Some(motivo) => {
-                        if motivo_respondido.as_deref() != Some(motivo.as_str()) {
-                            perguntar_no_aviso(job, etapa, &motivo, entrada, saida)?;
-                            motivo_respondido = Some(motivo);
-                        }
-                    }
-                    None => {
-                        motivo_respondido = None;
-                        restantes -= 1;
-                    }
+    loop {
+        match condutor.consultar() {
+            Passo::EmAndamento => dormir(condutor.intervalo()),
+            Passo::Aviso { motivo, novo } => {
+                if novo {
+                    perguntar_no_aviso(condutor, etapa, &motivo, entrada, saida)?;
                 }
-                dormir(espera.intervalo);
+                dormir(condutor.intervalo());
             }
-            Ok(_) => return Ok(()),
-            Err(ErroJob::Backend(erro)) => {
-                erros_seguidos += 1;
-                if erros_seguidos >= ERROS_DE_CONSULTA_SEGUIDOS {
-                    if job.backend().trabalho_saiu_da_fila() {
-                        return Err(format!(
-                            "não consegui confirmar {passada} do lote {numero}: {erro}. Não há o que cancelar na fila. Nada mais será enviado."
-                        ));
-                    }
-                    return Err(format!(
-                        "não consegui acompanhar {passada} do lote {numero}: {erro}. O trabalho não foi apagado; veja o estado com 'plots filas'. Nada mais será enviado."
-                    ));
-                }
-                restantes -= 1;
-                dormir(espera.intervalo);
+            Passo::FrenteConfirmada | Passo::LoteConcluido | Passo::DocumentoConcluido => {
+                return Ok(())
             }
-            Err(ErroJob::EnvioFalhou) => {
-                return Err(falha_na_fila(
-                    job,
-                    etapa,
-                    &ErroJob::EnvioFalhou,
-                    entrada,
-                    saida,
-                ))
+            Passo::SemAcompanhamento {
+                erro,
+                saiu_da_fila: true,
+            } => {
+                return Err(format!(
+                    "não consegui confirmar {passada} do lote {numero}: {erro}. Não há o que cancelar na fila. Nada mais será enviado."
+                ));
             }
-            Err(erro) => return Err(texto_do_job(&erro)),
+            Passo::SemAcompanhamento {
+                erro,
+                saiu_da_fila: false,
+            } => {
+                return Err(format!(
+                    "não consegui acompanhar {passada} do lote {numero}: {erro}. O trabalho não foi apagado; veja o estado com 'plots filas'. Nada mais será enviado."
+                ));
+            }
+            Passo::Falhou { motivo } => {
+                return Err(falha_na_fila(condutor, etapa, motivo, entrada, saida))
+            }
+            Passo::TempoEsgotado => {
+                return Err(format!(
+                    "a fila não confirmou {passada} do lote {numero} a tempo. O trabalho continua na fila; veja o estado com 'plots filas'"
+                ));
+            }
+            Passo::ForaDeOrdem(erro) => return Err(texto_do_job(&erro)),
         }
     }
-    Err(format!(
-        "a fila não confirmou {passada} do lote {numero} a tempo. O trabalho continua na fila; veja o estado com 'plots filas'"
-    ))
 }
 
 /// A impressora espera alguém: mostra o motivo e deixa o usuário escolher. `Ok` quer dizer que a
 /// espera continua; `Err` traz o texto final, com o trabalho cancelado ou deixado na fila.
 fn perguntar_no_aviso<B>(
-    job: &mut Job<B>,
+    condutor: &mut Condutor<B>,
     etapa: Etapa,
     motivo: &str,
     entrada: &mut impl BufRead,
@@ -464,7 +377,7 @@ where
             .map_err(|e| e.to_string())?;
             return saida.flush().map_err(|e| e.to_string());
         }
-        Resposta::Sim => cancelar_na_fila(job),
+        Resposta::Sim => cancelar_na_fila(condutor),
         Resposta::FimDaEntrada => MSG_DEIXADO_NA_FILA.to_string(),
     };
     Err(format!("{passada} do lote {numero}: {motivo}. {desfecho}"))
@@ -472,9 +385,9 @@ where
 
 /// A passada falhou na fila: mostra o motivo e só tira o trabalho de lá se o usuário pedir.
 fn falha_na_fila<B>(
-    job: &mut Job<B>,
+    condutor: &mut Condutor<B>,
     etapa: Etapa,
-    erro: &ErroJob<B::Erro>,
+    motivo: Option<String>,
     entrada: &mut impl BufRead,
     saida: &mut impl Write,
 ) -> String
@@ -483,22 +396,22 @@ where
     B::Erro: Display,
 {
     let Etapa { passada, numero } = etapa;
-    let motivo = job.backend().motivo().unwrap_or_else(|| texto_do_job(erro));
+    let motivo = motivo.unwrap_or_else(|| texto_do_job::<B::Erro>(&ErroJob::EnvioFalhou));
     let _ = writeln!(saida, "  {passada} do lote {numero} falhou: {motivo}.");
     // Sem resposta legível, nada é apagado: o trabalho fica na fila.
     let desfecho = match perguntar(entrada, saida, PERGUNTA_CANCELAR) {
-        Ok(Resposta::Sim) => cancelar_na_fila(job),
+        Ok(Resposta::Sim) => cancelar_na_fila(condutor),
         _ => MSG_DEIXADO_NA_FILA.to_string(),
     };
     format!("{passada} do lote {numero} falhou: {motivo}. {desfecho}")
 }
 
-fn cancelar_na_fila<B>(job: &mut Job<B>) -> String
+fn cancelar_na_fila<B>(condutor: &mut Condutor<B>) -> String
 where
-    B: Backend,
+    B: Backend + DescreveFalha,
     B::Erro: Display,
 {
-    match job.cancelar_envio() {
+    match condutor.cancelar() {
         Ok(()) => MSG_CANCELADO.to_string(),
         Err(falha) => format!(
             "Não foi possível cancelar o trabalho ({}); veja o estado com 'plots filas'. Nada mais será enviado.",
@@ -571,7 +484,8 @@ fn perguntar(
 #[cfg(test)]
 mod testes {
     use super::*;
-    use plots_core::{plano_lotes_por_papel, DimensoesPagina, PerfilImpressora};
+    use plots_core::{plano_lotes_por_papel, DimensoesPagina, ModeloImpressora, PerfilImpressora};
+    use plots_print::fluxo::ERROS_DE_CONSULTA_SEGUIDOS;
     use plots_print::job::{EstadoEnvio, Passada};
     use plots_windows::Estado as EstadoFila;
     use std::cell::RefCell;
@@ -796,10 +710,15 @@ mod testes {
             assert!(saida.contains("não foi medido nesta máquina"), "{saida}");
             assert!(saida.contains("com a face impressa para baixo."), "{saida}");
             assert!(saida.contains(virada), "{saida}");
+            assert!(
+                saida.find(virada)
+                    < saida.find("Depois, sem mudar a ordem das folhas, coloque na entrada"),
+                "o gesto vem antes da colocacao: {saida}"
+            );
             assert!(!saida.contains("na calibração"), "{saida}");
             assert!(!saida.contains("Vire o maço.\n"), "{saida}");
             assert_eq!(
-                saida.contains("Na gaveta, vire o maço"),
+                saida.contains("Vire o maço antes de ler"),
                 vira_para_ler,
                 "{saida}"
             );

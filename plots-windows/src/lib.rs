@@ -6,6 +6,8 @@
 //! O estado reportado vem do driver de cada fila: bits iguais podem ter sentidos
 //! diferentes em drivers diferentes, por isso os bits sem tradução são preservados.
 
+pub use plots_print;
+
 mod erro;
 mod estado;
 mod papel;
@@ -103,6 +105,35 @@ pub fn listar_filas() -> Result<Vec<Fila>, ErroFilas> {
 #[cfg(not(windows))]
 pub fn listar_filas() -> Result<Vec<Fila>, ErroFilas> {
     Err(ErroFilas::NaoSuportado)
+}
+
+/// Por que uma fila não pode receber o envio.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RecusaDeFila {
+    Inexistente,
+    Fax,
+    /// Sem arquivo de saída, o Windows abriria um diálogo e o envio ficaria parado.
+    PedeArquivo,
+}
+
+/// Escolhe a fila na lista do sistema. O nome precisa ser exatamente igual. Fax nunca serve, e uma
+/// fila que pergunta o nome do arquivo só serve com arquivo de saída.
+pub fn decidir_fila<'a>(
+    filas: &'a [Fila],
+    nome: &str,
+    tem_arquivo_saida: bool,
+) -> Result<&'a Fila, RecusaDeFila> {
+    let fila = filas
+        .iter()
+        .find(|fila| fila.nome == nome)
+        .ok_or(RecusaDeFila::Inexistente)?;
+    if porta_de_fax(&fila.porta) {
+        return Err(RecusaDeFila::Fax);
+    }
+    if porta_pede_arquivo(&fila.porta) && !tem_arquivo_saida {
+        return Err(RecusaDeFila::PedeArquivo);
+    }
+    Ok(fila)
 }
 
 /// Compara o nome da fila com o da impressora padrão, exatamente. "Sem padrão" não casa com nada.

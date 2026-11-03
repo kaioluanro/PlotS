@@ -51,7 +51,7 @@
   border-color: var(--border-control);
 }
 
-.secundario:hover {
+.secundario:hover:not(:disabled) {
   background: var(--panel-hover);
   border-color: var(--border-control-hover);
 }

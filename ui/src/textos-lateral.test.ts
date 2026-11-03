@@ -47,10 +47,14 @@ describe("vocabulario da interface", () => {
     "confirmar.consequenciaVarios",
   ]);
 
+  // O cartao diz o que a fila confirmou, porque o PlotS nao sabe mais do que isso sobre o papel.
   it.each(IDIOMAS)("%s chama de impressora o que aparece na tela", (idioma) => {
     const palavra = idioma === "en" ? /\bqueues?\b/i : /\bfilas?\b/i;
     const encontrados = Object.entries(traducoes[idioma])
-      .filter(([chave, texto]) => !FALAM_DA_FILA_DO_WINDOWS.has(chave) && palavra.test(texto))
+      .filter(
+        ([chave, texto]) =>
+          !FALAM_DA_FILA_DO_WINDOWS.has(chave) && !chave.startsWith("cartao.") && palavra.test(texto),
+      )
       .map(([chave]) => chave);
     expect(encontrados).toEqual([]);
   });

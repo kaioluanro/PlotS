@@ -1,3 +1,26 @@
+.linhas {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 8px 12px;
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 16px;
+  list-style: none;
+  overflow-wrap: anywhere;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.nota {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 15px;
+}
+
 .veu {
   position: fixed;
   inset: 0;

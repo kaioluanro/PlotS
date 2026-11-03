@@ -1,0 +1,900 @@
+//! Um trabalho por impressora, cada um em uma thread propria, fora da thread da interface.
+//!
+//! Cada thread conduz um documento em uma impressora e publica o cartao a cada mudanca. A interface
+//! manda comandos por um canal; impressoras diferentes nunca esperam umas pelas outras. Nada aqui
+//! tira um trabalho da fila sem um pedido do usuario.
+
+use crate::documento;
+use crate::impressoras;
+use crate::leitura_pdf;
+use plots_core::{
+    plano_lotes_por_papel, DimensoesPagina, FormatoPapel, ModeloImpressora, OrdemPassadas, Pagina,
+    Papel, PerfilImpressora,
+};
+use plots_windows::plots_print::fluxo::{
+    self, Condutor, DescreveFalha, Espera, Instrucao, Lado, LoteDoFluxo, Passo, SimGuiado, Virada,
+};
+use plots_windows::plots_print::job::{Backend, ErroJob, EstadoJob};
+use plots_windows::plots_print::{ErroSimulacao, Mecanica};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fmt::Display;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender, TryRecvError};
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
+
+/// Maior lote que a interface oferece; um valor de fora nunca chega ao plano.
+const LOTE_MAXIMO: usize = 50;
+/// A simulacao nao tem fila: o intervalo so deixa o estado aparecer antes da confirmacao.
+const ESPERA_SIMULADA: Espera = Espera {
+    intervalo: Duration::from_millis(400),
+    consultas: 1_800,
+};
+/// Nome do evento que leva o cartao a interface.
+pub const EVENTO_DO_CARTAO: &str = "trabalho";
+
+/// Motivo de um aviso ou erro. `texto` vai para quem le portugues; a interface traduz o `codigo`
+/// nos outros idiomas, porque as mensagens de envio so existem em portugues.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Motivo {
+    pub codigo: &'static str,
+    pub texto: String,
+}
+
+impl Motivo {
+    fn novo(codigo: &'static str, texto: impl Into<String>) -> Self {
+        Self {
+            codigo,
+            texto: texto.into(),
+        }
+    }
+}
+
+/// Erro de backend em forma de motivo.
+pub trait ParaMotivo {
+    fn para_motivo(&self) -> Motivo;
+}
+
+impl ParaMotivo for ErroSimulacao {
+    fn para_motivo(&self) -> Motivo {
+        Motivo::novo("sistema", self.to_string())
+    }
+}
+
+impl ParaMotivo for plots_windows::ErroEnvio {
+    fn para_motivo(&self) -> Motivo {
+        use plots_windows::ErroEnvio as E;
+        let codigo = match self {
+            E::BibliotecaAusente { .. }
+            | E::BibliotecaCaminhoRelativo(_)
+            | E::BibliotecaInvalida(_) => "biblioteca",
+            E::Pdf(_) | E::PassadaVazia | E::PaginaInexistente(_) | E::TamanhoInvalido => "pdf",
+            E::Rasterizacao(_) | E::MemoriaExcedida { .. } | E::PaginaForaDaArea => "desenho",
+            E::PapelGrandeDemais { .. } | E::PapelNaoAceito { .. } => "papel",
+            E::SimplexNaoAceito
+            | E::ValorNaoAceito { .. }
+            | E::ValorNaoConfirmado { .. }
+            | E::SemSuporteABitmap => "driver",
+            E::PastaDeSaidaInvalida(_) | E::ArquivoJaExiste(_) | E::ArquivoNaoGerado(_) => {
+                "arquivo_saida"
+            }
+            E::NaoSuportado
+            | E::Sistema { .. }
+            | E::Resposta(_)
+            | E::TextoInvalido
+            | E::SemTrabalho => "sistema",
+        };
+        Motivo::novo(codigo, self.to_string())
+    }
+}
+
+fn motivo_do_job<E: ParaMotivo>(erro: &ErroJob<E>) -> Motivo {
+    match erro {
+        ErroJob::Backend(erro) => erro.para_motivo(),
+        ErroJob::EnvioFalhou => Motivo::novo("fila", "o spooler informou uma falha"),
+        ErroJob::SemLotes => Motivo::novo("pdf", "o documento não tem lotes para enviar"),
+        ErroJob::EstadoInvalido(estado) => Motivo::novo(
+            "sistema",
+            format!("operação fora de ordem no estado {estado:?}"),
+        ),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PapelDoCartao {
+    pub formato: &'static str,
+    pub largura_mm: f64,
+    pub altura_mm: f64,
+}
+
+pub fn papel_do_cartao(papel: &Papel) -> PapelDoCartao {
+    PapelDoCartao {
+        formato: match papel.formato {
+            FormatoPapel::A4 => "a4",
+            FormatoPapel::A5 => "a5",
+            FormatoPapel::Carta => "carta",
+            FormatoPapel::Oficio => "oficio",
+            FormatoPapel::Legal => "legal",
+            FormatoPapel::Personalizado => "outro",
+        },
+        largura_mm: papel.largura_mm,
+        altura_mm: papel.altura_mm,
+    }
+}
+
+/// O que dizer ao recolocar. Sem modelo, o perfil nao afirma lado: vale o gesto da calibracao.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Recolocar {
+    pub lado: Option<&'static str>,
+    pub virada: Option<&'static str>,
+    pub texto_do_perfil: Option<String>,
+}
+
+impl Recolocar {
+    fn da_instrucao(instrucao: Instrucao) -> Self {
+        Self {
+            lado: Some(match instrucao.lado {
+                Lado::Cima => "cima",
+                Lado::Baixo => "baixo",
+            }),
+            virada: Some(match instrucao.virada {
+                Virada::PelaBordaDeCima => "borda_de_cima",
+                Virada::PelaLateral => "lateral",
+                Virada::NaoVirar => "nao_virar",
+                Virada::Girar => "girar",
+            }),
+            texto_do_perfil: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct FaceDaSequencia {
+    pub numero: Option<usize>,
+    pub girada: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Sequencia {
+    pub frente: Vec<FaceDaSequencia>,
+    pub verso: Vec<FaceDaSequencia>,
+}
+
+fn faces(paginas: &[Pagina]) -> Vec<FaceDaSequencia> {
+    paginas
+        .iter()
+        .map(|pagina| FaceDaSequencia {
+            numero: pagina.numero,
+            girada: pagina.girar_180,
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Resultado {
+    pub corretas: usize,
+    pub folhas: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PassadaDoCartao {
+    Frente,
+    Verso,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "tipo", rename_all = "snake_case")]
+pub enum EstadoCartao {
+    /// Lendo o PDF e abrindo a fila; nada foi enviado ainda.
+    Preparando,
+    Imprimindo {
+        passada: PassadaDoCartao,
+    },
+    /// A fila confirmou a frente: so aqui o verso libera.
+    Aguardando,
+    /// O verso terminou e ainda ha lotes.
+    ProximoLote,
+    Aviso {
+        passada: PassadaDoCartao,
+        motivo: Motivo,
+        respondido: bool,
+    },
+    Erro {
+        motivo: Motivo,
+    },
+    Concluido,
+    Cancelado,
+}
+
+/// Tudo o que a interface mostra de uma impressora.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Cartao {
+    pub aba: u64,
+    pub impressora: String,
+    pub nome: String,
+    pub simulada: bool,
+    pub lote: usize,
+    pub total: usize,
+    pub papel: Option<PapelDoCartao>,
+    pub estado: EstadoCartao,
+    pub recolocar: Option<Recolocar>,
+    pub troca_de_papel: Option<PapelDoCartao>,
+    pub resultado: Option<Resultado>,
+    pub sequencia: Option<Sequencia>,
+    pub vira_para_ler: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct Identidade {
+    pub aba: u64,
+    pub impressora: String,
+    pub nome: String,
+    pub simulada: bool,
+}
+
+impl Identidade {
+    fn cartao(&self, estado: EstadoCartao) -> Cartao {
+        Cartao {
+            aba: self.aba,
+            impressora: self.impressora.clone(),
+            nome: self.nome.clone(),
+            simulada: self.simulada,
+            lote: 0,
+            total: 0,
+            papel: None,
+            estado,
+            recolocar: None,
+            troca_de_papel: None,
+            resultado: None,
+            sequencia: None,
+            vira_para_ler: false,
+        }
+    }
+}
+
+/// Pedido da interface a um trabalho em andamento.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Comando {
+    EnviarFrente,
+    EnviarVerso,
+    Reimprimir,
+    Cancelar,
+    ContinuarEsperando,
+}
+
+/// O que a thread recebe: um comando, ou a ordem de parar de acompanhar sem tocar na fila.
+enum Recado {
+    Comando(Comando),
+    Soltar,
+}
+
+pub type Emissor = Arc<dyn Fn(Cartao) + Send + Sync>;
+
+/// O que acompanha o condutor durante um trabalho, alem do que ele sabe sozinho.
+pub struct Preparo<B: Backend> {
+    pub condutor: Condutor<B>,
+    pub recolocar: Recolocar,
+    pub vira_para_ler: bool,
+}
+
+struct Andamento<'a, B: Backend> {
+    condutor: Condutor<B>,
+    identidade: &'a Identidade,
+    emitir: &'a Emissor,
+    recolocar: Recolocar,
+    vira_para_ler: bool,
+    resultado: Option<Resultado>,
+    aviso: Option<(Motivo, bool)>,
+    /// Sem consultas ate o usuario decidir: a fila nao responde ou nao confirmou a tempo.
+    parado: bool,
+    passada: PassadaDoCartao,
+}
+
+impl<B> Andamento<'_, B>
+where
+    B: Backend + DescreveFalha,
+    B::Erro: ParaMotivo + Display,
+{
+    fn publicar(&self, estado: EstadoCartao) {
+        let mut cartao = self.identidade.cartao(estado);
+        cartao.lote = self.condutor.numero();
+        cartao.total = self.condutor.total();
+        cartao.papel = self
+            .condutor
+            .lote()
+            .map(|item| papel_do_cartao(&item.papel));
+        cartao.recolocar = Some(self.recolocar.clone());
+        cartao.vira_para_ler = self.vira_para_ler;
+        cartao.resultado = self.resultado;
+        cartao.troca_de_papel = self
+            .condutor
+            .troca_de_papel()
+            .map(|papel| papel_do_cartao(&papel));
+        if self.identidade.simulada {
+            cartao.sequencia = self.condutor.lote().map(|item| Sequencia {
+                frente: faces(&item.lote.passada1),
+                verso: faces(&item.lote.passada2),
+            });
+        }
+        (self.emitir)(cartao);
+    }
+
+    fn publicar_erro(&self, motivo: Motivo) {
+        self.publicar(EstadoCartao::Erro { motivo });
+    }
+
+    /// A fila recusou o cancelamento: o trabalho segue la, e o cartao manda conferir o Windows.
+    fn falhou_ao_cancelar(&mut self, erro: &ErroJob<B::Erro>) {
+        self.parado = true;
+        let detalhe = motivo_do_job(erro).texto;
+        self.publicar_erro(Motivo::novo(
+            "nao_cancelou",
+            format!("Não foi possível cancelar o trabalho ({detalhe}). Confira a fila do Windows."),
+        ));
+    }
+
+    fn enviar(&mut self, passada: PassadaDoCartao) {
+        self.aviso = None;
+        self.parado = false;
+        self.passada = passada;
+        // O estado aparece antes: desenhar as paginas de uma passada pode levar minutos.
+        self.publicar(EstadoCartao::Imprimindo { passada });
+        let enviado = match passada {
+            PassadaDoCartao::Frente => self.condutor.enviar_frente(),
+            PassadaDoCartao::Verso => self.condutor.enviar_verso(),
+        };
+        if let Err(erro) = enviado {
+            self.publicar_erro(motivo_do_job(&erro));
+        }
+    }
+
+    fn somar_resultado(&mut self) {
+        let Some(item) = self.condutor.lote_terminado() else {
+            return;
+        };
+        let Some((corretas, folhas)) = self
+            .condutor
+            .backend()
+            .folhas_conferidas(&item.lote.paginas)
+        else {
+            return;
+        };
+        let antes = self.resultado.unwrap_or(Resultado {
+            corretas: 0,
+            folhas: 0,
+        });
+        self.resultado = Some(Resultado {
+            corretas: antes.corretas.saturating_add(corretas),
+            folhas: antes.folhas.saturating_add(folhas),
+        });
+    }
+
+    fn cancelar(&mut self) -> Continua {
+        let tem_passada_na_fila = matches!(
+            self.condutor.estado(),
+            EstadoJob::FrenteEnviada | EstadoJob::VersoEnviado | EstadoJob::Erro
+        );
+        if tem_passada_na_fila {
+            if let Err(erro) = self.condutor.cancelar() {
+                self.falhou_ao_cancelar(&erro);
+                return Continua::Sim;
+            }
+        }
+        self.publicar(EstadoCartao::Cancelado);
+        Continua::Nao
+    }
+
+    fn atender(&mut self, comando: Comando) -> Continua {
+        let estado = self.condutor.estado();
+        match comando {
+            Comando::EnviarFrente if estado == EstadoJob::Pronto => {
+                self.enviar(PassadaDoCartao::Frente);
+            }
+            Comando::EnviarVerso if estado == EstadoJob::AguardandoRecolocacao => {
+                self.enviar(PassadaDoCartao::Verso);
+            }
+            Comando::Reimprimir if estado == EstadoJob::Erro || self.parado => {
+                self.aviso = None;
+                self.parado = false;
+                self.passada = PassadaDoCartao::Frente;
+                self.publicar(EstadoCartao::Imprimindo {
+                    passada: PassadaDoCartao::Frente,
+                });
+                // Antes de mandar a frente de novo, o trabalho anterior sai da fila; se a fila recusar, nada e enviado.
+                if let Err(erro) = self.condutor.cancelar() {
+                    self.falhou_ao_cancelar(&erro);
+                } else if let Err(erro) = self.condutor.enviar_frente() {
+                    self.parado = true;
+                    self.publicar_erro(motivo_do_job(&erro));
+                }
+            }
+            Comando::Cancelar => return self.cancelar(),
+            Comando::ContinuarEsperando => {
+                self.condutor.continuar_esperando();
+                self.parado = false;
+                if let Some((motivo, _)) = self.aviso.clone() {
+                    self.aviso = Some((motivo.clone(), true));
+                    self.publicar(EstadoCartao::Aviso {
+                        passada: self.passada,
+                        motivo,
+                        respondido: true,
+                    });
+                }
+            }
+            // Fora de ordem nada e enviado: o verso so sai com a frente confirmada pelo trabalho.
+            Comando::EnviarFrente | Comando::EnviarVerso | Comando::Reimprimir => {}
+        }
+        Continua::Sim
+    }
+
+    fn consultar(&mut self) -> Continua {
+        match self.condutor.consultar() {
+            Passo::EmAndamento => {
+                if self.aviso.take().is_some() {
+                    self.publicar(EstadoCartao::Imprimindo {
+                        passada: self.passada,
+                    });
+                }
+            }
+            Passo::Aviso { motivo, novo } => {
+                if novo {
+                    let motivo = Motivo::novo("fila", motivo);
+                    self.aviso = Some((motivo.clone(), false));
+                    self.publicar(EstadoCartao::Aviso {
+                        passada: self.passada,
+                        motivo,
+                        respondido: false,
+                    });
+                }
+            }
+            Passo::FrenteConfirmada => {
+                self.aviso = None;
+                self.publicar(EstadoCartao::Aguardando);
+            }
+            Passo::LoteConcluido => {
+                self.aviso = None;
+                self.somar_resultado();
+                self.publicar(EstadoCartao::ProximoLote);
+            }
+            Passo::DocumentoConcluido => {
+                self.somar_resultado();
+                self.publicar(EstadoCartao::Concluido);
+                return Continua::Nao;
+            }
+            Passo::Falhou { motivo } => {
+                self.aviso = None;
+                let motivo = motivo.map_or_else(
+                    || motivo_do_job::<B::Erro>(&ErroJob::EnvioFalhou),
+                    |texto| Motivo::novo("fila", texto),
+                );
+                self.publicar_erro(motivo);
+            }
+            Passo::SemAcompanhamento { erro, saiu_da_fila } => {
+                self.aviso = None;
+                self.parado = true;
+                let codigo = if saiu_da_fila {
+                    "sem_confirmacao"
+                } else {
+                    "sem_acompanhamento"
+                };
+                self.publicar_erro(Motivo::novo(codigo, erro.to_string()));
+            }
+            Passo::TempoEsgotado => {
+                self.parado = true;
+                let motivo = Motivo::novo(
+                    "sem_prazo",
+                    "a fila não confirmou a tempo; o trabalho continua na fila",
+                );
+                self.aviso = Some((motivo.clone(), false));
+                self.publicar(EstadoCartao::Aviso {
+                    passada: self.passada,
+                    motivo,
+                    respondido: false,
+                });
+            }
+            Passo::ForaDeOrdem(erro) => {
+                self.parado = true;
+                self.publicar_erro(motivo_do_job(&erro));
+            }
+        }
+        Continua::Sim
+    }
+
+    fn consulta_a_fila(&self) -> bool {
+        !self.parado
+            && matches!(
+                self.condutor.estado(),
+                EstadoJob::FrenteEnviada | EstadoJob::VersoEnviado
+            )
+    }
+}
+
+#[derive(PartialEq, Eq)]
+enum Continua {
+    Sim,
+    Nao,
+}
+
+/// Envia a primeira frente e conduz o documento ate o fim, o cancelamento ou a ordem de soltar.
+fn conduzir<B>(
+    preparo: Preparo<B>,
+    identidade: &Identidade,
+    recados: &Receiver<Recado>,
+    emitir: &Emissor,
+) where
+    B: Backend + DescreveFalha,
+    B::Erro: ParaMotivo + Display,
+{
+    let mut andamento = Andamento {
+        condutor: preparo.condutor,
+        identidade,
+        emitir,
+        recolocar: preparo.recolocar,
+        vira_para_ler: preparo.vira_para_ler,
+        resultado: None,
+        aviso: None,
+        parado: false,
+        passada: PassadaDoCartao::Frente,
+    };
+    // Os recados chegados durante a preparacao valem antes do primeiro envio: soltar a aba ou
+    // cancelar nesse intervalo nao pode mandar a frente para a fila.
+    loop {
+        match recados.try_recv() {
+            Ok(Recado::Soltar) | Err(TryRecvError::Disconnected) => return,
+            Ok(Recado::Comando(Comando::Cancelar)) => {
+                andamento.publicar(EstadoCartao::Cancelado);
+                return;
+            }
+            Ok(Recado::Comando(_)) => {}
+            Err(TryRecvError::Empty) => break,
+        }
+    }
+    andamento.enviar(PassadaDoCartao::Frente);
+    loop {
+        let recado = if andamento.consulta_a_fila() {
+            match recados.recv_timeout(andamento.condutor.intervalo()) {
+                Ok(recado) => Some(recado),
+                Err(RecvTimeoutError::Timeout) => None,
+                Err(RecvTimeoutError::Disconnected) => return,
+            }
+        } else {
+            match recados.recv() {
+                Ok(recado) => Some(recado),
+                Err(_) => return,
+            }
+        };
+        let seguir = match recado {
+            Some(Recado::Soltar) => return,
+            Some(Recado::Comando(comando)) => andamento.atender(comando),
+            None => andamento.consultar(),
+        };
+        if seguir == Continua::Nao {
+            return;
+        }
+    }
+}
+
+/// Avisa o fim da thread, de qualquer forma que ele venha. Uma thread interrompida vira erro no
+/// cartao em vez de deixar o usuario esperando.
+struct GuardaDaThread {
+    identidade: Identidade,
+    emitir: Emissor,
+    ativo: Arc<AtomicBool>,
+}
+
+impl Drop for GuardaDaThread {
+    fn drop(&mut self) {
+        self.ativo.store(false, Ordering::SeqCst);
+        if std::thread::panicking() {
+            (self.emitir)(self.identidade.cartao(EstadoCartao::Erro {
+                motivo: motivo_de_interrupcao(),
+            }));
+        }
+    }
+}
+
+fn motivo_de_interrupcao() -> Motivo {
+    Motivo::novo(
+        "interrompido",
+        "o acompanhamento deste trabalho foi interrompido; veja a fila do Windows antes de enviar de novo",
+    )
+}
+
+struct Entrada {
+    aba: u64,
+    recados: Sender<Recado>,
+    ativo: Arc<AtomicBool>,
+}
+
+/// Os trabalhos em andamento, um por impressora.
+#[derive(Default)]
+pub struct Gerente {
+    trabalhos: Mutex<HashMap<String, Entrada>>,
+}
+
+impl Gerente {
+    /// Inicia o trabalho em uma thread propria. Devolve `false`, sem mudar nada, se a impressora
+    /// ja tem um trabalho em andamento.
+    pub fn iniciar<B, F>(&self, identidade: Identidade, emitir: Emissor, preparar: F) -> bool
+    where
+        B: Backend + DescreveFalha,
+        B::Erro: ParaMotivo + Display,
+        F: FnOnce() -> Result<Preparo<B>, Motivo> + Send + 'static,
+    {
+        let mut trabalhos = self
+            .trabalhos
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let ocupada = trabalhos
+            .get(&identidade.impressora)
+            .is_some_and(|entrada| entrada.ativo.load(Ordering::SeqCst));
+        if ocupada {
+            return false;
+        }
+        let (envia, recebe) = channel();
+        let ativo = Arc::new(AtomicBool::new(true));
+        let guarda = GuardaDaThread {
+            identidade: identidade.clone(),
+            emitir: Arc::clone(&emitir),
+            ativo: Arc::clone(&ativo),
+        };
+        emitir(identidade.cartao(EstadoCartao::Preparando));
+        let chave = identidade.impressora.clone();
+        let aba = identidade.aba;
+        let (identidade_fora, emitir_fora) = (identidade.clone(), Arc::clone(&emitir));
+        let iniciada = std::thread::Builder::new()
+            .name("trabalho-de-impressao".into())
+            .spawn(move || {
+                let _guarda = guarda;
+                match preparar() {
+                    Ok(preparo) => conduzir(preparo, &identidade, &recebe, &emitir),
+                    Err(motivo) => recusado(&identidade, &recebe, &emitir, motivo),
+                }
+            });
+        if iniciada.is_err() {
+            ativo.store(false, Ordering::SeqCst);
+            emitir_fora(identidade_fora.cartao(EstadoCartao::Erro {
+                motivo: motivo_de_interrupcao(),
+            }));
+            return true;
+        }
+        trabalhos.insert(
+            chave,
+            Entrada {
+                aba,
+                recados: envia,
+                ativo,
+            },
+        );
+        true
+    }
+
+    /// Entrega o comando. `Err` quer dizer que nenhuma thread vai atender.
+    pub fn comandar(&self, impressora: &str, comando: Comando) -> Result<(), ()> {
+        let trabalhos = self
+            .trabalhos
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let entrada = trabalhos.get(impressora).ok_or(())?;
+        entrada
+            .recados
+            .send(Recado::Comando(comando))
+            .map_err(|_| ())
+    }
+
+    /// Os trabalhos deste documento param de ser acompanhados. Nada e apagado da fila.
+    pub fn soltar_aba(&self, aba: u64) {
+        let trabalhos = self
+            .trabalhos
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        for entrada in trabalhos.values().filter(|entrada| entrada.aba == aba) {
+            let _ = entrada.recados.send(Recado::Soltar);
+        }
+    }
+}
+
+/// A preparacao falhou: nada foi enviado. O cartao mostra o motivo ate o usuario pedir de novo.
+fn recusado(identidade: &Identidade, recados: &Receiver<Recado>, emitir: &Emissor, motivo: Motivo) {
+    emitir(identidade.cartao(EstadoCartao::Erro { motivo }));
+    loop {
+        match recados.recv() {
+            Ok(Recado::Comando(Comando::Cancelar)) => {
+                emitir(identidade.cartao(EstadoCartao::Cancelado));
+                return;
+            }
+            Ok(Recado::Comando(_)) => {}
+            Ok(Recado::Soltar) | Err(_) => return,
+        }
+    }
+}
+
+/// O caminho do PDF e o tamanho do lote, ja conferidos.
+#[derive(Debug, Clone)]
+pub struct Pedido {
+    pub caminho: String,
+    pub folhas_por_lote: usize,
+}
+
+impl Pedido {
+    /// Numero vindo de fora: zero vira recusa e o que passa do limite vai ao limite.
+    pub fn novo(caminho: String, folhas_por_lote: usize) -> Result<Self, Motivo> {
+        if folhas_por_lote == 0 {
+            return Err(Motivo::novo("pdf", "o lote deve ter ao menos uma folha"));
+        }
+        Ok(Self {
+            caminho,
+            folhas_por_lote: folhas_por_lote.min(LOTE_MAXIMO),
+        })
+    }
+}
+
+fn motivo_do_pdf(erro: &documento::ErroDocumento) -> Motivo {
+    Motivo::novo("pdf", format!("não foi possível preparar {}", erro.nome))
+}
+
+fn planejar(
+    dimensoes: &[DimensoesPagina],
+    folhas_por_lote: usize,
+    perfil: PerfilImpressora,
+) -> Result<Vec<LoteDoFluxo>, Motivo> {
+    let lotes = plano_lotes_por_papel(dimensoes, folhas_por_lote, OrdemPassadas::default(), perfil)
+        .map_err(|erro| Motivo::novo("pdf", erro.to_string()))?;
+    Ok(fluxo::lotes_do_plano(&lotes))
+}
+
+/// A impressora simulada le o mesmo PDF e o mesmo plano, mas nada vai a uma fila.
+pub fn preparar_simulada(
+    modelo: ModeloImpressora,
+    pedido: &Pedido,
+) -> Result<Preparo<SimGuiado>, Motivo> {
+    let lido = leitura_pdf::ler_pdf(&pedido.caminho).map_err(|erro| motivo_do_pdf(&erro))?;
+    let lotes = planejar(&lido.dimensoes, pedido.folhas_por_lote, modelo.perfil())?;
+    let backend = SimGuiado::novo(Mecanica::do_modelo(modelo), modelo.gesto().into());
+    let condutor =
+        Condutor::novo(backend, lotes, ESPERA_SIMULADA).map_err(|erro| motivo_do_job(&erro))?;
+    Ok(Preparo {
+        condutor,
+        recolocar: Recolocar::da_instrucao(Instrucao::do_modelo(modelo)),
+        vira_para_ler: fluxo::vira_para_ler(modelo),
+    })
+}
+
+/// Fila real: confere de novo tudo o que a interface ja filtrou, porque a lista dela pode estar
+/// velha. Nenhuma pagina sai daqui; o envio so comeca depois.
+#[cfg(windows)]
+pub fn preparar_fila(
+    nome: &str,
+    pedido: &Pedido,
+) -> Result<Preparo<plots_windows::BackendWindows>, Motivo> {
+    let perfis = impressoras::ler_perfis_do_sistema()
+        .map_err(|erro| Motivo::novo("perfil", erro.to_string()))?;
+    let entrada = perfis.obter(nome).ok_or_else(|| {
+        Motivo::novo(
+            "perfil",
+            format!("a impressora '{nome}' não tem perfil salvo"),
+        )
+    })?;
+    let lido = leitura_pdf::ler_pdf(&pedido.caminho).map_err(|erro| motivo_do_pdf(&erro))?;
+    let lotes = planejar(&lido.dimensoes, pedido.folhas_por_lote, entrada.perfil)?;
+    let pasta = impressoras::pasta_de_saida_do_sistema();
+    let filas =
+        plots_windows::listar_filas().map_err(|erro| Motivo::novo("sistema", erro.to_string()))?;
+    let fila = plots_windows::decidir_fila(&filas, nome, pasta.is_some())
+        .map_err(|recusa| motivo_da_recusa(nome, recusa))?;
+    if impressoras::fila_com_problema(fila) {
+        return Err(Motivo::novo(
+            "fila",
+            format!("a fila '{nome}' não pode receber agora; veja o estado dela na lista"),
+        ));
+    }
+    let backend =
+        plots_windows::BackendWindows::novo(fila, lido.origem, lido.dimensoes, pasta.as_deref())
+            .map_err(|erro| erro.para_motivo())?;
+    let condutor =
+        Condutor::novo(backend, lotes, fluxo::ESPERA_REAL).map_err(|erro| motivo_do_job(&erro))?;
+    Ok(Preparo {
+        condutor,
+        recolocar: recolocar_do_perfil(entrada.modelo, entrada.gesto_texto.clone()),
+        vira_para_ler: entrada.modelo.is_some_and(fluxo::vira_para_ler),
+    })
+}
+
+/// Recusa de fila em um sistema que nao tem spooler.
+#[cfg_attr(windows, allow(dead_code))]
+pub fn fila_indisponivel() -> Motivo {
+    Motivo::novo(
+        "sistema",
+        "o envio à impressora só está disponível no Windows",
+    )
+}
+
+/// Com modelo, o gesto e o dele; sem modelo, vale o que foi feito na calibracao.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn recolocar_do_perfil(modelo: Option<ModeloImpressora>, texto: Option<String>) -> Recolocar {
+    match modelo {
+        Some(modelo) => Recolocar::da_instrucao(Instrucao::do_modelo(modelo)),
+        None => Recolocar {
+            lado: None,
+            virada: None,
+            texto_do_perfil: texto,
+        },
+    }
+}
+
+/// Sem arquivo de saida, uma fila que pergunta o nome do arquivo e recusada: o sistema abriria um
+/// dialogo e o trabalho ficaria parado.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn motivo_da_recusa(nome: &str, recusa: plots_windows::RecusaDeFila) -> Motivo {
+    use plots_windows::RecusaDeFila as R;
+    match recusa {
+        R::Inexistente => Motivo::novo(
+            "fila_inexistente",
+            format!("a fila '{nome}' não existe neste sistema"),
+        ),
+        R::Fax => Motivo::novo(
+            "fila_fax",
+            format!("a fila '{nome}' é um fax compartilhado; o envio não usa fax"),
+        ),
+        R::PedeArquivo => Motivo::novo(
+            "fila_pede_arquivo",
+            format!("a fila '{nome}' pede o nome do arquivo em um diálogo, e esta versão não abre esse diálogo"),
+        ),
+    }
+}
+
+/// O que a confirmacao mostra antes do envio.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResumoDoEnvio {
+    pub paginas: usize,
+    pub lotes: usize,
+    pub papeis: Vec<PapelDoCartao>,
+    pub pares_mistos: Vec<(usize, usize)>,
+    pub assinado: bool,
+}
+
+/// Lotes e papeis nao dependem do perfil: o plano padrao diz quantos sao.
+pub fn resumo_do_envio(
+    caminho: &str,
+    folhas: usize,
+) -> Result<ResumoDoEnvio, documento::ErroDocumento> {
+    let lido = leitura_pdf::ler_pdf(caminho)?;
+    let falha = || documento::falha_inesperada(caminho);
+    let folhas = folhas.clamp(1, LOTE_MAXIMO);
+    let lotes = plano_lotes_por_papel(
+        &lido.dimensoes,
+        folhas,
+        OrdemPassadas::default(),
+        PerfilImpressora::default(),
+    )
+    .map_err(|_| falha())?;
+    let pares_mistos =
+        plots_core::pares_com_orientacao_mista(&lido.dimensoes).map_err(|_| falha())?;
+    let mut papeis: Vec<&Papel> = Vec::new();
+    for lote in &lotes {
+        if !papeis
+            .iter()
+            .any(|papel| fluxo::mesma_folha(papel, &lote.papel))
+        {
+            papeis.push(&lote.papel);
+        }
+    }
+    Ok(ResumoDoEnvio {
+        paginas: lido.dimensoes.len(),
+        lotes: lotes.len(),
+        papeis: papeis.into_iter().map(papel_do_cartao).collect(),
+        pares_mistos,
+        assinado: lido.assinado,
+    })
+}
+
+#[cfg(test)]
+#[path = "trabalhos_testes.rs"]
+mod testes;

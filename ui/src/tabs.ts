@@ -1,3 +1,4 @@
+import { cartaoEmAndamento, comCartao, ehRecusaDeOcupada, type Cartao } from "./cartoes";
 import { limitarAoIntervaloDoLote, LOTE_PADRAO } from "./impressoras";
 
 export interface Documento {
@@ -20,6 +21,8 @@ export interface Aba {
   /** Folhas por lote, sempre dentro do intervalo aceito. */
   tamanhoLote: number;
   paginas: PaginasDaAba;
+  /** Um cartao por impressora; trocar de aba troca a lista, e os trabalhos seguem. */
+  cartoes: readonly Cartao[];
 }
 
 export interface EstadoAbas {
@@ -44,7 +47,9 @@ export type AcaoAbas =
   | { tipo: "alternar_impressora"; id: number; impressora: string }
   | { tipo: "definir_lote"; id: number; tamanho: number }
   | { tipo: "paginas_contadas"; id: number; total: number }
-  | { tipo: "paginas_recusadas"; id: number; motivo: string };
+  | { tipo: "paginas_recusadas"; id: number; motivo: string }
+  | { tipo: "cartao"; cartao: Cartao }
+  | { tipo: "dispensar_cartao"; id: number; impressora: string };
 
 export const estadoInicial: EstadoAbas = {
   abas: [],
@@ -125,6 +130,7 @@ export function reduzirAbas(estado: EstadoAbas, acao: AcaoAbas): EstadoAbas {
         impressorasMarcadas: [],
         tamanhoLote: LOTE_PADRAO,
         paginas: { estado: "contando" },
+        cartoes: [],
       };
       return { ...estado, abas: [...estado.abas, aba], ativa: id, proximoId: id + 1 };
     }
@@ -177,5 +183,30 @@ export function reduzirAbas(estado: EstadoAbas, acao: AcaoAbas): EstadoAbas {
         ...aba,
         paginas: { estado: "recusado", motivo: acao.motivo },
       }));
+    case "cartao": {
+      const id = acao.cartao.aba;
+      // Um pedido duplicado chega recusado enquanto o cartao do primeiro ainda esta vivo: a recusa nao o substitui.
+      const vivo = estado.abas
+        .find((candidata) => candidata.id === id)
+        ?.cartoes.some(
+          (cartao) => cartao.impressora === acao.cartao.impressora && cartaoEmAndamento(cartao),
+        );
+      if (vivo && ehRecusaDeOcupada(acao.cartao)) return estado;
+      const depois = mudarAba(estado, id, (aba) => ({
+        ...aba,
+        cartoes: comCartao(aba.cartoes, acao.cartao),
+      }));
+      const aba = depois.abas.find((candidata) => candidata.id === id);
+      // O estado real dos trabalhos decide se ha impressao em andamento nesta aba.
+      return aba ? marcarImpressao(depois, id, aba.cartoes.some(cartaoEmAndamento)) : depois;
+    }
+    case "dispensar_cartao": {
+      const depois = mudarAba(estado, acao.id, (aba) => ({
+        ...aba,
+        cartoes: aba.cartoes.filter((cartao) => cartao.impressora !== acao.impressora),
+      }));
+      const aba = depois.abas.find((candidata) => candidata.id === acao.id);
+      return aba ? marcarImpressao(depois, acao.id, aba.cartoes.some(cartaoEmAndamento)) : depois;
+    }
   }
 }

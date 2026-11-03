@@ -9,6 +9,7 @@ use plots_core::{
     plano_documento, ModeloImpressora, OrdemPassadas, Pagina, PerfilImpressora, LIMITE_PAGINAS,
 };
 use plots_pdf::PapelCalibracao;
+use plots_print::fluxo::pares_esperados;
 use plots_print::{
     conferir_folhas,
     job::{ErroJob, EstadoJob, Job, SimBackend},
@@ -478,19 +479,6 @@ pub(crate) fn relatar_folhas(
         }
     }
     Ok((corretas, linhas.len()))
-}
-
-/// Pares de páginas esperados em cada folha do lote, na ordem do documento.
-pub(crate) fn pares_esperados(paginas: &[Pagina]) -> Vec<(Option<usize>, Option<usize>)> {
-    paginas
-        .chunks(2)
-        .map(|par| {
-            (
-                par.first().and_then(|p| p.numero),
-                par.get(1).and_then(|p| p.numero),
-            )
-        })
-        .collect()
 }
 
 /// Rótulo "menor|maior" de uma folha; a página em branco vai por último.
