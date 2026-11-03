@@ -44,7 +44,7 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A017 | Fluxo | Folha de controle opcional no canto do verso | MISSING | Sem ocorrência no código. |
 | PS-A018 | Fluxo | "Reimprimir lote" refaz só aquele lote | OK (`256e8ce`) | "Reimprimir lote" no cartão, com confirmação em fila real; falha ao cancelar não reenvia. |
 | PS-A019 | Interface | Janela sem menus; barra superior única (ícone, botão da lateral, abas, "+", controles) | OK (353f54d) | Barra sem menus, medidas conferidas no app. |
-| PS-A020 | Interface | Splash 480×300, carregamento até 10 s, depois a janela principal | PARTIAL | `bd50a56`: janela, tempos e avisos no app real. Falta a imagem definitiva de 960×600. |
+| PS-A020 | Interface | Splash 480×300, carregamento até 10 s, depois a janela principal | OK (`d4f3325`) | Imagem definitiva do usuário, janela, tempos e avisos no app real. |
 | PS-A021 | Interface | Barra lateral de impressoras com caixa de seleção e seletor de modo (Traseira, Gaveta, "Calibrar…") | OK (826b726) | Lista real com caixa, estado e seletor de modelo: Jato de tinta, Laser e Calibrar. |
 | PS-A022 | Interface | Abas por documento com estado próprio; confirmação ao fechar com impressão em andamento | PARTIAL (353f54d) | A aba guarda só a impressão em andamento; faltam impressoras, intervalo e lote. |
 | PS-A023 | Interface | Atalhos Ctrl+O, Ctrl+T, Ctrl+W, Ctrl+Tab, Ctrl+B; arrastar PDF abre aba | PARTIAL (353f54d) | Ctrl+W, Ctrl+Tab e Ctrl+B testados no app; seletor e arrasto nativos sem teste real. |

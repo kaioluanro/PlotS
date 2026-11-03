@@ -1,6 +1,6 @@
 # STATUS
 
-Requisitos: OK 51 · PARTIAL 33 · MISSING 6 · BUG 0 · N/A 3 (93). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
+Requisitos: OK 52 · PARTIAL 32 · MISSING 6 · BUG 0 · N/A 3 (93). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
 
 | Plano | OK | PARTIAL | MISSING | BUG | N/A | Estado |
 |---|---|---|---|---|---|---|
@@ -14,7 +14,7 @@ Requisitos: OK 51 · PARTIAL 33 · MISSING 6 · BUG 0 · N/A 3 (93). Detalhes em
 | [CLI de impressão](07-cli-impressao.md) | 2 | 2 | 1 | 0 | 0 | Em andamento |
 | [Impressão no Windows](08-impressao-windows.md) | 1 | 6 | 1 | 0 | 0 | Em andamento |
 | [Janela, barra superior e abas](09-janela-e-abas.md) | 1 | 3 | 0 | 0 | 0 | Em andamento |
-| [Tela de abertura](10-splash.md) | 0 | 1 | 0 | 0 | 0 | Em andamento |
+| [Tela de abertura](10-splash.md) | 1 | 0 | 0 | 0 | 0 | Concluído |
 | [Barra lateral de impressoras](11-lateral-impressoras.md) | 3 | 0 | 0 | 0 | 0 | Concluído |
 | [Visualizador de PDF](12-visualizador.md) | 3 | 0 | 0 | 0 | 0 | Concluído |
 | [Fluxo de impressão e recolocação](13-fluxo-e-recolocacao.md) | 5 | 1 | 0 | 0 | 0 | Em andamento |
