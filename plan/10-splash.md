@@ -1,6 +1,6 @@
 # Tela de abertura
 
-**Estado:** Não iniciado · OK 0 · PARTIAL 0 · MISSING 1 · BUG 0 · N/A 0
+**Estado:** Em andamento · OK 0 · PARTIAL 1 · MISSING 0 · BUG 0 · N/A 0
 
 ## Objetivo
 
@@ -8,10 +8,10 @@ Preparar tudo antes de mostrar a janela principal.
 
 ## Plano de implementação
 
-- [ ] Definir a imagem `ui/assets/splash.png` (pendência abaixo)
-- [ ] Janelas `splash` e `main` no Tauri, com carregamento em segundo plano
-- [ ] Mínimo de 800 ms, máximo de 10 s e aviso do que falhou
-- [ ] Fade de 220 ms, com troca direta em movimento reduzido
+- [ ] Definir a imagem `ui/assets/splash.png` (pendência abaixo); por enquanto, marca provisória em SVG (`ui/src/abertura/marca.ts`)
+- [x] Janelas `abertura` e `main` no Tauri, com carregamento em segundo plano
+- [x] Mínimo de 800 ms, máximo de 10 s e aviso do que falhou
+- [x] Fade de 220 ms, com troca direta em movimento reduzido
 
 ## Pronto quando
 
@@ -25,7 +25,15 @@ A janela principal só aparece pronta, e uma falha de carregamento vira aviso, n
 
 | ID | Requisito | Situação |
 |---|---|---|
-| PS-A020 | Splash 480×300, carregamento até 10 s, depois a janela principal | MISSING |
+| PS-A020 | Splash 480×300, carregamento até 10 s, depois a janela principal | PARTIAL |
+
+## Decisões e limitações
+
+- O aviso flutuante mostra só o limite de 10 s e a falta da `pdfium.dll`. Falhas de documento, de filas e de perfis ficam no banner e na barra lateral, com a causa exata.
+- A `pdfium.dll` é só procurada, nos mesmos lugares que a impressão usa, sem carregar. A verificação é feita no início, para o aviso sair mesmo quando o limite estoura.
+- **Limitação conhecida:** em 640 × 420, com os dois avisos juntos, o toast cobre 23 px da parte de baixo de "Abrir PDF". O botão continua acessível e o toast pode ser dispensado.
+- **Em aberto:** em 3 de cerca de 25 execuções a janela principal levou de 9 a 10 s, com a máquina carregada. Não reproduziu em 18 execuções com 6 apps em paralelo (1,3 a 2,6 s). O rastro de depuração diz qual condição faltou, se voltar a ocorrer. Causa não encontrada.
+- Não verificado: build de release, abertura com PDF real por "Abrir com" e a duração do fade medida visualmente.
 
 ## Especificação
 

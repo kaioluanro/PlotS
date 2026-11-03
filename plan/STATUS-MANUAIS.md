@@ -1,6 +1,6 @@
 # STATUS
 
-Requisitos: OK 38 · PARTIAL 33 · MISSING 20 · BUG 0 · N/A 2 (93). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
+Requisitos: OK 38 · PARTIAL 34 · MISSING 19 · BUG 0 · N/A 2 (93). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
 
 | Plano | OK | PARTIAL | MISSING | BUG | N/A | Estado |
 |---|---|---|---|---|---|---|
@@ -14,7 +14,7 @@ Requisitos: OK 38 · PARTIAL 33 · MISSING 20 · BUG 0 · N/A 2 (93). Detalhes e
 | [CLI de impressão](07-cli-impressao.md) | 2 | 2 | 1 | 0 | 0 | Em andamento |
 | [Impressão no Windows](08-impressao-windows.md) | 1 | 6 | 1 | 0 | 0 | Em andamento |
 | [Janela, barra superior e abas](09-janela-e-abas.md) | 1 | 3 | 0 | 0 | 0 | Em andamento |
-| [Tela de abertura](10-splash.md) | 0 | 0 | 1 | 0 | 0 | Não iniciado |
+| [Tela de abertura](10-splash.md) | 0 | 1 | 0 | 0 | 0 | Em andamento |
 | [Barra lateral de impressoras](11-lateral-impressoras.md) | 3 | 0 | 0 | 0 | 0 | Concluído |
 | [Visualizador de PDF](12-visualizador.md) | 0 | 1 | 2 | 0 | 0 | Em andamento |
 | [Fluxo de impressão e recolocação](13-fluxo-e-recolocacao.md) | 0 | 2 | 4 | 0 | 0 | Em andamento |
@@ -38,6 +38,7 @@ Requisitos: OK 38 · PARTIAL 33 · MISSING 20 · BUG 0 · N/A 2 (93). Detalhes e
 | perfis | `72030fb` | concluído |
 | pdfs-reais | `25557c9` | concluído: 64 de 64 PDFs reais aceitos, conferidos no PyMuPDF |
 | cli-calibrar-imprimir | `92772e5` | concluído, sem envio real |
+| tela-abertura | `bd50a56` | concluído, sem a imagem definitiva |
 | interface-base | `353f54d` | concluído; janela aprovada pelo usuário |
 | windows-filas | `a9f9185` | concluído |
 | windows-envio | `126ac26` | concluído; conferido só na fila de PDF do Windows, sem impressora real |

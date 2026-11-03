@@ -10,7 +10,7 @@ Responda em português brasileiro. Trabalhe no worktree isolado em que você foi
 - Sem identificadores do plano em código e testes. Autoverificação: `sh E:/PlotS/.claude/team/selfcheck.sh <base> plots-pdf`, com `<base>` igual ao commit de `master` em que começou.
 
 ## PDFs reais do usuário
-Autorizados em `C:/Users/Kaio Luan/Downloads`. **Somente leitura**, sem copiar nada para o repositório, testes ou relatório, e sem nomes nem conteúdo no relatório: cada arquivo é um número. Saídas temporárias dentro de `target/`, apagadas ao fim. Python sempre com `-I`.
+Autorizados em `C:/Users/Kaio Luan/Downloads`. **Somente leitura**, sem copiar nada para o repositório, testes ou relatório, e sem nomes nem conteúdo no relatório: cada arquivo é um número. Saídas temporárias em `C:/Users/Kaio Luan/AppData/Local/plots-build/pdf-robustez/saidas`, nunca no E:, apagadas ao fim. Python sempre com `-I`.
 
 ## Fontes
 `plan/02-geracao-pdf.md`, no worktree. Não abra `E:\PlotS\plan\estilo-ui-ux.md` nem `E:\PlotS\codex-session-*.md`.
