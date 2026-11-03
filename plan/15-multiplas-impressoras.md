@@ -1,6 +1,6 @@
 # Múltiplas impressoras
 
-**Estado:** Em andamento · OK 0 · PARTIAL 4 · MISSING 4 · BUG 0 · N/A 0
+**Estado:** Em andamento · OK 3 · PARTIAL 4 · MISSING 0 · BUG 0 · N/A 1
 
 ## Objetivo
 
@@ -10,10 +10,19 @@ Enviar o mesmo documento a várias impressoras, cada uma com o próprio perfil.
 
 - [x] Modos espelho e divisão no núcleo
 - [x] Máquina de estados por job
-- [ ] Jobs paralelos com `tokio`
+- [x] Jobs paralelos, uma thread por trabalho, sem `tokio`
 - [x] Consulta periódica ao spooler, com aviso de papel acabado ou atolado (`ca10be1`); falta conferir com driver real
-- [ ] Grupos salvos de impressoras
-- [ ] Modos na interface
+- [x] Grupos salvos de impressoras (`62d51a4`)
+- [x] Modos na interface (`62d51a4`)
+
+## Decisões
+
+- **Sem `tokio`:** cada trabalho já roda na própria thread; a especificação cita `tokio`, mas o requisito vale pelo comportamento.
+- **Divisão com impressora ocupada ou fora da conta:** o botão fica desabilitado com o motivo, em vez de mandar o documento inteiro à livre. Com três ou mais marcadas e uma ocupada, a divisão é refeita entre as livres, e a confirmação mostra quem imprime o quê. Desmarcada a ocupada, o seletor some, e o envio é de uma impressora só.
+- **Documento trocado:** total de páginas e lotes são conferidos ao preparar. Um PDF com o mesmo total e outro conteúdo passa: risco baixo, aceito.
+- **Rodapé na altura curta:** só cede com a divisão em curso ou quando toda marcada tem cartão em andamento nesta aba. Em 640x420, com lote faltando e nome de 60 caracteres, só um lote da junção aparece sem rolar: o que vem antes é a falta, que importa mais.
+- **Pendente, menor:** fio de 1 px sob a faixa do nome presa; poucos pixels de rolagem nos campos do rodapé com erro no nome de grupo; nome de grupo longo cortado sem reticências; hover de botão secundário no tema claro, token comum.
+- **Não verificado:** papel e impressora real; divisão em fila real, que só chegou à confirmação; três impressoras até o fim, só com dados de teste; todas ocupadas em outra aba, só teste de unidade; título de Reimprimir em divisão e `todosConferem` na tela; cores forçadas na faixa; leitor de tela real.
 
 ## Pronto quando
 
@@ -27,14 +36,14 @@ Duas impressoras avançam de forma independente e entregam o mesmo maço.
 
 | ID | Requisito | Situação |
 |---|---|---|
-| PS-A044 | tokio, um job por impressora em paralelo | MISSING |
-| PS-A061 | Marcar várias impressoras e enviar a mesma origem, cada uma com o perfil próprio | MISSING |
+| PS-A044 | tokio, um job por impressora em paralelo | N/A |
+| PS-A061 | Marcar várias impressoras e enviar a mesma origem, cada uma com o perfil próprio | OK |
 | PS-A062 | Descoberta das filas do sistema (EnumPrintersW) | PARTIAL (a9f9185) |
 | PS-A064 | Máquina de estados por job: Ocioso, FrenteEnviada, AguardandoRecolocacao, VersoEnviado, Concluído, Erro | PARTIAL |
-| PS-A065 | Modos espelho e divisão | PARTIAL |
+| PS-A065 | Modos espelho e divisão | OK |
 | PS-A066 | Consulta periódica do spooler; avisa papel acabado ou atolado | PARTIAL |
-| PS-A067 | Grupos salvos de impressoras ("Todas do escritório") | MISSING |
-| PS-A080 | Várias impressoras, jobs paralelos, espelho e divisão, status do spooler, fila virtual "PlotS" | MISSING |
+| PS-A067 | Grupos salvos de impressoras ("Todas do escritório") | OK |
+| PS-A080 | Várias impressoras, jobs paralelos, espelho e divisão, status do spooler, fila virtual "PlotS" | PARTIAL |
 
 ## Especificação
 

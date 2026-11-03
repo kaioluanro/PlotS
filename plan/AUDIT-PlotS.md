@@ -68,7 +68,7 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A041 | Arquitetura | lopdf para reordenar, extrair, inserir página em branco e `/Rotate` | OK | `plots-pdf/src/lib.rs:112-244`. Testes `reabre_ordem_heranca_rotacao_e_branco` (lib.rs:630) e outros. Verificado pelos PDFs gerados. |
 | PS-A042 | Arquitetura | pdfium-render para rasterizar (impressoras que não aceitam PDF) | PARTIAL (126ac26) | `pdfium-render` rasteriza na resolução da fila (sem impressora real; conferido só na fila de PDF do Windows). |
 | PS-A043 | Arquitetura | Linux e macOS com IPP/CUPS ou `lp` | MISSING | Fase futura. AGENTS decide que o CUPS fica para depois do backend Windows. |
-| PS-A044 | Arquitetura | tokio, um job por impressora em paralelo | MISSING | Fase 5. |
+| PS-A044 | Arquitetura | tokio, um job por impressora em paralelo | N/A (`62d51a4`) | Cada trabalho roda na própria thread; o paralelismo vale pelo comportamento, sem tokio. |
 | PS-A045 | Arquitetura | Config com serde, toml e directories; perfis em `%APPDATA%/plots/perfis.toml` | PARTIAL | Biblioteca `plots-perfis` (72030fb); falta usar no CLI e na interface. |
 | PS-A046 | Arquitetura | Erros com thiserror e logs com tracing | PARTIAL | Erros escritos à mão (`plots-core/src/lib.rs:107-128`, `plots-pdf/src/lib.rs:8-33`). Sem thiserror nem tracing. |
 | PS-A047 | Arquitetura | Frontend React + TypeScript, CSS Modules, lucide-react, Radix | OK (353f54d) | React, TypeScript, CSS Modules, lucide e Radix. |
@@ -85,13 +85,13 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A058 | Papel | Frente e verso de tamanhos diferentes são recusados antes de imprimir | OK | `plots-core/src/lib.rs:385-397`. Verificado: `personalizado-par.pdf` (595×842 + 200×300) sai com "as páginas 1 e 2 têm tamanhos incompatíveis para a mesma folha", exit 2. Teste `rejeita_paginas_de_tamanhos_incompativeis_na_mesma_folha` (`plots-cli/tests/cli.rs:260-281`). |
 | PS-A059 | Papel | Frente e verso da mesma folha com mesma orientação (retrato e paisagem) | OK (882ba68) | Ver BUG-1. Orientação diferente é aceita sem aviso. Decisão do usuário: bloquear ou só avisar. |
 | PS-A060 | Papel | Opção "Ajustar ao papel" (imprimir Carta em A4) | MISSING | Não existe no código. |
-| PS-A061 | Múltiplas | Marcar várias impressoras e enviar a mesma origem, cada uma com o perfil próprio | MISSING | CLI aceita uma impressora virtual por comando. |
+| PS-A061 | Múltiplas | Marcar várias impressoras e enviar a mesma origem, cada uma com o perfil próprio | OK (`62d51a4`) | Várias impressoras, cada uma com o próprio perfil; conferido nas simuladas, fila real só até a confirmação. |
 | PS-A062 | Múltiplas | Descoberta das filas do sistema (EnumPrintersW) | PARTIAL (a9f9185) | `plots filas` lista as filas e o estado com `EnumPrintersW`; falta usar na interface. |
 | PS-A063 | Múltiplas | Perfil por fila: chave com o nome da fila e apelido amigável | PARTIAL | Chave pelo nome exato da fila e apelido em `plots-perfis` (72030fb); falta a tela de apelido. |
 | PS-A064 | Múltiplas | Máquina de estados por job: Ocioso, FrenteEnviada, AguardandoRecolocacao, VersoEnviado, Concluído, Erro | PARTIAL | `plots-print/src/job.rs:28-35` usa `Pronto` no lugar de `Ocioso`. Demais estados existem. |
-| PS-A065 | Múltiplas | Modos espelho e divisão | PARTIAL | `plots-core/src/distribuicao.rs:52-80`, testes em lib 86-124. Não é usado por CLI nem UI. |
+| PS-A065 | Múltiplas | Modos espelho e divisão | OK (`62d51a4`) | Espelho e divisão na janela, com o intervalo aplicado antes da divisão. |
 | PS-A066 | Múltiplas | Consulta periódica do spooler; avisa papel acabado ou atolado | PARTIAL (`ca10be1`) | Consulta distingue papel acabado, atolado e sem resposta; só com backend falso, sem driver real. |
-| PS-A067 | Múltiplas | Grupos salvos de impressoras ("Todas do escritório") | MISSING | Fase 5. |
+| PS-A067 | Múltiplas | Grupos salvos de impressoras ("Todas do escritório") | OK (`62d51a4`) | Grupos salvos no arquivo de perfis, com grupo inválido ignorado e preservado. |
 | PS-A068 | Fase 1 | Testes unitários: lotes pares, ímpares, 1 folha e as 8 combinações de perfil | OK | `plots-core/src/lib.rs:512-586`. `cargo test` passa. |
 | PS-A069 | Fase 1 | Crate `plots-core` com lógica pura, sem E/S | OK | `plots-core/src/` (sem dependências externas em `plots-core/Cargo.toml`). |
 | PS-A070 | Fase 2 | PDF de teste de calibração com números grandes e setas | OK (cf22592) | Não há geração de texto em `src/`. `.qa-pdf/make.py` é um script de QA com PyMuPDF, fora do repositório, sem integração. |
@@ -104,7 +104,7 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A077 | Fase 3 | Critério: simulação correta nas duas impressoras virtuais | PARTIAL | `plots simular` está correto (PS-A028). O critério completo depende de `imprimir` e `calibrar`. |
 | PS-A078 | Fase 3 | Critério: 3 lotes seguidos sem erro numa impressora real | MISSING | Não verificável nesta máquina: não há impressora real e nada foi enviado a impressoras. Depende de decisão do usuário. |
 | PS-A079 | Fase 4 | Interface Tauri + pdf.js: visualizador, painel de impressoras, cartões com figura, fluxo sem terminal | PARTIAL (353f54d) | Só a janela; faltam visualizador, impressoras e cartões. |
-| PS-A080 | Fase 5 | Várias impressoras, jobs paralelos, espelho e divisão, status do spooler, fila virtual "PlotS" | MISSING | Bloco. Só o núcleo de distribuição existe (PS-A065). |
+| PS-A080 | Fase 5 | Várias impressoras, jobs paralelos, espelho e divisão, status do spooler, fila virtual "PlotS" | PARTIAL (`62d51a4`) | Falta a fila virtual; envio paralelo, modos e status já existem. |
 | PS-A081 | Fase 6 | Instalador (tauri bundle), reimprimir lote, folha de controle, histórico | PARTIAL (`1a1f6d7`) | Instalador NSIS por usuário gerado, não executado. Faltam folha de controle e histórico. |
 | PS-A082 | Estrutura | Workspace Cargo com plots-core, plots-print, plots-cli, src-tauri e ui | OK (353f54d) | Workspace com `src-tauri` e `ui`. |
 | PS-A083 | Limpeza do disco | Um único `target/` (até 2 GB); artefatos de verificação removidos após o registro | PARTIAL | `target/` tem 444 MB. `.qa-pdf/` mantém `entrada.pdf`, `saida.pdf`, `saida-1..3.png` da sessão anterior, já registrados. Os arquivos da auditoria foram apagados no fim. |
