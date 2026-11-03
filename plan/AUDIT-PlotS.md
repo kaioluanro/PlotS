@@ -37,7 +37,7 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A010 | Algoritmo | Gerar `passada1.pdf` e `passada2.pdf` temporários com lopdf | PARTIAL | Gerados como `lote-NNNN-passada-N.pdf` (`plots-cli/src/lib.rs:278-284`), persistentes, não temporários. Nome diverge da especificação. |
 | PS-A011 | Algoritmo | Mostrar o gesto de recolocação e esperar "Imprimir verso" antes da passada 2 | OK (`256e8ce`) | Cartão mostra o gesto e espera "Imprimir verso"; conferido no app com as duas simuladas. |
 | PS-A012 | Gesto único | Cartão com a frase fixa e a figura do gesto | PARTIAL (`256e8ce`) | Cartão com a frase do gesto. Falta a figura. |
-| PS-A013 | Fluxo | Abrir PDF (arrastar, "Abrir com") e escolher o intervalo de páginas | MISSING | Fase 4. CLI só aceita o arquivo inteiro (`gerar-pdf`, `plots-cli/src/lib.rs:225-258`). |
+| PS-A013 | Fluxo | Abrir PDF (arrastar, "Abrir com") e escolher o intervalo de páginas | PARTIAL (`b29796e`) | Abrir PDF pela barra e por "Abrir com". Falta escolher o intervalo de páginas e conferir arrastar. |
 | PS-A014 | Fluxo | Marcar impressoras e tamanho do lote (padrão 10 folhas) | OK (f6e3433) | Caixas por aba e campo de lote com padrão 10, de 1 a 50. |
 | PS-A015 | Fluxo | "Imprimir frente" envia para cada impressora a ordem do seu perfil | PARTIAL (`256e8ce`) | Envio pela janela conferido nas simuladas e na fila de PDF; sem impressora real. |
 | PS-A016 | Fluxo | Botão do verso libera só depois que o spooler confirma a frente | OK (`256e8ce`) | Verso só libera com a confirmação do `Job`; o texto avisa que isso não garante que o papel saiu. |
@@ -49,7 +49,7 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A022 | Interface | Abas por documento com estado próprio; confirmação ao fechar com impressão em andamento | PARTIAL (353f54d) | A aba guarda só a impressão em andamento; faltam impressoras, intervalo e lote. |
 | PS-A023 | Interface | Atalhos Ctrl+O, Ctrl+T, Ctrl+W, Ctrl+Tab, Ctrl+B; arrastar PDF abre aba | PARTIAL (353f54d) | Ctrl+W, Ctrl+Tab e Ctrl+B testados no app; seletor e arrasto nativos sem teste real. |
 | PS-A024 | Interface | Seleção de impressoras por documento (decidido no AGENTS) | OK (f6e3433) | Cada aba guarda as próprias impressoras; aba nova começa sem marcas. |
-| PS-A025 | Interface | Visualizador pdf.js com miniaturas, página e zoom | MISSING | Fase 4. pdf.js não está no repositório. |
+| PS-A025 | Interface | Visualizador pdf.js com miniaturas, página e zoom | OK (`b29796e`) | Páginas, miniaturas, página e zoom conferidos no app real com PDFs de teste. |
 | PS-A026 | Interface | Tokens da norma de estilo, tema escuro, foco visível, ESC fecha diálogos, sem emoji, `aria-live` para o estado | PARTIAL (f6e3433) | Estado com ponto e texto e `aria-live` na lateral; falta o cartão de impressão. |
 | PS-A027 | Interface | Textos em pt-BR e en via `t()` | OK (353f54d) | `t()` em pt-BR e en nesta tela. |
 | PS-A028 | Modo simulação | Rodar o fluxo inteiro sem impressora (`simular`) | OK | `plots-cli/src/lib.rs:51-223`. Testes `plots-cli/tests/cli.rs:8-43` e `94-149`. Execução verificada. |
@@ -63,7 +63,7 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A036 | Modo simulação | Exportar `passada1.pdf` e `passada2.pdf` para abrir no Firefox | PARTIAL | `gerar-pdf` gera os PDFs (`plots-cli/src/lib.rs:225-310`). Nomes diferentes. Abertura no Firefox não verificada. |
 | PS-A037 | Modo simulação | Exportar PDF de folhas finais (frente e verso lado a lado) | OK (6baa24a) | `gerar-pdf --folhas-finais`, conferido com PyMuPDF; sem conferência no Firefox. |
 | PS-A038 | Modo simulação | Modelo com `proptest`: 8 perfis, 1 a 200 páginas, lotes de 1 a 50 folhas, maço final 1\|2, 3\|4 | OK (6baa24a) | proptest com tabela fixa de 8 perfis; só traseira e gaveta correspondem às impressoras simuladas, e o modelo da gaveta será revisto. |
-| PS-A039 | Arquitetura | App Tauri 2 com webview e pdf.js | PARTIAL (353f54d) | App Tauri 2 pronto; falta o pdf.js. |
+| PS-A039 | Arquitetura | App Tauri 2 com webview e pdf.js | OK (`b29796e`) | App Tauri 2 com webview e pdf.js em worker, sem afrouxar a CSP. |
 | PS-A040 | Arquitetura | Camada de backends: trait com duas implementações (Windows e Simulado) | OK (126ac26) | `BackendWindows` e `SimBackend` implementam o mesmo trait. |
 | PS-A041 | Arquitetura | lopdf para reordenar, extrair, inserir página em branco e `/Rotate` | OK | `plots-pdf/src/lib.rs:112-244`. Testes `reabre_ordem_heranca_rotacao_e_branco` (lib.rs:630) e outros. Verificado pelos PDFs gerados. |
 | PS-A042 | Arquitetura | pdfium-render para rasterizar (impressoras que não aceitam PDF) | PARTIAL (126ac26) | `pdfium-render` rasteriza na resolução da fila (sem impressora real; conferido só na fila de PDF do Windows). |
