@@ -1,6 +1,7 @@
-//! Extração de páginas para uma passada de impressão.
+//! Extração de páginas para um PDF de saída de impressão.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::rc::Rc;
 
 use lopdf::{dictionary, Dictionary, Document, Object, ObjectId};
 use plots_core::{Pagina, LIMITE_PAGINAS};
@@ -44,7 +45,11 @@ pub struct PdfOrigem {
 
 impl PdfOrigem {
     pub fn carregar(bytes: &[u8]) -> Result<Self, ErroPdf> {
-        let documento = Document::load_mem(bytes)?;
+        let documento = Document::load_mem_with_options(
+            bytes,
+            lopdf::LoadOptions::with_max_decompressed_size(LIMITE_FLUXO_BYTES),
+        )
+        .map_err(erro_de_carga)?;
         if documento.is_encrypted()
             || documento.was_encrypted()
             || documento.trailer.has(b"Encrypt")
@@ -104,12 +109,13 @@ impl PdfOrigem {
         self.paginas.len()
     }
 
-    /// Tamanho físico de cada página, em milímetros, considerada sua rotação.
+    /// Tamanho físico de cada página, em milímetros, considerada sua rotação. Mede a área que
+    /// o leitor mostra (`MediaBox` cortada pela `CropBox`), não a folha de sangria inteira.
     pub fn dimensoes_paginas(&self) -> Result<Vec<plots_core::DimensoesPagina>, ErroPdf> {
         let mut dimensoes = Vec::with_capacity(self.paginas.len());
         for id in &self.paginas {
             let dict = pagina_com_heranca(&self.documento, *id)?;
-            let [x0, y0, x1, y1] = caixa(&self.documento, dict.get(b"MediaBox")?)?;
+            let [x0, y0, x1, y1] = caixa_visivel(&self.documento, &dict)?;
             let unidade = dict
                 .get(b"UserUnit")
                 .ok()
@@ -132,8 +138,8 @@ impl PdfOrigem {
             if rotacao % 90 != 0 {
                 return Err(ErroPdf::DocumentoInvalido("rotação inválida"));
             }
-            let largura = f64::from(x1 - x0) * f64::from(unidade) * 25.4 / 72.0;
-            let altura = f64::from(y1 - y0) * f64::from(unidade) * 25.4 / 72.0;
+            let largura = (x1 - x0) * f64::from(unidade) * 25.4 / 72.0;
+            let altura = (y1 - y0) * f64::from(unidade) * 25.4 / 72.0;
             let (largura, altura) = if rotacao.rem_euclid(180) == 90 {
                 (altura, largura)
             } else {
@@ -155,6 +161,8 @@ impl PdfOrigem {
             return Err(ErroPdf::DocumentoInvalido("passada vazia ou excessiva"));
         }
         let proibidos = referencias_arvore_original(&self.documento, &self.paginas)?;
+        let mut orcamento = Orcamento::novo();
+        let mut analise = AnaliseForms::default();
         let mut saida = self.documento.clone();
         let pages_id = saida.new_object_id();
         let mut kids = Vec::with_capacity(paginas.len());
@@ -172,6 +180,11 @@ impl PdfOrigem {
                 .ok_or(ErroPdf::PaginaInexistente(numero))?;
             let mut dict = pagina_com_heranca(&self.documento, *id)?;
             retirar_dados_fora_do_desenho(&mut dict);
+            if pagina.numero.is_some() {
+                // A análise não guarda bytes: cada página tem o orçamento inteiro.
+                orcamento.reiniciar();
+                podar_recursos_da_pagina(&self.documento, &mut dict, &mut orcamento, &mut analise)?;
+            }
             let user_unit = dict.get(b"UserUnit").ok().cloned();
             if let Some(valor) = &user_unit {
                 let numero = self.documento.dereference(valor)?.1.as_float()?;
@@ -190,17 +203,7 @@ impl PdfOrigem {
                 // alguns drivers a descartem como completamente vazia.
                 let media = dict.get(b"MediaBox")?.clone();
                 let crop = dict.get(b"CropBox").ok().cloned();
-                let [mut x0, mut y0, mut x1, mut y1] = caixa(&self.documento, &media)?;
-                if let Some(crop) = &crop {
-                    let [cx0, cy0, cx1, cy1] = caixa(&self.documento, crop)?;
-                    x0 = x0.max(cx0);
-                    y0 = y0.max(cy0);
-                    x1 = x1.min(cx1);
-                    y1 = y1.min(cy1);
-                    if x0 >= x1 || y0 >= y1 {
-                        return Err(ErroPdf::DocumentoInvalido("CropBox fora de MediaBox"));
-                    }
-                }
+                let [x0, y0, x1, y1] = caixa_visivel(&self.documento, &dict)?;
                 let deslocamento = ((x1 - x0).min(y1 - y0) * 0.01).min(1.0);
                 let tamanho = (deslocamento * 0.1).min(0.1);
                 let comando = format!(
@@ -379,10 +382,456 @@ fn reais(valores: &[f64]) -> Vec<Object> {
     valores.iter().map(|v| Object::Real(*v as f32)).collect()
 }
 
-/// Conteúdo decodificado de uma página, concatenando todos os fluxos de /Contents.
-fn conteudo_da_pagina(doc: &Document, pagina: &Dictionary) -> Result<Vec<u8>, ErroPdf> {
+/// Maior tamanho, depois de descomprimido, de um fluxo de conteúdo (ou de fluxo de objetos na
+/// abertura). Páginas reais ficam em poucos MiB; 64 MiB deixa folga e ainda impede que um
+/// fluxo pequeno vire gigabytes na memória.
+const LIMITE_FLUXO_BYTES: usize = 64 << 20;
+
+/// Soma máxima do conteúdo descomprimido lido para montar um PDF de saída (passada ou folhas
+/// finais): 256 MiB cobrem centenas de páginas densas e barram um arquivo com muitos fluxos
+/// grandes.
+const LIMITE_TOTAL_BYTES: usize = 256 << 20;
+
+/// Profundidade máxima de formulários dentro de formulários ao procurar recursos usados.
+/// Documentos reais raramente passam de 4; 16 dá folga e limita a recursão.
+const LIMITE_FORMULARIOS_ANINHADOS: usize = 16;
+
+/// Nomes distintos aceitos numa varredura (página ou formulário), e na união deles. Passando
+/// disso, a página ou o formulário vira "manter tudo", sem erro: nenhum documento real tem
+/// dezenas de milhares de recursos nomeados no desenho de uma só página.
+const LIMITE_NOMES_DISTINTOS: usize = 65_536;
+
+/// Teto, por saída, do conteúdo descomprimido lido só para a análise. Depois dele, as páginas
+/// restantes deixam de ser podadas (nunca recusadas).
+const LIMITE_ANALISE_BYTES: usize = 1 << 30;
+
+/// Teto, por saída, de nomes percorridos na análise. Depois dele, deixa-se de podar.
+const LIMITE_VISITAS_NOMES: usize = 50_000_000;
+
+const MSG_FLUXO_GRANDE: &str = "fluxo de conteúdo descomprimido passa do limite de 64 MiB";
+const MSG_TOTAL_GRANDE: &str =
+    "conteúdo descomprimido total passa do limite de 256 MiB para um PDF de saída";
+
+/// Quanto conteúdo descomprimido ainda pode ser lido ao montar uma saída.
+struct Orcamento {
+    restante: usize,
+}
+
+impl Orcamento {
+    fn novo() -> Self {
+        Self {
+            restante: LIMITE_TOTAL_BYTES,
+        }
+    }
+
+    /// Devolve o total inteiro: usado quando o conteúdo lido não fica retido na saída.
+    fn reiniciar(&mut self) {
+        self.restante = LIMITE_TOTAL_BYTES;
+    }
+
+    /// Descomprime o fluxo respeitando o limite por fluxo e o que resta do total. O segundo
+    /// valor diz se o resultado é suspeito: fluxo com filtro e dados que decodifica para nada,
+    /// o que a biblioteca de leitura devolve sem erro quando os dados estão corrompidos. Fica
+    /// um risco residual: um Flate truncado devolve só a parte lida, sem sinal de erro, e os
+    /// nomes que viriam depois do corte não podem ser vistos.
+    fn decodificar(&mut self, fluxo: &lopdf::Stream) -> Result<(Vec<u8>, bool), ErroPdf> {
+        let limite = self.restante.min(LIMITE_FLUXO_BYTES);
+        match fluxo.decompressed_content_with_limit(limite) {
+            Ok(bytes) => {
+                self.restante = self.restante.saturating_sub(bytes.len());
+                let suspeito =
+                    bytes.is_empty() && fluxo.dict.has(b"Filter") && !fluxo.content.is_empty();
+                Ok((bytes, suspeito))
+            }
+            Err(lopdf::Error::Decompress(lopdf::DecompressError::MemoryLimitExceeded {
+                ..
+            })) => Err(ErroPdf::DocumentoInvalido(
+                if self.restante < LIMITE_FLUXO_BYTES {
+                    MSG_TOTAL_GRANDE
+                } else {
+                    MSG_FLUXO_GRANDE
+                },
+            )),
+            Err(outro) => Err(outro.into()),
+        }
+    }
+}
+
+/// Traduz a recusa por tamanho descomprimido na abertura; os demais erros seguem como estão.
+fn erro_de_carga(erro: lopdf::Error) -> ErroPdf {
+    match erro {
+        lopdf::Error::Decompress(lopdf::DecompressError::MemoryLimitExceeded { .. }) => {
+            ErroPdf::DocumentoInvalido(MSG_FLUXO_GRANDE)
+        }
+        outro => outro.into(),
+    }
+}
+
+/// Caixa que o leitor mostra: `MediaBox` cortada pela `CropBox`, quando há.
+fn caixa_visivel(doc: &Document, pagina: &Dictionary) -> Result<[f64; 4], ErroPdf> {
+    let [mut x0, mut y0, mut x1, mut y1] = caixa(doc, pagina.get(b"MediaBox")?)?.map(f64::from);
+    if let Ok(crop) = pagina.get(b"CropBox") {
+        let [cx0, cy0, cx1, cy1] = caixa(doc, crop)?.map(f64::from);
+        x0 = x0.max(cx0);
+        y0 = y0.max(cy0);
+        x1 = x1.min(cx1);
+        y1 = y1.min(cy1);
+        if x0 >= x1 || y0 >= y1 {
+            return Err(ErroPdf::DocumentoInvalido("CropBox fora de MediaBox"));
+        }
+    }
+    Ok([x0, y0, x1, y1])
+}
+
+/// Troca os recursos da página pelos que o desenho dela usa. Se o conteúdo não puder ser
+/// analisado, os recursos ficam como estavam; estourar um limite de tamanho é erro.
+fn podar_recursos_da_pagina(
+    doc: &Document,
+    pagina: &mut Dictionary,
+    orcamento: &mut Orcamento,
+    analise: &mut AnaliseForms,
+) -> Result<(), ErroPdf> {
+    let Ok(recursos) = pagina.get(b"Resources").cloned() else {
+        return Ok(());
+    };
+    if analise.bytes_restantes == 0 {
+        return Ok(());
+    }
+    let (conteudo, legivel) = match conteudo_da_pagina(doc, pagina, orcamento) {
+        Ok(lido) => lido,
+        Err(ErroPdf::Pdf(_)) => return Ok(()),
+        Err(outro) => return Err(outro),
+    };
+    let podados = recursos_podados(
+        doc,
+        &recursos,
+        pagina,
+        legivel.then_some(conteudo.as_slice()),
+        orcamento,
+        analise,
+    )?;
+    pagina.set("Resources", podados);
+    Ok(())
+}
+
+/// Nomes (`/Nome`, com `#XX` decodificado) que aparecem em qualquer ponto dos bytes, sem
+/// distinguir texto, comentário nem dado de imagem. Pode sobrar nome, nunca faltar: é a
+/// varredura que decide o que ainda pode ser desenhado. Um `#` que não é seguido de dois
+/// dígitos hexadecimais fica no nome, e o trecho anterior a ele também entra, porque a
+/// biblioteca de leitura encerra o nome ali. Devolve `None` quando passa de `max_nomes`
+/// nomes distintos ou esgota `visitas` (uma por `/` encontrada).
+fn nomes_nos_bytes(
+    bytes: &[u8],
+    max_nomes: usize,
+    visitas: &mut usize,
+) -> Option<HashSet<Vec<u8>>> {
+    let separador = |b: u8| {
+        matches!(
+            b,
+            0 | 9
+                | 10
+                | 12
+                | 13
+                | 32
+                | b'('
+                | b')'
+                | b'<'
+                | b'>'
+                | b'['
+                | b']'
+                | b'{'
+                | b'}'
+                | b'/'
+                | b'%'
+        )
+    };
+    let hexa = |b: u8| (b as char).to_digit(16);
+    let mut nomes: HashSet<Vec<u8>> = HashSet::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] != b'/' {
+            i += 1;
+            continue;
+        }
+        *visitas = visitas.checked_sub(1)?;
+        i += 1;
+        let mut nome = Vec::new();
+        let mut prefixo = None;
+        while i < bytes.len() && !separador(bytes[i]) {
+            let decodificado = if bytes[i] == b'#' {
+                let digitos = (
+                    bytes.get(i + 1).and_then(|&b| hexa(b)),
+                    bytes.get(i + 2).and_then(|&b| hexa(b)),
+                );
+                match digitos {
+                    (Some(a), Some(b)) => Some((a * 16 + b) as u8),
+                    _ => {
+                        prefixo.get_or_insert_with(|| nome.clone());
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+            match decodificado {
+                Some(byte) => {
+                    nome.push(byte);
+                    i += 3;
+                }
+                None => {
+                    nome.push(bytes[i]);
+                    i += 1;
+                }
+            }
+        }
+        for candidato in prefixo.into_iter().chain(std::iter::once(nome)) {
+            if !nomes.contains(&candidato) {
+                nomes.insert(candidato);
+            }
+        }
+        if nomes.len() > max_nomes {
+            return None;
+        }
+    }
+    Some(nomes)
+}
+
+/// O que se sabe de um formulário: os nomes que aparecem no conteúdo dele e se ele (ou os
+/// recursos dele) exige manter todos os recursos da página.
+struct FormAnalisado {
+    nomes: HashSet<Vec<u8>>,
+    manter_tudo: bool,
+}
+
+/// Formulários já analisados, compartilhados entre as páginas de uma mesma saída: um
+/// formulário repetido em cada página é decodificado e cobrado uma vez. Guarda também o que
+/// ainda cabe nos tetos da análise; passando deles, deixa-se de podar.
+struct AnaliseForms {
+    formularios: HashMap<ObjectId, Rc<FormAnalisado>>,
+    bytes_restantes: usize,
+    visitas_restantes: usize,
+    max_nomes: usize,
+}
+
+impl Default for AnaliseForms {
+    fn default() -> Self {
+        Self::com_limites(
+            LIMITE_ANALISE_BYTES,
+            LIMITE_VISITAS_NOMES,
+            LIMITE_NOMES_DISTINTOS,
+        )
+    }
+}
+
+impl AnaliseForms {
+    fn com_limites(bytes: usize, visitas: usize, max_nomes: usize) -> Self {
+        Self {
+            formularios: HashMap::new(),
+            bytes_restantes: bytes,
+            visitas_restantes: visitas,
+            max_nomes,
+        }
+    }
+
+    /// Varre `bytes`; `None` se a varredura estourou um teto (e então não se poda mais).
+    fn varrer(&mut self, bytes: &[u8]) -> Option<HashSet<Vec<u8>>> {
+        if bytes.len() > self.bytes_restantes {
+            self.bytes_restantes = 0;
+            return None;
+        }
+        self.bytes_restantes -= bytes.len();
+        let nomes = nomes_nos_bytes(bytes, self.max_nomes, &mut self.visitas_restantes);
+        if nomes.is_none() {
+            self.visitas_restantes = 0;
+        }
+        nomes
+    }
+
+    fn obter(
+        &mut self,
+        doc: &Document,
+        id: ObjectId,
+        fluxo: &lopdf::Stream,
+        orcamento: &mut Orcamento,
+    ) -> Result<Rc<FormAnalisado>, ErroPdf> {
+        if let Some(analisado) = self.formularios.get(&id) {
+            return Ok(Rc::clone(analisado));
+        }
+        let mut manter_tudo = fluxo
+            .dict
+            .get(b"Resources")
+            .ok()
+            .is_some_and(|r| recursos_exigem_manter(doc, r))
+            || self.bytes_restantes == 0
+            || self.visitas_restantes == 0;
+        let mut nomes = HashSet::new();
+        if !manter_tudo {
+            match orcamento.decodificar(fluxo) {
+                Ok((bytes, false)) => match self.varrer(&bytes) {
+                    Some(achados) => nomes = achados,
+                    None => manter_tudo = true,
+                },
+                Ok((_, true)) | Err(ErroPdf::Pdf(_)) => manter_tudo = true,
+                Err(outro) => return Err(outro),
+            }
+        }
+        let analisado = Rc::new(FormAnalisado { nomes, manter_tudo });
+        self.formularios.insert(id, Rc::clone(&analisado));
+        Ok(analisado)
+    }
+}
+
+/// Recursos que o desenho pode usar sem nomear no conteúdo: padrões, máscaras suaves e
+/// fontes Type3 (os desenhos delas podem usar os recursos da página, mesmo com `/Resources`
+/// próprio). Qualquer dúvida na leitura conta como "exige".
+fn recursos_exigem_manter(doc: &Document, recursos: &Object) -> bool {
+    let Ok((_, Object::Dictionary(dict))) = doc.dereference(recursos) else {
+        return true;
+    };
+    if dict.has(b"Pattern") {
+        return true;
+    }
+    if let Ok(estados) = dict.get(b"ExtGState") {
+        let Ok((_, Object::Dictionary(estados))) = doc.dereference(estados) else {
+            return true;
+        };
+        for (_, estado) in estados.iter() {
+            let Ok((_, Object::Dictionary(estado))) = doc.dereference(estado) else {
+                return true;
+            };
+            if let Ok(mascara) = estado.get(b"SMask") {
+                let sem_mascara = doc
+                    .dereference(mascara)
+                    .ok()
+                    .and_then(|(_, o)| o.as_name().ok())
+                    == Some(b"None");
+                if !sem_mascara {
+                    return true;
+                }
+            }
+        }
+    }
+    if let Ok(fontes) = dict.get(b"Font") {
+        let Ok((_, Object::Dictionary(fontes))) = doc.dereference(fontes) else {
+            return true;
+        };
+        for (_, fonte) in fontes.iter() {
+            let Ok((_, Object::Dictionary(fonte))) = doc.dereference(fonte) else {
+                return true;
+            };
+            if fonte.get(b"Subtype").and_then(Object::as_name).ok() == Some(b"Type3") {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Indica se alguma anotação da página tem aparência (`/AP`): ela pode desenhar com recursos
+/// da página.
+fn pagina_tem_aparencia(doc: &Document, pagina: &Dictionary) -> bool {
+    let Ok(anotacoes) = pagina.get(b"Annots") else {
+        return false;
+    };
+    let Ok((_, Object::Array(anotacoes))) = doc.dereference(anotacoes) else {
+        return true;
+    };
+    anotacoes
+        .iter()
+        .any(|anotacao| match doc.dereference(anotacao) {
+            Ok((_, Object::Dictionary(dict))) => dict.has(b"AP"),
+            _ => true,
+        })
+}
+
+/// Cópia dos recursos com, em `/XObject`, só os nomes que aparecem no conteúdo da página ou
+/// no de formulários que ela pode alcançar. Na dúvida (conteúdo ilegível, tetos da análise
+/// estourados, recursos que o desenho usa sem nomear), devolve os recursos originais.
+/// `conteudo` é `None` quando a leitura do conteúdo não é confiável.
+fn recursos_podados(
+    doc: &Document,
+    recursos: &Object,
+    pagina: &Dictionary,
+    conteudo: Option<&[u8]>,
+    orcamento: &mut Orcamento,
+    analise: &mut AnaliseForms,
+) -> Result<Object, ErroPdf> {
+    let Some(conteudo) = conteudo else {
+        return Ok(recursos.clone());
+    };
+    let Ok((_, Object::Dictionary(dict))) = doc.dereference(recursos) else {
+        return Ok(recursos.clone());
+    };
+    let Some(xobjetos) = dict
+        .get(b"XObject")
+        .ok()
+        .and_then(|o| doc.dereference(o).ok())
+        .and_then(|(_, o)| o.as_dict().ok())
+    else {
+        return Ok(Object::Dictionary(dict.clone()));
+    };
+    if recursos_exigem_manter(doc, recursos) || pagina_tem_aparencia(doc, pagina) {
+        return Ok(recursos.clone());
+    }
+    let Some(mut usados) = analise.varrer(conteudo) else {
+        return Ok(recursos.clone());
+    };
+    let mut fila: VecDeque<(Vec<u8>, usize)> = usados.iter().map(|n| (n.clone(), 0)).collect();
+    let mut vistos = HashSet::new();
+    while let Some((nome, profundidade)) = fila.pop_front() {
+        analise.visitas_restantes = match analise.visitas_restantes.checked_sub(1) {
+            Some(restantes) => restantes,
+            None => return Ok(recursos.clone()),
+        };
+        let Some(valor) = xobjetos.get(&nome).ok() else {
+            continue;
+        };
+        let Ok((Some(id), Object::Stream(forma))) = doc.dereference(valor) else {
+            continue;
+        };
+        let eh_forma = forma.dict.get(b"Subtype").and_then(Object::as_name).ok() == Some(b"Form");
+        if !eh_forma || !vistos.insert(id) {
+            continue;
+        }
+        if profundidade + 1 > LIMITE_FORMULARIOS_ANINHADOS {
+            return Err(ErroPdf::DocumentoInvalido(
+                "formulários aninhados demais no desenho da página",
+            ));
+        }
+        let analisado = analise.obter(doc, id, forma, orcamento)?;
+        if analisado.manter_tudo {
+            return Ok(recursos.clone());
+        }
+        for interno in &analisado.nomes {
+            if !usados.contains(interno) {
+                usados.insert(interno.clone());
+                fila.push_back((interno.clone(), profundidade + 1));
+            }
+        }
+        if usados.len() > analise.max_nomes {
+            return Ok(recursos.clone());
+        }
+    }
+    let mut mantidos = Dictionary::new();
+    for (nome, valor) in xobjetos.iter() {
+        if usados.contains(nome) {
+            mantidos.set(nome.clone(), valor.clone());
+        }
+    }
+    let mut novo = dict.clone();
+    novo.set("XObject", mantidos);
+    Ok(Object::Dictionary(novo))
+}
+
+/// Conteúdo decodificado de uma página, concatenando todos os fluxos de /Contents, e se a
+/// leitura é confiável (nenhum fluxo suspeito de corrompido).
+fn conteudo_da_pagina(
+    doc: &Document,
+    pagina: &Dictionary,
+    orcamento: &mut Orcamento,
+) -> Result<(Vec<u8>, bool), ErroPdf> {
     let Ok(contents) = pagina.get(b"Contents") else {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), true));
     };
     let itens: Vec<Object> = match doc.dereference(contents)?.1 {
         Object::Array(itens) => itens.clone(),
@@ -392,12 +841,15 @@ fn conteudo_da_pagina(doc: &Document, pagina: &Dictionary) -> Result<Vec<u8>, Er
         return Err(ErroPdf::DocumentoInvalido("fluxos de conteúdo demais"));
     }
     let mut bytes = Vec::new();
+    let mut legivel = true;
     for item in &itens {
         let fluxo = doc.dereference(item)?.1.as_stream()?;
-        bytes.extend(fluxo.decompressed_content()?);
+        let (parte, suspeito) = orcamento.decodificar(fluxo)?;
+        legivel &= !suspeito;
+        bytes.extend(parte);
         bytes.push(b'\n');
     }
-    Ok(bytes)
+    Ok((bytes, legivel))
 }
 
 impl PdfOrigem {
@@ -410,18 +862,7 @@ impl PdfOrigem {
             .get(indice)
             .ok_or(ErroPdf::PaginaInexistente(numero))?;
         let dict = pagina_com_heranca(&self.documento, id)?;
-        let [mut x0, mut y0, mut x1, mut y1] =
-            caixa(&self.documento, dict.get(b"MediaBox")?)?.map(f64::from);
-        if let Ok(crop) = dict.get(b"CropBox") {
-            let [cx0, cy0, cx1, cy1] = caixa(&self.documento, crop)?.map(f64::from);
-            x0 = x0.max(cx0);
-            y0 = y0.max(cy0);
-            x1 = x1.min(cx1);
-            y1 = y1.min(cy1);
-            if x0 >= x1 || y0 >= y1 {
-                return Err(ErroPdf::DocumentoInvalido("CropBox fora de MediaBox"));
-            }
-        }
+        let [x0, y0, x1, y1] = caixa_visivel(&self.documento, &dict)?;
         let unidade = dict
             .get(b"UserUnit")
             .ok()
@@ -493,6 +934,8 @@ impl PdfOrigem {
         }
         let (branco, _) = self.geometria_pagina(pagina_tamanho_branco)?;
         let proibidos = referencias_arvore_original(&self.documento, &self.paginas)?;
+        let mut orcamento = Orcamento::novo();
+        let mut analise = AnaliseForms::default();
         let mut saida = self.documento.clone();
         let pages_id = saida.new_object_id();
         let mut kids = Vec::with_capacity(folhas.len());
@@ -510,12 +953,19 @@ impl PdfOrigem {
             for (nome, face, ox) in [("Frente", &frente, 0.0), ("Verso", &verso, frente.largura)] {
                 let Some(id) = face.id else { continue };
                 let dict = pagina_com_heranca(&self.documento, id)?;
-                let conteudo = conteudo_da_pagina(&self.documento, &dict)?;
-                let recursos = dict
-                    .get(b"Resources")
-                    .ok()
-                    .cloned()
-                    .unwrap_or_else(|| Object::Dictionary(dictionary! {}));
+                let (conteudo, legivel) =
+                    conteudo_da_pagina(&self.documento, &dict, &mut orcamento)?;
+                let recursos = match dict.get(b"Resources") {
+                    Ok(recursos) => recursos_podados(
+                        &self.documento,
+                        recursos,
+                        &dict,
+                        legivel.then_some(conteudo.as_slice()),
+                        &mut orcamento,
+                        &mut analise,
+                    )?,
+                    Err(_) => Object::Dictionary(dictionary! {}),
+                };
                 let [x0, y0, x1, y1] = face.geometria.caixa;
                 let matriz = face.matriz(ox, altura - face.altura);
                 let forma = dictionary! {
@@ -1935,19 +2385,24 @@ mod tests {
 
     #[test]
     fn referencia_no_desenho_da_pagina_continua_recusada_com_motivo_claro() {
+        // O formulário só vai para a saída porque o conteúdo da página o desenha com `Do`.
         let mut origem = PdfOrigem::carregar(&fixture()).unwrap();
         let (p1, p2) = (origem.paginas[0], origem.paginas[1]);
         let forma = origem.documento.add_object(lopdf::Stream::new(dictionary! {"Type" => "XObject", "Subtype" => "Form", "BBox" => vec![0.into(), 0.into(), 10.into(), 10.into()], "Outra" => p2}, b"q Q".to_vec()));
-        origem
+        let desenho = origem
+            .documento
+            .add_object(lopdf::Stream::new(dictionary! {}, b"/F Do".to_vec()));
+        let pagina = origem
             .documento
             .get_object_mut(p1)
             .unwrap()
             .as_dict_mut()
-            .unwrap()
-            .set(
-                "Resources",
-                dictionary! {"XObject" => dictionary! {"F" => forma}},
-            );
+            .unwrap();
+        pagina.set(
+            "Resources",
+            dictionary! {"XObject" => dictionary! {"F" => forma}},
+        );
+        pagina.set("Contents", desenho);
         let erro = passada_da_primeira(&origem).err().unwrap();
         assert!(matches!(erro, ErroPdf::DocumentoInvalido(_)));
         let texto = erro.to_string();
@@ -2098,6 +2553,766 @@ mod tests {
             .unwrap();
         let folhas = Document::load_mem(&bytes).unwrap();
         assert!(!folhas.trailer.has(b"ID"));
+    }
+
+    fn imagem(marca: &[u8]) -> lopdf::Stream {
+        lopdf::Stream::new(
+            dictionary! {"Type" => "XObject", "Subtype" => "Image", "Width" => 1, "Height" => 1,
+            "ColorSpace" => "DeviceGray", "BitsPerComponent" => 8},
+            marca.to_vec(),
+        )
+    }
+
+    fn formulario(conteudo: &[u8], recursos: Option<Dictionary>) -> lopdf::Stream {
+        let mut dict = dictionary! {"Type" => "XObject", "Subtype" => "Form",
+        "BBox" => vec![0.into(), 0.into(), 10.into(), 10.into()]};
+        if let Some(recursos) = recursos {
+            dict.set("Resources", recursos);
+        }
+        lopdf::Stream::new(dict, conteudo.to_vec())
+    }
+
+    /// Documento de duas páginas com `/Resources` compartilhado, herdado do nó de páginas:
+    /// a página 1 desenha o que `conteudo1` diz e a página 2 usa só `ImB`.
+    fn documento_compartilhado(
+        conteudo1: &[u8],
+        extras: Vec<(&str, lopdf::Stream)>,
+    ) -> (Document, ObjectId) {
+        let mut doc = Document::with_version("1.5");
+        let root = doc.new_object_id();
+        let ima = doc.add_object(imagem(b"MARCA-IMAGEM-A"));
+        let imb = doc.add_object(imagem(b"MARCA-IMAGEM-B"));
+        let mut xobjetos = dictionary! {"ImA" => ima, "ImB" => imb};
+        for (nome, fluxo) in extras {
+            let id = doc.add_object(fluxo);
+            xobjetos.set(nome, id);
+        }
+        let recursos = doc.add_object(dictionary! {"XObject" => xobjetos});
+        let c1 = doc.add_object(lopdf::Stream::new(dictionary! {}, conteudo1.to_vec()));
+        let c2 = doc.add_object(lopdf::Stream::new(dictionary! {}, b"q /ImB Do Q".to_vec()));
+        let p1 = doc.add_object(dictionary! {"Type" => "Page", "Parent" => root, "Contents" => c1});
+        let p2 = doc.add_object(dictionary! {"Type" => "Page", "Parent" => root, "Contents" => c2});
+        doc.objects.insert(
+            root,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages", "Kids" => vec![Object::Reference(p1), Object::Reference(p2)],
+                "Count" => 2, "MediaBox" => vec![0.into(), 0.into(), 200.into(), 300.into()],
+                "Resources" => recursos
+            }),
+        );
+        let catalogo = doc.add_object(dictionary! {"Type" => "Catalog", "Pages" => root});
+        doc.trailer.set("Root", catalogo);
+        (doc, p1)
+    }
+
+    fn salvar(doc: &mut Document) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        bytes
+    }
+
+    fn contem_marca(doc: &Document, marca: &[u8]) -> bool {
+        doc.objects.values().any(|objeto| {
+            objeto.as_stream().is_ok_and(|fluxo| {
+                let dados = fluxo.decompressed_content().unwrap_or_default();
+                dados.windows(marca.len()).any(|w| w == marca)
+            })
+        })
+    }
+
+    fn primeira_pagina() -> [Pagina; 1] {
+        [Pagina {
+            numero: Some(1),
+            girar_180: false,
+        }]
+    }
+
+    /// Passada e folha final montadas só com a página 1, já reabertas.
+    fn saidas_da_primeira(bytes: &[u8]) -> Vec<Document> {
+        let origem = PdfOrigem::carregar(bytes).unwrap();
+        let passada = origem.gerar_passada(&primeira_pagina(), 1).unwrap();
+        let folhas = origem
+            .gerar_folhas_finais(&[folha_de_teste(Some((1, false)), None)], 1)
+            .unwrap();
+        vec![
+            Document::load_mem(&passada).unwrap(),
+            Document::load_mem(&folhas).unwrap(),
+        ]
+    }
+
+    #[test]
+    fn imagem_so_da_pagina_excluida_nao_vai_para_a_saida() {
+        let (mut doc, _) = documento_compartilhado(b"q /ImA Do Q", vec![]);
+        let bytes = salvar(&mut doc);
+        for saida in saidas_da_primeira(&bytes) {
+            assert!(contem_marca(&saida, b"MARCA-IMAGEM-A"));
+            assert!(!contem_marca(&saida, b"MARCA-IMAGEM-B"));
+        }
+    }
+
+    #[test]
+    fn formulario_aninhado_sem_recursos_mantem_o_que_ele_desenha() {
+        let extras = vec![
+            ("Fm", formulario(b"/ImC Do", None)),
+            ("ImC", imagem(b"MARCA-IMAGEM-C")),
+        ];
+        let (mut doc, _) = documento_compartilhado(b"q /Fm Do Q", extras);
+        let bytes = salvar(&mut doc);
+        for saida in saidas_da_primeira(&bytes) {
+            assert!(contem_marca(&saida, b"MARCA-IMAGEM-C"));
+            assert!(!contem_marca(&saida, b"MARCA-IMAGEM-A"));
+            assert!(!contem_marca(&saida, b"MARCA-IMAGEM-B"));
+        }
+    }
+
+    /// Os nomes de um formulário contam mesmo quando ele traz `/Resources` sem `/XObject`
+    /// (o leitor herda o da página) ou com o dicionário em objeto indireto.
+    #[test]
+    fn formulario_com_recursos_sem_xobject_mantem_o_que_ele_desenha() {
+        let proprios = dictionary! {"ProcSet" => vec![Object::Name(b"PDF".to_vec())]};
+        let extras = vec![("Fm", formulario(b"/ImA Do", Some(proprios)))];
+        let (mut doc, _) = documento_compartilhado(b"q /Fm Do Q", extras);
+        let bytes = salvar(&mut doc);
+        for saida in saidas_da_primeira(&bytes) {
+            assert!(contem_marca(&saida, b"MARCA-IMAGEM-A"));
+            assert!(!contem_marca(&saida, b"MARCA-IMAGEM-B"));
+        }
+    }
+
+    #[test]
+    fn formulario_com_recursos_indiretos_mantem_o_que_ele_desenha() {
+        let extras = vec![("Fm", formulario(b"/ImA Do", Some(dictionary! {})))];
+        let (mut doc, _) = documento_compartilhado(b"q /Fm Do Q", extras);
+        let indireto =
+            doc.add_object(dictionary! {"ProcSet" => vec![Object::Name(b"PDF".to_vec())]});
+        for objeto in doc.objects.values_mut() {
+            if let Object::Stream(fluxo) = objeto {
+                if fluxo.dict.has(b"Resources") {
+                    fluxo.dict.set("Resources", indireto);
+                }
+            }
+        }
+        let bytes = salvar(&mut doc);
+        for saida in saidas_da_primeira(&bytes) {
+            assert!(contem_marca(&saida, b"MARCA-IMAGEM-A"));
+        }
+    }
+
+    #[test]
+    fn nome_depois_de_operando_negativo_e_mantido() {
+        let (mut doc, _) = documento_compartilhado(b"--5 0 Td q /ImA Do Q", vec![]);
+        let bytes = salvar(&mut doc);
+        for saida in saidas_da_primeira(&bytes) {
+            assert!(contem_marca(&saida, b"MARCA-IMAGEM-A"));
+            assert!(!contem_marca(&saida, b"MARCA-IMAGEM-B"));
+        }
+    }
+
+    #[test]
+    fn nome_depois_de_parentese_solto_e_mantido() {
+        let extras = vec![("ImC", imagem(b"MARCA-IMAGEM-C"))];
+        let (mut doc, _) = documento_compartilhado(b"q /ImA Do Q ) q /ImC Do Q", extras);
+        let bytes = salvar(&mut doc);
+        for saida in saidas_da_primeira(&bytes) {
+            assert!(contem_marca(&saida, b"MARCA-IMAGEM-A"));
+            assert!(contem_marca(&saida, b"MARCA-IMAGEM-C"));
+        }
+    }
+
+    #[test]
+    fn nome_com_codigo_hexadecimal_e_reconhecido() {
+        let extras = vec![("Im C", imagem(b"MARCA-IMAGEM-C"))];
+        let (mut doc, _) = documento_compartilhado(b"q /Im#20C Do Q", extras);
+        let bytes = salvar(&mut doc);
+        for saida in saidas_da_primeira(&bytes) {
+            assert!(contem_marca(&saida, b"MARCA-IMAGEM-C"));
+            assert!(!contem_marca(&saida, b"MARCA-IMAGEM-B"));
+        }
+    }
+
+    fn recursos_da_pagina(doc: &mut Document, pagina: ObjectId) -> &mut Dictionary {
+        let pai = doc
+            .get_object(pagina)
+            .unwrap()
+            .as_dict()
+            .unwrap()
+            .get(b"Parent")
+            .unwrap()
+            .as_reference()
+            .unwrap();
+        let recursos = doc
+            .get_object(pai)
+            .unwrap()
+            .as_dict()
+            .unwrap()
+            .get(b"Resources")
+            .unwrap()
+            .as_reference()
+            .unwrap();
+        doc.get_object_mut(recursos).unwrap().as_dict_mut().unwrap()
+    }
+
+    fn mantem_a_imagem_a_sem_do(doc: &mut Document) {
+        let bytes = salvar(doc);
+        for saida in saidas_da_primeira(&bytes) {
+            assert!(contem_marca(&saida, b"MARCA-IMAGEM-A"));
+        }
+    }
+
+    #[test]
+    fn mascara_suave_faz_manter_os_recursos() {
+        let (mut doc, p1) = documento_compartilhado(b"q Q", vec![]);
+        let grupo = doc.add_object(formulario(b"/ImA Do", None));
+        recursos_da_pagina(&mut doc, p1).set(
+            "ExtGState",
+            dictionary! {"GS" => dictionary! {"SMask" => dictionary! {"Type" => "Mask", "S" => "Alpha", "G" => grupo}}},
+        );
+        mantem_a_imagem_a_sem_do(&mut doc);
+    }
+
+    #[test]
+    fn padrao_faz_manter_os_recursos() {
+        let (mut doc, p1) = documento_compartilhado(b"q Q", vec![]);
+        let padrao = doc.add_object(lopdf::Stream::new(
+            dictionary! {"PatternType" => 1, "PaintType" => 1, "TilingType" => 1,
+            "BBox" => vec![0.into(), 0.into(), 4.into(), 4.into()],
+            "XStep" => 4, "YStep" => 4, "Resources" => dictionary! {}},
+            b"/ImA Do".to_vec(),
+        ));
+        recursos_da_pagina(&mut doc, p1).set("Pattern", dictionary! {"P1" => padrao});
+        mantem_a_imagem_a_sem_do(&mut doc);
+    }
+
+    #[test]
+    fn anotacao_com_aparencia_faz_manter_os_recursos() {
+        let (mut doc, p1) = documento_compartilhado(b"q Q", vec![]);
+        let aparencia = doc.add_object(formulario(b"/ImA Do", None));
+        let anotacao = doc.add_object(dictionary! {"Type" => "Annot", "Subtype" => "Square",
+        "Rect" => vec![0.into(), 0.into(), 10.into(), 10.into()],
+        "AP" => dictionary! {"N" => aparencia}});
+        definir_anotacoes(&mut doc, p1, vec![anotacao]);
+        mantem_a_imagem_a_sem_do(&mut doc);
+    }
+
+    #[test]
+    fn fonte_type3_sem_recursos_faz_manter_os_recursos() {
+        let (mut doc, p1) = documento_compartilhado(b"q Q", vec![]);
+        let fonte = doc.add_object(dictionary! {"Type" => "Font", "Subtype" => "Type3"});
+        recursos_da_pagina(&mut doc, p1).set("Font", dictionary! {"F1" => fonte});
+        mantem_a_imagem_a_sem_do(&mut doc);
+    }
+
+    #[test]
+    fn trezentas_paginas_com_o_mesmo_formulario_geram_sem_erro() {
+        let mut doc = Document::with_version("1.5");
+        let root = doc.new_object_id();
+        let forma = doc.add_object(formulario(&vec![b' '; 1 << 20], None));
+        let recursos = doc.add_object(dictionary! {"XObject" => dictionary! {"F" => forma}});
+        let conteudo = doc.add_object(lopdf::Stream::new(dictionary! {}, b"/F Do".to_vec()));
+        let kids: Vec<ObjectId> = (0..300)
+            .map(|_| {
+                doc.add_object(
+                    dictionary! {"Type" => "Page", "Parent" => root, "Contents" => conteudo},
+                )
+            })
+            .collect();
+        doc.objects.insert(
+            root,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages", "Count" => 300,
+                "Kids" => kids.iter().map(|k| Object::Reference(*k)).collect::<Vec<_>>(),
+                "MediaBox" => vec![0.into(), 0.into(), 200.into(), 300.into()],
+                "Resources" => recursos
+            }),
+        );
+        let catalogo = doc.add_object(dictionary! {"Type" => "Catalog", "Pages" => root});
+        doc.trailer.set("Root", catalogo);
+        let bytes = salvar(&mut doc);
+        let origem = PdfOrigem::carregar(&bytes).unwrap();
+        let todas: Vec<Pagina> = (1..=300)
+            .map(|n| Pagina {
+                numero: Some(n),
+                girar_180: false,
+            })
+            .collect();
+        origem.gerar_passada(&todas, 1).unwrap();
+        let folhas: Vec<FolhaFinal> = (1..=300)
+            .map(|n| folha_de_teste(Some((n, false)), None))
+            .collect();
+        origem.gerar_folhas_finais(&folhas, 1).unwrap();
+    }
+
+    fn gerar_passada_primeira(bytes: &[u8]) -> Document {
+        let origem = PdfOrigem::carregar(bytes).unwrap();
+        let passada = origem.gerar_passada(&primeira_pagina(), 1).unwrap();
+        Document::load_mem(&passada).unwrap()
+    }
+
+    fn lixo_flate() -> lopdf::Stream {
+        lopdf::Stream::new(
+            dictionary! {"Filter" => "FlateDecode"},
+            b"isto nao e um fluxo zlib valido".to_vec(),
+        )
+    }
+
+    #[test]
+    fn conteudo_da_pagina_com_flate_corrompido_mantem_todos_os_recursos() {
+        let (mut doc, p1) = documento_compartilhado(b"q /ImA Do Q", vec![]);
+        let c = doc.add_object(lixo_flate());
+        doc.get_object_mut(p1)
+            .unwrap()
+            .as_dict_mut()
+            .unwrap()
+            .set("Contents", c);
+        let bytes = salvar(&mut doc);
+        let saida = gerar_passada_primeira(&bytes);
+        assert!(contem_marca(&saida, b"MARCA-IMAGEM-A"));
+        assert!(contem_marca(&saida, b"MARCA-IMAGEM-B"));
+        let origem = PdfOrigem::carregar(&bytes).unwrap();
+        let folhas = origem
+            .gerar_folhas_finais(&[folha_de_teste(Some((1, false)), None)], 1)
+            .unwrap();
+        let folhas = Document::load_mem(&folhas).unwrap();
+        assert!(contem_marca(&folhas, b"MARCA-IMAGEM-A"));
+        assert!(contem_marca(&folhas, b"MARCA-IMAGEM-B"));
+    }
+
+    #[test]
+    fn formulario_com_flate_corrompido_mantem_todos_os_recursos() {
+        let (mut doc, p1) = documento_compartilhado(b"q /Fm Do Q", vec![]);
+        let forma = doc.add_object({
+            let mut f = lixo_flate();
+            f.dict.set("Type", "XObject");
+            f.dict.set("Subtype", "Form");
+            f.dict
+                .set("BBox", vec![0.into(), 0.into(), 10.into(), 10.into()]);
+            f
+        });
+        recursos_da_pagina(&mut doc, p1)
+            .get_mut(b"XObject")
+            .unwrap()
+            .as_dict_mut()
+            .unwrap()
+            .set("Fm", forma);
+        let bytes = salvar(&mut doc);
+        for saida in saidas_da_primeira(&bytes) {
+            assert!(contem_marca(&saida, b"MARCA-IMAGEM-A"));
+            assert!(contem_marca(&saida, b"MARCA-IMAGEM-B"));
+        }
+    }
+
+    #[test]
+    fn formulario_com_filtro_que_nao_le_mantem_todos_os_recursos() {
+        let mut ilegivel = formulario(b"nao e conteudo", None);
+        ilegivel.dict.set("Filter", "DCTDecode");
+        let (mut doc, _) = documento_compartilhado(b"q /Fm Do Q", vec![("Fm", ilegivel)]);
+        let bytes = salvar(&mut doc);
+        for saida in saidas_da_primeira(&bytes) {
+            assert!(contem_marca(&saida, b"MARCA-IMAGEM-A"));
+            assert!(contem_marca(&saida, b"MARCA-IMAGEM-B"));
+        }
+    }
+
+    #[test]
+    fn fonte_type3_com_recursos_tambem_faz_manter_os_recursos() {
+        let (mut doc, p1) = documento_compartilhado(b"q Q", vec![]);
+        let fonte = doc.add_object(
+            dictionary! {"Type" => "Font", "Subtype" => "Type3", "Resources" => dictionary! {}},
+        );
+        recursos_da_pagina(&mut doc, p1).set("Font", dictionary! {"F1" => fonte});
+        mantem_a_imagem_a_sem_do(&mut doc);
+    }
+
+    #[test]
+    fn nomes_em_dois_fluxos_de_conteudo_sao_mantidos() {
+        let extras = vec![("ImC", imagem(b"MARCA-IMAGEM-C"))];
+        let (mut doc, p1) = documento_compartilhado(b"q Q", extras);
+        let a = doc.add_object(lopdf::Stream::new(dictionary! {}, b"q /ImA Do".to_vec()));
+        let b = doc.add_object(lopdf::Stream::new(dictionary! {}, b"Q /ImC Do".to_vec()));
+        doc.get_object_mut(p1)
+            .unwrap()
+            .as_dict_mut()
+            .unwrap()
+            .set("Contents", vec![Object::Reference(a), Object::Reference(b)]);
+        let bytes = salvar(&mut doc);
+        for saida in saidas_da_primeira(&bytes) {
+            assert!(contem_marca(&saida, b"MARCA-IMAGEM-A"));
+            assert!(contem_marca(&saida, b"MARCA-IMAGEM-C"));
+            assert!(!contem_marca(&saida, b"MARCA-IMAGEM-B"));
+        }
+    }
+
+    /// Duas páginas desenham o mesmo formulário, que exige manter tudo (tem padrão nos recursos
+    /// próprios): a segunda página, que reaproveita a análise guardada, também não é podada.
+    #[test]
+    fn formulario_que_exige_manter_tudo_vale_tambem_na_segunda_pagina() {
+        let proprios = dictionary! {"Pattern" => dictionary! {}};
+        let extras = vec![("Fm", formulario(b"q Q", Some(proprios)))];
+        let (mut doc, p1) = documento_compartilhado(b"q /Fm Do Q", extras);
+        let pai = doc
+            .get_object(p1)
+            .unwrap()
+            .as_dict()
+            .unwrap()
+            .get(b"Parent")
+            .unwrap()
+            .as_reference()
+            .unwrap();
+        let kids = doc
+            .get_object(pai)
+            .unwrap()
+            .as_dict()
+            .unwrap()
+            .get(b"Kids")
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .clone();
+        let p2 = kids[1].as_reference().unwrap();
+        let c2 = doc.add_object(lopdf::Stream::new(dictionary! {}, b"q /Fm Do Q".to_vec()));
+        doc.get_object_mut(p2)
+            .unwrap()
+            .as_dict_mut()
+            .unwrap()
+            .set("Contents", c2);
+        let bytes = salvar(&mut doc);
+        let origem = PdfOrigem::carregar(&bytes).unwrap();
+        let todas = [
+            Pagina {
+                numero: Some(1),
+                girar_180: false,
+            },
+            Pagina {
+                numero: Some(2),
+                girar_180: false,
+            },
+        ];
+        let passada = Document::load_mem(&origem.gerar_passada(&todas, 1).unwrap()).unwrap();
+        for pagina in passada.get_pages().values() {
+            let dict = passada.get_object(*pagina).unwrap().as_dict().unwrap();
+            let recursos = passada
+                .dereference(dict.get(b"Resources").unwrap())
+                .unwrap()
+                .1
+                .as_dict()
+                .unwrap();
+            let xobjetos = recursos.get(b"XObject").unwrap().as_dict().unwrap();
+            assert!(xobjetos.has(b"ImA") && xobjetos.has(b"ImB"));
+        }
+    }
+
+    fn nomes(bytes: &[u8]) -> Vec<String> {
+        let mut visitas = usize::MAX;
+        let mut lista: Vec<String> = nomes_nos_bytes(bytes, usize::MAX, &mut visitas)
+            .unwrap()
+            .into_iter()
+            .map(|n| String::from_utf8_lossy(&n).into_owned())
+            .collect();
+        lista.sort();
+        lista
+    }
+
+    #[test]
+    fn varredura_de_nomes_acha_nomes_coladas_e_em_qualquer_contexto() {
+        assert_eq!(nomes(b"/ImA/ImB"), ["ImA", "ImB"]);
+        assert_eq!(nomes(b"[/ImA]"), ["ImA"]);
+        assert_eq!(nomes(b"<</ImA 1>>"), ["ImA"]);
+        assert_eq!(nomes(b"(/ImA) % /ImB\n"), ["ImA", "ImB"]);
+        assert_eq!(nomes(b"/Im#41 /Im#20C"), ["Im C", "ImA"]);
+    }
+
+    #[test]
+    fn varredura_de_nomes_com_cerquilha_invalida_ou_truncada() {
+        // O trecho antes do `#` entra também, porque a leitura encerra o nome ali.
+        assert_eq!(nomes(b"/ab#zz"), ["ab", "ab#zz"]);
+        assert_eq!(nomes(b"/ab#4"), ["ab", "ab#4"]);
+        assert_eq!(nomes(b"/ab#"), ["ab", "ab#"]);
+    }
+
+    #[test]
+    fn varredura_de_nomes_respeita_os_tetos() {
+        let mut visitas = usize::MAX;
+        assert!(nomes_nos_bytes(b"/a /b /c", 2, &mut visitas).is_none());
+        let mut visitas = 2;
+        assert!(nomes_nos_bytes(b"/a /b /c", usize::MAX, &mut visitas).is_none());
+        let mut visitas = 3;
+        assert_eq!(
+            nomes_nos_bytes(b"/a /b /c", 3, &mut visitas).unwrap().len(),
+            3
+        );
+    }
+
+    /// Nomes mantidos em `/XObject` por `recursos_podados` para a página 1 do documento.
+    fn xobjetos_mantidos(
+        doc: &Document,
+        p1: ObjectId,
+        conteudo: &[u8],
+        analise: &mut AnaliseForms,
+    ) -> Vec<String> {
+        let pagina = pagina_com_heranca(doc, p1).unwrap();
+        let recursos = pagina.get(b"Resources").unwrap().clone();
+        let podados = recursos_podados(
+            doc,
+            &recursos,
+            &pagina,
+            Some(conteudo),
+            &mut Orcamento::novo(),
+            analise,
+        )
+        .unwrap();
+        let (_, podados) = doc.dereference(&podados).unwrap();
+        let mut lista: Vec<String> = podados
+            .as_dict()
+            .unwrap()
+            .get(b"XObject")
+            .unwrap()
+            .as_dict()
+            .unwrap()
+            .iter()
+            .map(|(n, _)| String::from_utf8_lossy(n).into_owned())
+            .collect();
+        lista.sort();
+        lista
+    }
+
+    fn documento_de_tetos() -> (Document, ObjectId) {
+        documento_compartilhado(b"q Q", vec![("ImC", imagem(b"MARCA-IMAGEM-C"))])
+    }
+
+    #[test]
+    fn dentro_dos_tetos_so_o_usado_e_mantido() {
+        let (doc, p1) = documento_de_tetos();
+        let mut analise = AnaliseForms::default();
+        assert_eq!(
+            xobjetos_mantidos(&doc, p1, b"/ImA Do", &mut analise),
+            ["ImA"]
+        );
+    }
+
+    #[test]
+    fn muitos_nomes_distintos_fazem_manter_tudo() {
+        let (doc, p1) = documento_de_tetos();
+        let mut analise = AnaliseForms::com_limites(usize::MAX, usize::MAX, 2);
+        let mantidos = xobjetos_mantidos(&doc, p1, b"/ImA Do /x /y /z", &mut analise);
+        assert_eq!(mantidos, ["ImA", "ImB", "ImC"]);
+    }
+
+    #[test]
+    fn teto_de_visitas_faz_manter_tudo() {
+        let (doc, p1) = documento_de_tetos();
+        let mut analise = AnaliseForms::com_limites(usize::MAX, 1, usize::MAX);
+        let mantidos = xobjetos_mantidos(&doc, p1, b"/ImA Do /x", &mut analise);
+        assert_eq!(mantidos, ["ImA", "ImB", "ImC"]);
+    }
+
+    #[test]
+    fn teto_de_bytes_da_analise_faz_manter_tudo() {
+        let (doc, p1) = documento_de_tetos();
+        let mut analise = AnaliseForms::com_limites(3, usize::MAX, usize::MAX);
+        let mantidos = xobjetos_mantidos(&doc, p1, b"/ImA Do", &mut analise);
+        assert_eq!(mantidos, ["ImA", "ImB", "ImC"]);
+    }
+
+    /// O formulário é decodificado e cobrado uma vez: com o orçamento zerado, a segunda
+    /// análise vem do que ficou guardado.
+    #[test]
+    fn formulario_analisado_uma_vez_nao_e_cobrado_de_novo() {
+        let extras = vec![("Fm", formulario(&vec![b' '; 4096], None))];
+        let (doc, p1) = documento_compartilhado(b"q Q", extras);
+        let pagina = pagina_com_heranca(&doc, p1).unwrap();
+        let recursos = pagina.get(b"Resources").unwrap().clone();
+        let mut analise = AnaliseForms::default();
+        let mut orcamento = Orcamento { restante: 4096 };
+        recursos_podados(
+            &doc,
+            &recursos,
+            &pagina,
+            Some(b"/Fm Do"),
+            &mut orcamento,
+            &mut analise,
+        )
+        .unwrap();
+        assert_eq!(orcamento.restante, 0);
+        let mut sem_orcamento = Orcamento { restante: 0 };
+        recursos_podados(
+            &doc,
+            &recursos,
+            &pagina,
+            Some(b"/Fm Do"),
+            &mut sem_orcamento,
+            &mut analise,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn fluxo_de_objetos_que_expande_demais_e_recusado_na_abertura() {
+        let mut doc = Document::with_version("1.5");
+        let root = doc.new_object_id();
+        let enchimento = Object::String(vec![b'a'; 70 << 20], lopdf::StringFormat::Literal);
+        let p1 = doc.add_object(
+            dictionary! {"Type" => "Page", "Parent" => root, "Enchimento" => enchimento},
+        );
+        doc.objects.insert(
+            root,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages", "Count" => 1, "Kids" => vec![Object::Reference(p1)],
+                "MediaBox" => vec![0.into(), 0.into(), 200.into(), 300.into()]
+            }),
+        );
+        let catalogo = doc.add_object(dictionary! {"Type" => "Catalog", "Pages" => root});
+        doc.trailer.set("Root", catalogo);
+        let opcoes = lopdf::SaveOptions::builder()
+            .use_object_streams(true)
+            .use_xref_streams(true)
+            .compression_level(6)
+            .build();
+        let mut bytes = Vec::new();
+        doc.save_with_options(&mut bytes, opcoes).unwrap();
+        assert!(bytes.len() < 4 << 20, "{}", bytes.len());
+        // O modo leniente da leitura descarta o fluxo que passou do limite e o objeto que ele
+        // guardava some; a abertura falha por falta desse objeto, sem expandir os 70 MiB.
+        assert!(PdfOrigem::carregar(&bytes).is_err());
+    }
+
+    #[test]
+    fn ciclo_de_formularios_termina_e_mantem_so_o_usado() {
+        let extras = vec![
+            ("F1", formulario(b"/F2 Do /ImA Do", None)),
+            ("F2", formulario(b"/F1 Do", None)),
+        ];
+        let (mut doc, _) = documento_compartilhado(b"/F1 Do", extras);
+        let bytes = salvar(&mut doc);
+        for saida in saidas_da_primeira(&bytes) {
+            assert!(contem_marca(&saida, b"MARCA-IMAGEM-A"));
+            assert!(!contem_marca(&saida, b"MARCA-IMAGEM-B"));
+        }
+    }
+
+    #[test]
+    fn analise_de_conteudo_que_falha_mantem_todos_os_recursos() {
+        let (mut doc, p1) = documento_compartilhado(b"q /ImA Do Q", vec![]);
+        let c = doc.add_object(lopdf::Stream::new(
+            dictionary! {"Filter" => "DCTDecode"},
+            b"nao e conteudo".to_vec(),
+        ));
+        doc.get_object_mut(p1)
+            .unwrap()
+            .as_dict_mut()
+            .unwrap()
+            .set("Contents", c);
+        let bytes = salvar(&mut doc);
+        let origem = PdfOrigem::carregar(&bytes).unwrap();
+        let passada = origem.gerar_passada(&primeira_pagina(), 1).unwrap();
+        let saida = Document::load_mem(&passada).unwrap();
+        assert!(contem_marca(&saida, b"MARCA-IMAGEM-A"));
+        assert!(contem_marca(&saida, b"MARCA-IMAGEM-B"));
+    }
+
+    fn fluxo_comprimido(megabytes: usize) -> lopdf::Stream {
+        let mut fluxo = lopdf::Stream::new(dictionary! {}, vec![b' '; megabytes << 20]);
+        fluxo.compress().unwrap();
+        fluxo
+    }
+
+    fn documento_com_conteudos(fluxos: Vec<lopdf::Stream>) -> Vec<u8> {
+        let (mut doc, p1) = documento_compartilhado(b"q Q", vec![]);
+        let ids: Vec<Object> = fluxos
+            .into_iter()
+            .map(|f| Object::Reference(doc.add_object(f)))
+            .collect();
+        doc.get_object_mut(p1)
+            .unwrap()
+            .as_dict_mut()
+            .unwrap()
+            .set("Contents", ids);
+        salvar(&mut doc)
+    }
+
+    fn gerar_as_duas(bytes: &[u8]) -> Vec<Result<Vec<u8>, ErroPdf>> {
+        let origem = PdfOrigem::carregar(bytes).unwrap();
+        vec![
+            origem.gerar_passada(&primeira_pagina(), 1),
+            origem.gerar_folhas_finais(&[folha_de_teste(Some((1, false)), None)], 1),
+        ]
+    }
+
+    #[test]
+    fn bomba_de_compressao_em_um_fluxo_de_conteudo_e_recusada() {
+        let bytes = documento_com_conteudos(vec![fluxo_comprimido(65)]);
+        for resultado in gerar_as_duas(&bytes) {
+            let erro = resultado.unwrap_err().to_string();
+            assert!(erro.contains("limite"), "{erro}");
+            assert!(erro.contains("fluxo"), "{erro}");
+        }
+    }
+
+    #[test]
+    fn conteudo_total_acima_do_limite_da_passada_e_recusado() {
+        let um = fluxo_comprimido(52);
+        let bytes =
+            documento_com_conteudos(vec![um.clone(), um.clone(), um.clone(), um.clone(), um]);
+        for resultado in gerar_as_duas(&bytes) {
+            let erro = resultado.unwrap_err().to_string();
+            assert!(erro.contains("limite"), "{erro}");
+            assert!(erro.contains("total"), "{erro}");
+            assert!(erro.contains("PDF de saída"), "{erro}");
+        }
+    }
+
+    #[test]
+    fn conteudo_grande_dentro_do_limite_e_aceito() {
+        let bytes = documento_com_conteudos(vec![fluxo_comprimido(20)]);
+        for resultado in gerar_as_duas(&bytes) {
+            resultado.unwrap();
+        }
+    }
+
+    #[test]
+    fn formularios_aninhados_demais_sao_recusados_com_motivo() {
+        let nomes: Vec<String> = (0..40).map(|i| format!("G{i}")).collect();
+        let extras = nomes
+            .iter()
+            .enumerate()
+            .map(|(i, nome)| {
+                let conteudo = nomes
+                    .get(i + 1)
+                    .map(|proximo| format!("/{proximo} Do"))
+                    .unwrap_or_default();
+                (nome.as_str(), formulario(conteudo.as_bytes(), None))
+            })
+            .collect();
+        let (mut doc, _) = documento_compartilhado(b"/G0 Do", extras);
+        let bytes = salvar(&mut doc);
+        let origem = PdfOrigem::carregar(&bytes).unwrap();
+        let erro = origem
+            .gerar_passada(&primeira_pagina(), 1)
+            .unwrap_err()
+            .to_string();
+        assert!(erro.contains("aninhados"), "{erro}");
+    }
+
+    #[test]
+    fn papel_vem_da_caixa_que_o_leitor_mostra() {
+        let (mut doc, p1) = documento_compartilhado(b"q Q", vec![]);
+        let pagina = doc.get_object_mut(p1).unwrap().as_dict_mut().unwrap();
+        pagina.set("MediaBox", vec![0.into(), 0.into(), 700.into(), 900.into()]);
+        pagina.set(
+            "CropBox",
+            vec![
+                Object::Real(0.0),
+                Object::Real(0.0),
+                Object::Real(595.28),
+                Object::Real(841.89),
+            ],
+        );
+        let bytes = salvar(&mut doc);
+        let origem = PdfOrigem::carregar(&bytes).unwrap();
+        let dimensoes = origem.dimensoes_paginas().unwrap();
+        assert!((dimensoes[0].largura_mm - 210.0).abs() < 0.1);
+        assert!((dimensoes[0].altura_mm - 297.0).abs() < 0.1);
+        // A página sem CropBox continua medida pela MediaBox.
+        assert!((dimensoes[1].largura_mm - 200.0 * 25.4 / 72.0).abs() < 0.1);
     }
 }
 
