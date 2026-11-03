@@ -14,9 +14,17 @@ Transformar o plano de cada lote em PDFs com a ordem e a rotação certas, sem p
 - [x] Validar ordem e rotação no Firefox: conferido pelo usuário em 2026-11-02
 - [x] Aceitar PDFs comuns: assinatura aplicada vira carimbo com a mesma aparência, com aviso de que a cópia não contém a assinatura; 64 de 64 PDFs reais aceitos, com imagens iguais no PyMuPDF (25557c9)
 - [x] Tirar `/ID` e `SigFlags` do PDF gerado
-- [ ] Tirar do PDF gerado recursos de páginas de fora do lote, com teste
-- [ ] Limitar os bytes por fluxo de conteúdo para conter PDF malicioso
+- [x] Tirar do PDF gerado recursos de páginas de fora do lote, com teste; na dúvida, mantém tudo
+- [x] Limitar os bytes por fluxo de conteúdo para conter PDF malicioso
+- [x] Medir o papel pela caixa que o leitor mostra (MediaBox ∩ CropBox)
 - [ ] Conferir PDFs reais em leitor real e em impressora; fios e estrutura marcada só têm fixture sintética
+
+## Limites escolhidos
+
+- 64 MiB por fluxo descomprimido, 256 MiB por saída nas folhas finais e por página na análise das passadas, 16 níveis de formulários (acima disso, recusa com motivo).
+- Na análise de recursos: 65.536 nomes por varredura, 1 GiB e 50 milhões de visitas por saída. Passou disso, só deixa de retirar recursos, sem recusar. Esses tetos só foram exercitados com valores injetados em teste.
+- Resultado nos 64 PDFs reais a 30 dpi: 64 aceitos, nenhum divergente. Nenhum deles tem `/Resources` compartilhado, então a retirada de recursos só foi exercitada por fixtures sintéticas.
+- **Riscos aceitos:** Flate truncado devolve só a parte lida, sem sinal, e os nomes depois do corte não são vistos. Fluxo de objetos acima do limite falha como "objeto não encontrado", sem citar o limite. `CropBox` fora da `MediaBox` recusa já na medição.
 
 ## Pronto quando
 

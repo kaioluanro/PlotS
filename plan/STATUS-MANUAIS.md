@@ -39,6 +39,7 @@ Requisitos: OK 38 · PARTIAL 34 · MISSING 19 · BUG 0 · N/A 2 (93). Detalhes e
 | pdfs-reais | `25557c9` | concluído: 64 de 64 PDFs reais aceitos, conferidos no PyMuPDF |
 | cli-calibrar-imprimir | `92772e5` | concluído, sem envio real |
 | tela-abertura | `bd50a56` | concluído, sem a imagem definitiva |
+| pdf-robustez | `8e11060` | concluído; retirada de recursos só com fixtures, sem PDF real que a exercite |
 | interface-base | `353f54d` | concluído; janela aprovada pelo usuário |
 | windows-filas | `a9f9185` | concluído |
 | windows-envio | `126ac26` | concluído; conferido só na fila de PDF do Windows, sem impressora real |
