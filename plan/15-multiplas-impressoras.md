@@ -26,6 +26,7 @@ Enviar o mesmo documento a várias impressoras, cada uma com o próprio perfil.
 
 ## Depois da primeira versão
 
+- **Divisão fora da janela, por decisão do usuário em 2026-11-03 (`24-impressao-sem-lote`):** todas as marcadas imprimem a mesma coisa. Só voltaria com a divisão por velocidade, se ele pedir.
 - **Divisão por velocidade:** dar mais lotes à impressora mais rápida, com a velocidade medida no histórico (`22-opcoes-de-envio-e-historico`). Começar só com medidas de impressoras reais. Hoje os lotes são repartidos igualmente, em rodízio, e a confirmação apenas avisa da diferença. A confirmação e a lista de junção precisam mostrar a repartição antes do envio, e cada página continua saindo exatamente uma vez.
 
 ## Pronto quando
