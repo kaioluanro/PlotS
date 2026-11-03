@@ -18,6 +18,8 @@ pub struct EntradaPerfil {
     /// A impressora imprime as duas faces sozinha nos papéis aceitos. Nos outros, vale o gesto de
     /// `modelo`, que nesse caso sempre existe.
     pub automatico: bool,
+    /// O driver desta fila imprime cada trabalho na ordem contrária; o envio compensa.
+    pub driver_inverte: bool,
 }
 
 /// Conjunto de perfis, indexado pelo nome exato da fila.
@@ -30,6 +32,8 @@ pub struct Perfis {
     pub(crate) grupos_ignorados: BTreeMap<String, GrupoIgnorado>,
     pub(crate) ajustes_driver: BTreeMap<String, Vec<u8>>,
     pub(crate) ajustes_ignorados: Vec<String>,
+    /// A pessoa pediu para não registrar novos envios. O padrão, e o de arquivo antigo, é registrar.
+    pub(crate) historico_desligado: bool,
 }
 
 impl Perfis {
@@ -50,9 +54,14 @@ impl Perfis {
 
     /// Dá à fila o perfil pronto do modelo, mesmo que ela não tenha perfil ainda.
     ///
-    /// O apelido fica. O texto do gesto sai, porque descrevia o perfil anterior.
+    /// O apelido fica, e o que se sabe do driver também. O texto do gesto sai, porque descrevia o
+    /// perfil anterior.
     pub fn definir_modelo(&mut self, fila: &str, modelo: ModeloImpressora) {
-        let apelido = self.filas.remove(fila).and_then(|entrada| entrada.apelido);
+        let anterior = self.filas.remove(fila);
+        let driver_inverte = anterior
+            .as_ref()
+            .is_some_and(|entrada| entrada.driver_inverte);
+        let apelido = anterior.and_then(|entrada| entrada.apelido);
         self.inserir(
             fila,
             EntradaPerfil {
@@ -61,6 +70,7 @@ impl Perfis {
                 gesto_texto: None,
                 modelo: Some(modelo),
                 automatico: false,
+                driver_inverte,
             },
         );
     }
@@ -75,6 +85,24 @@ impl Perfis {
         if let Some(entrada) = self.filas.get_mut(fila) {
             entrada.automatico = true;
         }
+    }
+
+    /// Diz se o driver da fila inverte a ordem. Sem perfil não há onde guardar: devolve `false`.
+    pub fn definir_driver_inverte(&mut self, fila: &str, inverte: bool) -> bool {
+        let Some(entrada) = self.filas.get_mut(fila) else {
+            return false;
+        };
+        entrada.driver_inverte = inverte;
+        true
+    }
+
+    /// Se os próximos envios entram no histórico.
+    pub fn guardar_historico(&self) -> bool {
+        !self.historico_desligado
+    }
+
+    pub fn definir_guardar_historico(&mut self, guardar: bool) {
+        self.historico_desligado = !guardar;
     }
 
     /// Remove o perfil da fila e o devolve, se existir.

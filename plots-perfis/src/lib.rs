@@ -8,6 +8,7 @@ mod armazenamento;
 mod erro;
 mod formato;
 mod grupos;
+pub mod historico;
 mod perfis;
 
 #[cfg(test)]
@@ -16,6 +17,8 @@ mod testes;
 mod testes_ajustes;
 #[cfg(test)]
 mod testes_grupos;
+#[cfg(test)]
+mod testes_historico;
 
 pub use ajustes::{AjusteRecusado, LIMITE_AJUSTE_BYTES};
 pub use armazenamento::{caminho_padrao, carregar, salvar, LIMITE_ARQUIVO_BYTES, NOME_ARQUIVO};

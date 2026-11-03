@@ -15,6 +15,8 @@ import {
   listarImpressoras,
 } from "./backend";
 import { BlocoModo } from "./components/BlocoModo";
+import { BlocoAjuste } from "./components/BlocoAjuste";
+import { HistoricoDialog } from "./components/HistoricoDialog";
 import { CalibrarDialog } from "./components/CalibrarDialog";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { DocumentArea, ID_AREA_DOCUMENTO } from "./components/DocumentArea";
@@ -47,7 +49,10 @@ import {
 } from "./confirmacao";
 import { mensagemDeErro } from "./erros";
 import { useGrupos } from "./grupos-uso";
-import { t } from "./i18n";
+import { apagarHistorico, conteudoDoApagarHistorico } from "./historico";
+import { idiomaAtual, t } from "./i18n";
+import { useAnaliseDoDocumento } from "./analise-documento";
+import { envioSemMarca, notasDasOpcoes, textoDoPapelAjustado } from "./opcoes-envio";
 import {
   comModeloGravado,
   gravarEscolha,
@@ -72,6 +77,7 @@ import {
   modoDoEnvio,
   reduzirAbas,
   type Aba,
+  type ParteDaDivisao,
   type DivisaoDoEnvio,
   type ModoDistribuicao,
 } from "./tabs";
@@ -119,6 +125,9 @@ export function App() {
   const grupos = useGrupos(despachar);
   const [cartaoACancelar, setCartaoACancelar] = useState<Cartao | null>(null);
   const [cartaoAReimprimir, setCartaoAReimprimir] = useState<Cartao | null>(null);
+  const [historico, setHistorico] = useState<"lista" | "apagar" | null>(null);
+  const [versaoDoHistorico, setVersaoDoHistorico] = useState(0);
+  const [falhaAoApagarHistorico, setFalhaAoApagarHistorico] = useState(false);
   const preparandoEnvio = useRef(false);
   const filasGravando = useRef(new Set<string>());
   const ultimaLeitura = useRef(0);
@@ -132,8 +141,10 @@ export function App() {
     pedidoDeEnvio !== null ||
     cartaoACancelar !== null ||
     cartaoAReimprimir !== null ||
+    historico !== null ||
     grupos.aApagar !== null;
   const abaAtiva = estado.abas.find((aba) => aba.id === estado.ativa) ?? null;
+  const analiseDoDocumento = useAnaliseDoDocumento(abaAtiva);
   const idAtiva = estado.ativa;
 
   // Os eventos do sistema ficam assinados uma vez so e precisam ler o estado mais recente.
@@ -231,6 +242,8 @@ export function App() {
       plano.modo,
       plano.lotes,
       plano.paginas,
+      aba.papelDeAjuste ?? null,
+      aba.controle ? idiomaAtual : null,
     )
       .then((aceitas) => {
         // Quem nao foi aceito ja tinha um trabalho: o cartao diz isso, em vez de sumir em silencio.
@@ -443,7 +456,7 @@ export function App() {
     if (abaAtiva === null || desabilitado || preparandoEnvio.current) return;
     const modo = modoDoEnvio(abaAtiva.modo, destinos.length);
     // A divisao sempre pergunta, mesmo simulada: e la que o usuario le como juntar os macos.
-    if (modo === "espelho" && !precisaConfirmar(destinos)) {
+    if (modo === "espelho" && !precisaConfirmar(destinos) && !abaAtiva.papelDeAjuste) {
       iniciar(abaAtiva, destinos, ENVIO_EM_ESPELHO);
       return;
     }
@@ -456,10 +469,24 @@ export function App() {
       trechoDoEnvio(leitura),
       modo,
       destinos.map((destino) => destino.id),
+      aba.papelDeAjuste ?? null,
     )
       .then((resumo) => {
+        const papelAjustado = textoDoPapelAjustado(aba.papelDeAjuste, resumo.escalas);
+        const notasDoMeio = (partes?: readonly ParteDaDivisao[]) =>
+          notasDasOpcoes({
+            controle: aba.controle,
+            comparacao: resumo.comparacao,
+            modo,
+            destinos,
+            fluxos: resumo.fluxos,
+            partes,
+          });
         if (modo === "espelho") {
-          const { linhas, notas } = linhasDoEnvio(destinos, resumo);
+          const { linhas, notas } = linhasDoEnvio(destinos, resumo, undefined, undefined, {
+            papel: papelAjustado,
+            notasDoMeio: notasDoMeio(),
+          });
           setPedidoDeEnvio({
             conteudo: conteudoDoEnvio(
               linhasComTrecho(linhas, leitura),
@@ -475,8 +502,12 @@ export function App() {
         }
         // Quem ficou sem lote so aparece na confirmacao: nao recebe trabalho nem cartao.
         const partes = divisaoDoResumo(destinos, resumo).filter((parte) => parte.lotes.length > 0);
+        const conteudo = conteudoDaDivisao(destinos, resumo, leitura, undefined, {
+          papel: papelAjustado,
+          notasDoMeio: notasDoMeio(partes),
+        });
         setPedidoDeEnvio({
-          conteudo: conteudoDaDivisao(destinos, resumo, leitura),
+          conteudo,
           aba,
           destinos: destinos.filter((destino) =>
             partes.some((parte) => parte.impressora === destino.id),
@@ -532,6 +563,10 @@ export function App() {
         aoAtivar={(id) => despachar({ tipo: "ativar", id })}
         aoFechar={pedirFechamento}
         aoAbrir={() => void abrirPeloSeletor()}
+        aoAbrirHistorico={() => {
+          setFalhaAoApagarHistorico(false);
+          setHistorico("lista");
+        }}
         idLateral={ID_LATERAL}
         idPainel={ID_AREA_DOCUMENTO}
       />
@@ -559,6 +594,23 @@ export function App() {
             aoComandar={aoComandarCartao}
             aoPedirCancelar={setCartaoACancelar}
             aoDispensar={dispensar}
+            documento={analiseDoDocumento}
+            blocoAjuste={
+              <BlocoAjuste
+                aba={abaAtiva}
+                semMarca={envioSemMarca(
+                  abaAtiva?.controle === true,
+                  lista.impressoras.filter((item) => abaAtiva?.impressorasMarcadas.includes(item.id)),
+                  analiseDoDocumento,
+                )}
+                aoDefinirPapel={(papel) => {
+                  if (idAtiva !== null) despachar({ tipo: "definir_papel_ajuste", id: idAtiva, papel });
+                }}
+                aoDefinirControle={(ligado) => {
+                  if (idAtiva !== null) despachar({ tipo: "definir_controle", id: idAtiva, ligado });
+                }}
+              />
+            }
             blocoModo={
               <BlocoModo
                 aba={abaAtiva}
@@ -581,6 +633,27 @@ export function App() {
         />
       </div>
       <CalibrarDialog fila={filaACalibrar} aoFechar={() => setFilaACalibrar(null)} />
+      <HistoricoDialog
+        aberto={confirmacao === null && historico === "lista"}
+        impressoras={lista.impressoras}
+        falhaAoApagar={falhaAoApagarHistorico}
+        versao={versaoDoHistorico}
+        aoFechar={() => setHistorico(null)}
+        aoPedirApagar={() => setHistorico("apagar")}
+      />
+      <ConfirmDialog
+        conteudo={confirmacao === null && historico === "apagar" ? conteudoDoApagarHistorico() : null}
+        aoCancelar={() => setHistorico("lista")}
+        aoConfirmar={() => {
+          apagarHistorico()
+            .then(() => setFalhaAoApagarHistorico(false))
+            .catch(() => setFalhaAoApagarHistorico(true))
+            .finally(() => {
+              setVersaoDoHistorico((versao) => versao + 1);
+              setHistorico("lista");
+            });
+        }}
+      />
       <ConfirmDialog
         conteudo={confirmacao}
         aoCancelar={() => despachar({ tipo: "cancelar_fechamento" })}

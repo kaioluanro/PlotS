@@ -8,6 +8,17 @@ const PRAZO: Duration = Duration::from_secs(20);
 const A4: DimensoesPagina = DimensoesPagina::new(210.0, 297.0);
 const A5: DimensoesPagina = DimensoesPagina::new(148.0, 210.0);
 
+#[test]
+fn ajustar_papel_planeja_documento_misto_em_um_formato() {
+    let dimensoes = [A4, A5, A4, A5];
+    let pedido = Pedido::novo("documento.pdf".into(), 10, None).unwrap();
+    assert!(planejar_pedido(&dimensoes, &pedido, PerfilImpressora::default(), false).is_err());
+    let pedido = pedido.com_papel_de_ajuste(plots_core::ajuste::PapelDeAjuste::de_codigo("a4"));
+    let lotes = planejar_pedido(&dimensoes, &pedido, PerfilImpressora::default(), false).unwrap();
+    assert_eq!(lotes.len(), 1);
+    assert_eq!(lotes[0].papel.formato, plots_core::FormatoPapel::A4);
+}
+
 impl ParaMotivo for String {
     fn para_motivo(&self) -> Motivo {
         Motivo::novo("sistema", self.clone())
@@ -1032,6 +1043,18 @@ fn resumo_do_envio_conta_so_as_paginas_lotes_e_papeis_do_trecho() {
 }
 
 #[test]
+fn resumo_com_papel_ajustado_informa_escala_e_unifica_os_lotes() {
+    let pdf = PdfDeTeste::novo("resumo-ajustado", &[CAIXA_A4, CAIXA_A4, CAIXA_A5, CAIXA_A5]);
+    let papel = plots_core::ajuste::PapelDeAjuste::de_codigo("a4").unwrap();
+    let resumo = resumo_do_envio_com_papel(&pdf.caminho, 10, None, Some(papel)).unwrap();
+    assert_eq!((resumo.lotes, resumo.papeis.len()), (1, 1));
+    assert_eq!(resumo.papeis[0].formato, "a4");
+    let (menor, maior) = resumo.escalas.unwrap();
+    assert!((menor - 1.0).abs() < 0.01);
+    assert!((maior - 1.41).abs() < 0.02);
+}
+
+#[test]
 fn resumo_do_envio_cita_a_orientacao_mista_com_o_numero_original() {
     let pdf = PdfDeTeste::novo(
         "misto",
@@ -1620,4 +1643,84 @@ fn papel_a5_na_automatica_continua_em_uma_face_por_passada() {
     cena.comandar("a", Comando::EnviarVerso);
     cena.esperar("a", concluido);
     assert_eq!(cena.enviados(), [Passada::Frente, Passada::Verso]);
+}
+
+const CARTA: DimensoesPagina = DimensoesPagina::new(215.9, 279.4);
+
+fn com_papel(codigo: &str) -> Pedido {
+    Pedido::novo("documento.pdf".into(), 10, None)
+        .unwrap()
+        .com_papel_de_ajuste(plots_core::ajuste::PapelDeAjuste::de_codigo(codigo))
+}
+
+#[test]
+fn ajustar_ao_papel_decide_a_rota_pelo_papel_de_destino() {
+    let perfil = ModeloImpressora::JatoDeTinta.perfil();
+    for (original, destino, duas_faces) in [
+        (CARTA, "a4", true),
+        (A5, "a4", true),
+        (A5, "carta", true),
+        (A4, "a5", false),
+        (A4, "oficio", false),
+    ] {
+        let lotes = planejar_pedido(&[original; 4], &com_papel(destino), perfil, true).unwrap();
+        assert!(
+            lotes.iter().all(|item| item.lote.duas_faces == duas_faces),
+            "{original:?} em {destino}"
+        );
+    }
+}
+
+#[test]
+fn o_resumo_diz_a_rota_do_papel_de_destino_e_nao_a_do_original() {
+    let pdf = PdfDeTeste::novo("rota-do-ajuste", &[CAIXA_A5; 4]);
+    let sem_ajuste = resumo_do_envio(&pdf.caminho, 10, None).unwrap();
+    assert!(sem_ajuste.fluxos.iter().all(|fluxo| !fluxo.automatico));
+    let a4 = plots_core::ajuste::PapelDeAjuste::de_codigo("a4");
+    let ajustado = resumo_do_envio_com_papel(&pdf.caminho, 10, None, a4).unwrap();
+    assert_eq!(
+        ajustado.fluxos,
+        [TrechoDoFluxo {
+            automatico: true,
+            inicio: 1,
+            fim: 4
+        }]
+    );
+    assert_eq!(ajustado.lotes_automaticos, 1);
+}
+
+#[test]
+fn simulada_automatica_aceita_a5_ajustado_a_a4_sem_nenhum_comando() {
+    let pdf = PdfDeTeste::novo("automatica-a5-em-a4", &[CAIXA_A5; 4]);
+    let pedido = Pedido::novo(pdf.caminho.clone(), 10, None)
+        .unwrap()
+        .com_papel_de_ajuste(plots_core::ajuste::PapelDeAjuste::de_codigo("a4"));
+    let cena = simular_automatica(pedido);
+    let fim = cena.esperar("auto", concluido);
+    assert_eq!(
+        fim.resultado,
+        Some(Resultado {
+            corretas: 2,
+            folhas: 2
+        })
+    );
+}
+
+#[test]
+fn folha_de_controle_nao_toca_no_lote_de_duas_faces_e_marca_o_manual_da_mesma_fila() {
+    let perfil = ModeloImpressora::JatoDeTinta.perfil();
+    let pedido = Pedido::novo("documento.pdf".into(), 10, None)
+        .unwrap()
+        .com_controle(Some(IdiomaDaMarca::Portugues));
+    let lotes = planejar_pedido(&[A4, A4, A5, A5], &pedido, perfil, true).unwrap();
+    assert_eq!(lotes.len(), 2);
+    assert!(lotes[0].lote.duas_faces);
+    assert!(lotes[0].marcas.is_empty());
+    assert!(lotes[0]
+        .lote
+        .passada1
+        .iter()
+        .all(|face| face.numero.is_some()));
+    assert!(!lotes[1].lote.duas_faces);
+    assert!(!lotes[1].marcas.is_empty());
 }

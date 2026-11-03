@@ -8,6 +8,8 @@ use plots_core::{Pagina, LIMITE_PAGINAS};
 
 pub mod calibracao;
 pub use calibracao::{pdf_calibracao, PapelCalibracao, PAGINAS_CALIBRACAO};
+mod opcoes;
+pub use opcoes::OpcoesDaPassada;
 
 #[derive(Debug)]
 pub enum ErroPdf {
@@ -157,6 +159,16 @@ impl PdfOrigem {
         paginas: &[Pagina],
         pagina_tamanho_branco: usize,
     ) -> Result<Vec<u8>, ErroPdf> {
+        self.gerar_passada_com(paginas, pagina_tamanho_branco, &OpcoesDaPassada::default())
+    }
+
+    /// Monta a passada aplicando as opções de papel e marcas fornecidas.
+    pub fn gerar_passada_com(
+        &self,
+        paginas: &[Pagina],
+        pagina_tamanho_branco: usize,
+        opcoes: &OpcoesDaPassada,
+    ) -> Result<Vec<u8>, ErroPdf> {
         if paginas.is_empty() || paginas.len() > LIMITE_PAGINAS {
             return Err(ErroPdf::DocumentoInvalido("passada vazia ou excessiva"));
         }
@@ -241,6 +253,13 @@ impl PdfOrigem {
                     &mut campos_raiz,
                 )?;
             }
+            opcoes::aplicar_a_pagina(
+                &mut saida,
+                &mut dict,
+                (rotacao.rem_euclid(360) + if pagina.girar_180 { 180 } else { 0 }) % 360,
+                opcoes.papel_mm,
+                opcoes.marcas.get(&pagina.numero).map(String::as_str),
+            )?;
             dict.set("Parent", pages_id);
             saida.objects.insert(pagina_id, Object::Dictionary(dict));
             kids.push(Object::Reference(pagina_id));

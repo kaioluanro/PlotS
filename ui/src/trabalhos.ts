@@ -1,9 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { Cartao, Comando } from "./cartoes";
+import type { Idioma } from "./i18n";
 import type { ResumoComDivisao } from "./confirmacao";
 import type { TrechoDoEnvio } from "./intervalo";
-import type { ModoDistribuicao } from "./tabs";
+import type { ModoDistribuicao, PapelDeAjuste } from "./tabs";
 
 /** O backend publica cada mudanca de um trabalho por este evento. */
 export function ouvirCartoes(aoReceber: (cartao: Cartao) => void): Promise<() => void> {
@@ -17,6 +18,7 @@ export function resumoDoEnvio(
   intervalo: TrechoDoEnvio | null,
   modo: ModoDistribuicao,
   impressoras: readonly string[],
+  papelDeAjuste: PapelDeAjuste | null = null,
 ): Promise<ResumoComDivisao> {
   return invoke<ResumoComDivisao>("resumo_do_envio", {
     caminho,
@@ -24,6 +26,7 @@ export function resumoDoEnvio(
     intervalo,
     modo,
     impressoras,
+    papelDeAjuste,
   });
 }
 
@@ -37,6 +40,8 @@ export function iniciarImpressao(
   modo: ModoDistribuicao,
   lotes: number,
   paginas: number,
+  papelDeAjuste: PapelDeAjuste | null = null,
+  marcaControle: Idioma | null = null,
 ): Promise<string[]> {
   return invoke<string[]>("iniciar_impressao", {
     aba,
@@ -47,7 +52,14 @@ export function iniciarImpressao(
     modo,
     lotes,
     paginas,
+    papelDeAjuste,
+    marcaControle,
   });
+}
+
+/** Guarda se o driver desta impressora inverte a ordem; a recusa diz que nada mudou. */
+export function definirInversao(impressora: string, inverte: boolean): Promise<void> {
+  return invoke<void>("definir_inversao", { impressora, inverte });
 }
 
 /** A recusa quer dizer que nenhuma thread vai atender o pedido. */

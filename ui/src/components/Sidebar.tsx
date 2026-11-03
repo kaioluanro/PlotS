@@ -67,6 +67,9 @@ import {
 } from "../preferencias";
 import { usePreferencias } from "../preferencias-estado";
 import type { Aba } from "../tabs";
+import type { AnaliseDoDocumento } from "../analise-documento";
+import { mostraOpcaoDoDriver } from "../opcoes-envio";
+import { OpcaoInversao } from "./BlocoAjuste";
 import { BlocoIntervalo } from "./BlocoIntervalo";
 import { JuncaoDosMacos } from "./BlocoModo";
 import botoes from "./Botao.module.css";
@@ -87,6 +90,8 @@ interface Props {
   /** Escolhas ainda sendo gravadas, por nome de fila. */
   gravacoes: ReadonlyMap<string, Modelo>;
   aoAtualizar: () => void;
+  /** O que se sabe do papel do envio que esta na tela. */
+  documento?: AnaliseDoDocumento | null;
   aoAlternar: (impressora: string) => void;
   aoEscolherModelo: (fila: string, modelo: Modelo) => void;
   aoPedirSubstituicao: (fila: string, modelo: Modelo) => void;
@@ -100,6 +105,7 @@ interface Props {
   aoPedirCancelar: (cartao: Cartao) => void;
   aoDispensar: (cartao: Cartao) => void;
   blocoModo: ReactNode;
+  blocoAjuste: ReactNode;
 }
 
 export function Sidebar({
@@ -110,6 +116,7 @@ export function Sidebar({
   lendo,
   gravacoes,
   aoAtualizar,
+  documento = null,
   aoAlternar,
   aoEscolherModelo,
   aoPedirSubstituicao,
@@ -122,6 +129,7 @@ export function Sidebar({
   aoPedirCancelar,
   aoDispensar,
   blocoModo,
+  blocoAjuste,
 }: Props) {
   const idExplicacao = useId();
   const marcadas = aba?.impressorasMarcadas ?? [];
@@ -264,6 +272,8 @@ export function Sidebar({
               aoEscolherModelo={aoEscolherModelo}
               aoPedirSubstituicao={aoPedirSubstituicao}
               aoCalibrar={aoCalibrar}
+              aoMudarInversao={aoAtualizar}
+              temPapelManual={documento?.temPapelManual === true}
               comAjuste={temPreferencias(impressora) && preferencias.salvas.has(impressora.nome)}
               duasFaces={temPreferencias(impressora) && preferencias.duasFaces.has(impressora.nome)}
               janelaAberta={temPreferencias(impressora) && preferencias.abertas.has(impressora.nome)}
@@ -311,8 +321,10 @@ export function Sidebar({
               marcadasNaLista.length > 0 &&
               marcadasNaLista.every((impressora) => impressora.modo === "automatico")
             }
+            variosPapeis={documento?.variosPapeis === true}
           />
           {blocoModo}
+          {blocoAjuste}
         </div>
         <div className={styles.grupoEnvio}>
           <button
@@ -395,6 +407,8 @@ interface PropsLinha {
   aoEscolherModelo: (fila: string, modelo: Modelo) => void;
   aoPedirSubstituicao: (fila: string, modelo: Modelo) => void;
   aoCalibrar: (fila: string) => void;
+  aoMudarInversao?: () => void;
+  temPapelManual?: boolean;
   comAjuste: boolean;
   duasFaces: boolean;
   janelaAberta: boolean;
@@ -412,6 +426,44 @@ interface PedidoDeVolta {
   origem: HTMLElement;
   destino: () => HTMLElement | null;
   semLinha?: boolean;
+}
+
+/** Como o seletor do modelo, nao usa `disabled` ao gravar: o foco de quem usa o teclado ficaria perdido. */
+export function SeletorDoGesto({
+  valor,
+  gravando,
+  demorando,
+  aoEscolher,
+}: {
+  valor: "jato" | "laser";
+  gravando: boolean;
+  demorando: boolean;
+  aoEscolher: (gesto: "jato" | "laser") => void;
+}) {
+  return (
+    <span className={styles.seletorCaixa}>
+      <select
+        className={styles.seletor}
+        value={valor}
+        title={demorando ? t("modo.seletor.gravando") : t("modo.gestoManual")}
+        aria-busy={gravando}
+        onChange={(evento) => {
+          if (!gravando) aoEscolher(evento.target.value === "laser" ? "laser" : "jato");
+        }}
+      >
+        <option value="jato">{nomeDoModelo("jato")}</option>
+        <option value="laser">{nomeDoModelo("laser")}</option>
+      </select>
+      {demorando ? (
+        <LoaderCircle size={12} className={`${styles.indicadorGravacao} ${styles.girando}`} aria-hidden="true" />
+      ) : (
+        <ChevronDown size={10} className={styles.setaSeletor} aria-hidden="true" />
+      )}
+      <span role="status" className={styles.ocultoVisual}>
+        {demorando ? t("modo.seletor.gravando") : ""}
+      </span>
+    </span>
+  );
 }
 
 export function AjusteSemLinha({ fila, aoApagar, aoDispensar }: { fila: string; aoApagar: (origem: HTMLElement) => void; aoDispensar: () => void }) {
@@ -442,6 +494,8 @@ export function LinhaImpressora({
   aoEscolherModelo,
   aoPedirSubstituicao,
   aoCalibrar,
+  aoMudarInversao,
+  temPapelManual = false,
   comAjuste,
   duasFaces,
   janelaAberta,
@@ -627,23 +681,14 @@ export function LinhaImpressora({
         {real && impressora.modo === "automatico" && (
           <label className={`${styles.fileira} ${styles.fileiraDoGesto}`}>
             <span className={styles.gestoRotulo}>{t("modo.gestoManual")}</span>
-            <span className={styles.seletorCaixa}>
-              <select
-                className={styles.seletor}
-                value={impressora.gestoManual ?? "jato"}
-                disabled={gravando !== undefined}
-                onChange={(evento) =>
-                  aoEscolherModelo(
-                    impressora.nome,
-                    evento.target.value === "laser" ? "automatico:laser" : "automatico:jato",
-                  )
-                }
-              >
-                <option value="jato">{nomeDoModelo("jato")}</option>
-                <option value="laser">{nomeDoModelo("laser")}</option>
-              </select>
-              <ChevronDown size={10} className={styles.setaSeletor} aria-hidden="true" />
-            </span>
+            <SeletorDoGesto
+              valor={impressora.gestoManual ?? "jato"}
+              gravando={gravando !== undefined}
+              demorando={gravacaoDemorada}
+              aoEscolher={(gesto) =>
+                aoEscolherModelo(impressora.nome, gesto === "laser" ? "automatico:laser" : "automatico:jato")
+              }
+            />
           </label>
         )}
         <div className={`${styles.fileira} ${styles.fileiraDoEstado}`}>
@@ -662,6 +707,9 @@ export function LinhaImpressora({
             </span>
           )}
         </div>
+        {marcada && mostraOpcaoDoDriver(impressora, temPapelManual) && (
+          <OpcaoInversao impressora={impressora} aoMudar={aoMudarInversao} />
+        )}
         {comAjuste && (
           <AjusteDaLinha
             nome={nome}
@@ -785,9 +833,11 @@ interface PropsCampo {
   nota: Chave | null;
   /** Todas as marcadas imprimem sozinhas: o resumo nao fala em lotes. */
   soAutomaticas: boolean;
+  /** Cada papel reparte os seus lotes: a conta simples estaria errada. */
+  variosPapeis?: boolean;
 }
 
-export function CampoLote({ aba, aoDefinir, nota, soAutomaticas }: PropsCampo) {
+export function CampoLote({ aba, aoDefinir, nota, soAutomaticas, variosPapeis = false }: PropsCampo) {
   const valor = aba?.tamanhoLote ?? LOTE_PADRAO;
   const desabilitado = aba === null;
   const id = useId();
@@ -854,7 +904,7 @@ export function CampoLote({ aba, aoDefinir, nota, soAutomaticas }: PropsCampo) {
           }}
         />
       </div>
-      <AbaixoDoLote aba={aba} invalido={invalido} idDica={idDica} soAutomaticas={soAutomaticas} />
+      <AbaixoDoLote aba={aba} invalido={invalido} idDica={idDica} soAutomaticas={soAutomaticas || variosPapeis} />
       {nota !== null && (
         <p id={idNota} className={styles.notaDoLote}>
           {t(nota)}

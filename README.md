@@ -20,11 +20,13 @@ O PlotS é software livre sob a licença MIT (arquivo `LICENSE`). Os componentes
 
 ## Seus dados
 
-Os perfis das impressoras e os ajustes que você salvou nas preferências do driver ficam em `%APPDATA%\plots\perfis.toml`, um arquivo de texto. Os ajustes ficam em Base64, que não é criptografia, e o PlotS não interpreta o que o driver de cada fabricante guarda neles. Se o driver da sua impressora usa senha, PIN ou código de usuário, esses dados podem estar no arquivo, então evite compartilhá-lo. Para apagar o ajuste de uma impressora, use **Usar padrão** na linha dela. Para apagar tudo, feche o PlotS e apague esse arquivo (ou a pasta `plots`). Na próxima abertura o programa começa sem perfis e sem ajustes.
+Os perfis das impressoras e os ajustes que você salvou nas preferências do driver ficam em `%APPDATA%\plots\perfis.toml`, um arquivo de texto. Os ajustes ficam em Base64, que não é criptografia, e o PlotS não interpreta o que o driver de cada fabricante guarda neles. Se o driver da sua impressora usa senha, PIN ou código de usuário, esses dados podem estar no arquivo, então evite compartilhá-lo. Para apagar o ajuste de uma impressora, use **Usar padrão** na linha dela. Para apagar tudo, feche o PlotS e apague a pasta `plots`. Na próxima abertura o programa começa sem perfis, sem ajustes e sem histórico, e com **Guardar histórico** ligado de novo: se não quiser registrar os envios, desligue a opção outra vez.
 
-`%APPDATA%` é a pasta Roaming. Em um computador com perfil móvel (por exemplo, de uma empresa ou escola), o Windows pode copiar essa pasta para o servidor e levá-la a outros computadores, junto com o nome das impressoras e os ajustes do driver gravados no arquivo.
+O histórico de impressão fica em `%APPDATA%\plots\historico.toml`, também em texto sem criptografia, e guarda até 500 envios feitos pela janela: o nome do arquivo impresso (sem a pasta), a data, as impressoras, as páginas, o trecho, os lotes, como o envio terminou, e o tempo, as folhas e a rota (manual ou automática) de cada impressora. O nome de um arquivo ou de uma impressora pode revelar algo pessoal ou de trabalho, e quem usa a mesma conta do Windows consegue ler essa lista. O PlotS não envia o histórico pela internet. Para não registrar novos envios, desligue **Guardar histórico** no próprio histórico. Para apagá-lo, abra o histórico na barra de título e use **Apagar histórico**. Um envio que começou com a opção ligada entra na lista quando terminar, mesmo que você desligue a opção ou apague a lista antes disso.
 
-O desinstalador foi configurado para não apagar os perfis nem os ajustes.
+`%APPDATA%` é a pasta Roaming. Em um computador com perfil móvel (por exemplo, de uma empresa ou escola), o Windows pode copiar essa pasta para o servidor e levá-la a outros computadores, junto com o nome das impressoras, os ajustes do driver gravados no arquivo e o histórico, com os nomes dos arquivos impressos.
+
+O desinstalador foi configurado para não apagar os perfis, os ajustes nem o histórico.
 
 ## Aviso
 

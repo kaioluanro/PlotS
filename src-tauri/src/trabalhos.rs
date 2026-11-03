@@ -7,17 +7,22 @@
 use crate::documento;
 use crate::impressoras;
 use crate::leitura_pdf;
+use crate::tempo_de_impressao::{Cronometro, Medida, Relogio};
 use plots_core::distribuicao::{distribuir_lotes, ModoDistribuicao};
 use plots_core::{
     plano_automatico_do_intervalo, plano_lotes_do_intervalo, DimensoesPagina, FormatoPapel,
     IntervaloPaginas, LotePapel, ModeloImpressora, OrdemPassadas, Pagina, Papel, PerfilImpressora,
     RepartoAutomatico,
 };
+use plots_perfis::historico::ResultadoDoEnvio;
 use plots_windows::plots_print::fluxo::{
     self, CondicaoDoAviso, Condutor, DescreveFalha, Espera, Instrucao, Lado, LoteDoFluxo, Passo,
     SimGuiado, Virada,
 };
 use plots_windows::plots_print::job::{Backend, ErroJob, EstadoJob};
+use plots_windows::plots_print::opcoes::{
+    compensar_driver, marcar_lotes, DriverDeTeste, IdiomaDaMarca,
+};
 use plots_windows::plots_print::{ErroSimulacao, Mecanica};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -46,7 +51,7 @@ pub struct Motivo {
 }
 
 impl Motivo {
-    fn novo(codigo: &'static str, texto: impl Into<String>) -> Self {
+    pub(crate) fn novo(codigo: &'static str, texto: impl Into<String>) -> Self {
         Self {
             codigo,
             texto: texto.into(),
@@ -182,6 +187,8 @@ pub struct FaceDaSequencia {
 pub struct Sequencia {
     pub frente: Vec<FaceDaSequencia>,
     pub verso: Vec<FaceDaSequencia>,
+    /// O que sai escrito nas folhas, na ordem das passadas. Vazio sem a folha de controle.
+    pub marcas: Vec<String>,
 }
 
 fn faces(paginas: &[Pagina]) -> Vec<FaceDaSequencia> {
@@ -341,6 +348,12 @@ struct Andamento<'a, B: Backend> {
     parado: bool,
     passada: PassadaDoCartao,
     ajuste_recusado: bool,
+    cronometro: Cronometro,
+    relogio: &'a dyn Relogio,
+    lotes_feitos: u64,
+    /// Como terminou, quando terminou: sem isto, o trabalho só parou de ser acompanhado.
+    fim: Option<ResultadoDoEnvio>,
+    com_erro: bool,
 }
 
 impl<B> Andamento<'_, B>
@@ -371,13 +384,54 @@ where
             cartao.sequencia = self.condutor.lote().map(|item| Sequencia {
                 frente: faces(&item.lote.passada1),
                 verso: faces(&item.lote.passada2),
+                marcas: item
+                    .lote
+                    .passada1
+                    .iter()
+                    .chain(&item.lote.passada2)
+                    .filter_map(|face| item.marcas.get(&face.numero).cloned())
+                    .collect(),
             });
         }
         (self.emitir)(cartao);
     }
 
-    fn publicar_erro(&self, motivo: Motivo) {
+    fn publicar_erro(&mut self, motivo: Motivo) {
+        self.com_erro = true;
+        self.cronometro.pausar(self.relogio.agora_ms());
         self.publicar(EstadoCartao::Erro { motivo });
+    }
+
+    /// O lote terminou na fila: as folhas dele contam, e o tempo das duas passadas também.
+    fn fechar_lote(&mut self) {
+        let folhas = self.condutor.lote_terminado().map_or(0, |item| {
+            u64::try_from(item.lote.paginas.len().div_ceil(2)).unwrap_or(u64::MAX)
+        });
+        let automatico = self.condutor.terminado_em_duas_faces();
+        self.cronometro
+            .fechar_lote(self.relogio.agora_ms(), folhas, automatico);
+        self.lotes_feitos = self.lotes_feitos.saturating_add(1);
+    }
+
+    fn desfecho(&self) -> Desfecho {
+        let lotes = self.condutor.lotes();
+        let paginas = lotes
+            .iter()
+            .flat_map(|item| &item.lote.paginas)
+            .filter(|pagina| pagina.numero.is_some())
+            .count();
+        Desfecho {
+            resultado: self.fim.unwrap_or(if self.com_erro {
+                ResultadoDoEnvio::ComErro
+            } else {
+                ResultadoDoEnvio::Incompleto
+            }),
+            lotes: u64::try_from(lotes.len()).unwrap_or(u64::MAX),
+            lotes_feitos: self.lotes_feitos,
+            paginas: u64::try_from(paginas).unwrap_or(u64::MAX),
+            medida: self.cronometro.medida(),
+            medida_automatica: self.cronometro.medida_automatica(),
+        }
     }
 
     fn publicar_aviso(&mut self) {
@@ -426,7 +480,9 @@ where
     fn enviar(&mut self, passada: PassadaDoCartao) -> Continua {
         self.aviso = None;
         self.parado = false;
+        self.com_erro = false;
         self.passada = passada;
+        self.cronometro.iniciar_passada(self.relogio.agora_ms());
         // O estado aparece antes: desenhar as paginas de uma passada pode levar minutos.
         self.publicar(EstadoCartao::Imprimindo { passada });
         let enviado = match passada {
@@ -480,6 +536,8 @@ where
                 return Continua::Sim;
             }
         }
+        self.cronometro.pausar(self.relogio.agora_ms());
+        self.fim = Some(ResultadoDoEnvio::Cancelado);
         self.publicar(EstadoCartao::Cancelado);
         Continua::Nao
     }
@@ -499,11 +557,14 @@ where
             {
                 self.aviso = None;
                 self.parado = false;
+                self.com_erro = false;
                 self.passada = self.primeira_passada();
+                self.cronometro.descartar_lote();
                 self.publicar(EstadoCartao::Imprimindo {
                     passada: self.passada,
                 });
                 // Antes de mandar o lote de novo, o trabalho anterior sai da fila; se a fila recusar, nada e enviado.
+                self.cronometro.iniciar_passada(self.relogio.agora_ms());
                 if let Err(erro) = self.condutor.cancelar() {
                     self.falhou_ao_cancelar(&erro);
                 } else if let Err(erro) = self.condutor.enviar_frente() {
@@ -527,8 +588,11 @@ where
     }
 
     fn consultar(&mut self) -> Continua {
-        match self.condutor.consultar() {
+        let passo = self.condutor.consultar();
+        let agora = self.relogio.agora_ms();
+        match passo {
             Passo::EmAndamento => {
+                self.cronometro.retomar(agora);
                 if self.aviso.take().is_some() {
                     self.publicar(EstadoCartao::Imprimindo {
                         passada: self.passada,
@@ -541,6 +605,7 @@ where
                 mensagem_do_driver,
                 novo,
             } => {
+                self.cronometro.pausar(agora);
                 if novo {
                     self.aviso = Some(AvisoAberto {
                         motivo: Motivo::novo(codigo_do_aviso(condicao), motivo),
@@ -560,10 +625,12 @@ where
             }
             Passo::FrenteConfirmada => {
                 self.aviso = None;
+                self.cronometro.fechar_passada(agora);
                 self.publicar(EstadoCartao::Aguardando);
             }
             Passo::LoteConcluido => {
                 self.aviso = None;
+                self.fechar_lote();
                 self.somar_resultado();
                 // Sem gesto e sem troca de papel, nao ha o que esperar de ninguem.
                 if self.condutor.proximo_segue_sozinho() {
@@ -572,6 +639,8 @@ where
                 self.publicar(EstadoCartao::ProximoLote);
             }
             Passo::DocumentoConcluido => {
+                self.fechar_lote();
+                self.fim = Some(ResultadoDoEnvio::Concluido);
                 self.somar_resultado();
                 self.publicar(EstadoCartao::Concluido);
                 return Continua::Nao;
@@ -596,6 +665,7 @@ where
             }
             Passo::TempoEsgotado => {
                 self.parado = true;
+                self.cronometro.pausar(agora);
                 let motivo = Motivo::novo(
                     "sem_prazo",
                     "a fila não confirmou a tempo; o trabalho continua na fila",
@@ -636,7 +706,9 @@ fn conduzir<B>(
     identidade: &Identidade,
     recados: &Receiver<Recado>,
     emitir: &Emissor,
-) where
+    relogio: &dyn Relogio,
+) -> Desfecho
+where
     B: Backend + DescreveFalha,
     B::Erro: ParaMotivo + Display,
 {
@@ -651,13 +723,28 @@ fn conduzir<B>(
         parado: false,
         passada: PassadaDoCartao::Frente,
         ajuste_recusado: false,
+        cronometro: Cronometro::default(),
+        relogio,
+        lotes_feitos: 0,
+        fim: None,
+        com_erro: false,
     };
+    acompanhar(&mut andamento, recados);
+    andamento.desfecho()
+}
+
+fn acompanhar<B>(andamento: &mut Andamento<'_, B>, recados: &Receiver<Recado>)
+where
+    B: Backend + DescreveFalha,
+    B::Erro: ParaMotivo + Display,
+{
     // Os recados chegados durante a preparacao valem antes do primeiro envio: soltar a aba ou
     // cancelar nesse intervalo nao pode mandar a frente para a fila.
     loop {
         match recados.try_recv() {
             Ok(Recado::Soltar) | Err(TryRecvError::Disconnected) => return,
             Ok(Recado::Comando(Comando::Cancelar)) => {
+                andamento.fim = Some(ResultadoDoEnvio::Cancelado);
                 andamento.publicar(EstadoCartao::Cancelado);
                 return;
             }
@@ -698,10 +785,16 @@ struct GuardaDaThread {
     identidade: Identidade,
     emitir: Emissor,
     ativo: Arc<AtomicBool>,
+    fim: Option<FimDoTrabalho>,
+    desfecho: Option<Desfecho>,
 }
 
 impl Drop for GuardaDaThread {
     fn drop(&mut self) {
+        // A impressora so fica livre depois: quem espera por ela encontra o historico ja escrito.
+        if let Some(fim) = self.fim.take() {
+            fim(self.desfecho.take().unwrap_or(Desfecho::sem_envio()));
+        }
         self.ativo.store(false, Ordering::SeqCst);
         if std::thread::panicking() {
             (self.emitir)(self.identidade.cartao(EstadoCartao::Erro {
@@ -710,6 +803,35 @@ impl Drop for GuardaDaThread {
         }
     }
 }
+
+/// Como um trabalho acabou nesta impressora, para o historico.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Desfecho {
+    pub resultado: ResultadoDoEnvio,
+    pub lotes: u64,
+    pub lotes_feitos: u64,
+    pub paginas: u64,
+    pub medida: Medida,
+    /// O que saiu em duas faces fica a parte: e outra velocidade, mesmo na mesma impressora.
+    pub medida_automatica: Medida,
+}
+
+impl Desfecho {
+    /// Nada chegou a ser enviado, ou a thread parou antes de dizer como foi.
+    fn sem_envio() -> Self {
+        Self {
+            resultado: ResultadoDoEnvio::ComErro,
+            lotes: 0,
+            lotes_feitos: 0,
+            paginas: 0,
+            medida: Medida::default(),
+            medida_automatica: Medida::default(),
+        }
+    }
+}
+
+/// Chamado uma vez, ao fim da thread de cada trabalho, seja qual for o fim.
+pub type FimDoTrabalho = Box<dyn FnOnce(Desfecho) + Send>;
 
 fn motivo_de_interrupcao() -> Motivo {
     Motivo::novo(
@@ -733,7 +855,31 @@ pub struct Gerente {
 impl Gerente {
     /// Inicia o trabalho em uma thread propria. Devolve `false`, sem mudar nada, se a impressora
     /// ja tem um trabalho em andamento.
+    #[cfg(test)]
     pub fn iniciar<B, F>(&self, identidade: Identidade, emitir: Emissor, preparar: F) -> bool
+    where
+        B: Backend + DescreveFalha,
+        B::Erro: ParaMotivo + Display,
+        F: FnOnce() -> Result<Preparo<B>, Motivo> + Send + 'static,
+    {
+        self.iniciar_medido(
+            identidade,
+            emitir,
+            Arc::new(crate::tempo_de_impressao::RelogioDoSistema::default()),
+            Box::new(|_| {}),
+            preparar,
+        )
+    }
+
+    /// Como `iniciar`, dizendo como medir o tempo e a quem contar como o trabalho acabou.
+    pub fn iniciar_medido<B, F>(
+        &self,
+        identidade: Identidade,
+        emitir: Emissor,
+        relogio: Arc<dyn Relogio>,
+        fim: FimDoTrabalho,
+        preparar: F,
+    ) -> bool
     where
         B: Backend + DescreveFalha,
         B::Erro: ParaMotivo + Display,
@@ -755,6 +901,8 @@ impl Gerente {
             identidade: identidade.clone(),
             emitir: Arc::clone(&emitir),
             ativo: Arc::clone(&ativo),
+            fim: Some(fim),
+            desfecho: None,
         };
         emitir(identidade.cartao(EstadoCartao::Preparando));
         let chave = identidade.impressora.clone();
@@ -763,11 +911,14 @@ impl Gerente {
         let iniciada = std::thread::Builder::new()
             .name("trabalho-de-impressao".into())
             .spawn(move || {
-                let _guarda = guarda;
-                match preparar() {
-                    Ok(preparo) => conduzir(preparo, &identidade, &recebe, &emitir),
-                    Err(motivo) => recusado(&identidade, &recebe, &emitir, motivo),
-                }
+                let mut guarda = guarda;
+                guarda.desfecho = Some(match preparar() {
+                    Ok(preparo) => conduzir(preparo, &identidade, &recebe, &emitir, &*relogio),
+                    Err(motivo) => {
+                        recusado(&identidade, &recebe, &emitir, motivo);
+                        Desfecho::sem_envio()
+                    }
+                });
             });
         if iniciada.is_err() {
             ativo.store(false, Ordering::SeqCst);
@@ -808,6 +959,25 @@ impl Gerente {
             .unwrap_or_else(PoisonError::into_inner);
         for entrada in trabalhos.values().filter(|entrada| entrada.aba == aba) {
             let _ = entrada.recados.send(Recado::Soltar);
+        }
+    }
+
+    /// O programa vai fechar: ninguem mais e acompanhado. Espera as threads contarem como foi, ate o
+    /// prazo: uma passada sendo desenhada pode levar minutos, e a janela nao fica presa nela.
+    pub fn soltar_todos_e_esperar(&self, prazo: Duration) {
+        let inicio = std::time::Instant::now();
+        let ativos: Vec<Arc<AtomicBool>> = self
+            .trabalhos
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .values()
+            .map(|entrada| {
+                let _ = entrada.recados.send(Recado::Soltar);
+                Arc::clone(&entrada.ativo)
+            })
+            .collect();
+        while ativos.iter().any(|ativo| ativo.load(Ordering::SeqCst)) && inicio.elapsed() < prazo {
+            std::thread::sleep(Duration::from_millis(10));
         }
     }
 }
@@ -902,6 +1072,16 @@ pub struct Pedido {
     pub folhas_por_lote: usize,
     pub intervalo: Option<IntervaloPaginas>,
     pub parte: Option<ParteDoEnvio>,
+    pub papel_de_ajuste: Option<plots_core::ajuste::PapelDeAjuste>,
+    pub controle: Option<IdiomaDaMarca>,
+    pub driver_da_simulada: DriverDaSimulada,
+}
+
+/// Modo de teste da simulada: imita um driver que inverte, com ou sem a opcao do PlotS ligada.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DriverDaSimulada {
+    pub inverte: bool,
+    pub compensa: bool,
 }
 
 impl Pedido {
@@ -919,12 +1099,30 @@ impl Pedido {
             folhas_por_lote: folhas_por_lote.min(LOTE_MAXIMO),
             intervalo,
             parte: None,
+            papel_de_ajuste: None,
+            controle: None,
+            driver_da_simulada: DriverDaSimulada::default(),
         })
     }
 
     /// O mesmo pedido, restrito aos lotes desta impressora na divisao.
     pub fn com_parte(mut self, parte: Option<ParteDoEnvio>) -> Self {
         self.parte = parte;
+        self
+    }
+
+    pub fn com_papel_de_ajuste(mut self, papel: Option<plots_core::ajuste::PapelDeAjuste>) -> Self {
+        self.papel_de_ajuste = papel;
+        self
+    }
+
+    pub fn com_controle(mut self, controle: Option<IdiomaDaMarca>) -> Self {
+        self.controle = controle;
+        self
+    }
+
+    pub fn com_driver_da_simulada(mut self, driver: DriverDaSimulada) -> Self {
+        self.driver_da_simulada = driver;
         self
     }
 }
@@ -999,22 +1197,35 @@ pub(crate) fn planejar_pedido(
     {
         return Err(documento_mudou());
     }
-    let lotes = if automatico {
+    let ajustadas = pedido
+        .papel_de_ajuste
+        .map(|papel| papel.dimensoes_no_papel(dimensoes));
+    let dimensoes_do_plano = ajustadas.as_deref().unwrap_or(dimensoes);
+    let mut lotes = if automatico {
         let reparto = if pedido.parte.is_some() {
             RepartoAutomatico::PorLote
         } else {
             RepartoAutomatico::PorTrechoDePapel
         };
         planejar_automatico(
-            dimensoes,
+            dimensoes_do_plano,
             pedido.intervalo,
             pedido.folhas_por_lote,
             perfil,
             reparto,
         )?
     } else {
-        planejar(dimensoes, pedido.intervalo, pedido.folhas_por_lote, perfil)?
+        planejar(
+            dimensoes_do_plano,
+            pedido.intervalo,
+            pedido.folhas_por_lote,
+            perfil,
+        )?
     };
+    // Antes de repartir: o numero no papel e o do lote no documento.
+    if let Some(idioma) = pedido.controle {
+        marcar_lotes(&mut lotes, idioma);
+    }
     match pedido.parte {
         Some(parte) => parte.separar(lotes),
         None => Ok(lotes),
@@ -1025,10 +1236,17 @@ pub(crate) fn planejar_pedido(
 pub fn preparar_simulada(
     modelo: ModeloImpressora,
     pedido: &Pedido,
-) -> Result<Preparo<SimGuiado>, Motivo> {
+) -> Result<Preparo<DriverDeTeste<SimGuiado>>, Motivo> {
     let lido = leitura_pdf::ler_pdf(&pedido.caminho).map_err(|erro| motivo_do_pdf(&erro))?;
-    let lotes = planejar_pedido(&lido.dimensoes, pedido, modelo.perfil(), false)?;
-    let backend = SimGuiado::novo(Mecanica::do_modelo(modelo), modelo.gesto().into());
+    let mut lotes = planejar_pedido(&lido.dimensoes, pedido, modelo.perfil(), false)?;
+    let driver = pedido.driver_da_simulada;
+    if driver.compensa {
+        compensar_driver(&mut lotes);
+    }
+    let backend = DriverDeTeste::novo(
+        SimGuiado::novo(Mecanica::do_modelo(modelo), modelo.gesto().into()),
+        driver.inverte,
+    );
     preparo_simulado(modelo, backend, lotes)
 }
 
@@ -1037,22 +1255,26 @@ pub fn preparar_simulada(
 pub fn preparar_simulada_automatica(
     modelo: ModeloImpressora,
     pedido: &Pedido,
-) -> Result<Preparo<SimGuiado>, Motivo> {
+) -> Result<Preparo<DriverDeTeste<SimGuiado>>, Motivo> {
     let lido = leitura_pdf::ler_pdf(&pedido.caminho).map_err(|erro| motivo_do_pdf(&erro))?;
     let lotes = planejar_pedido(&lido.dimensoes, pedido, modelo.perfil(), true)?;
-    let backend = SimGuiado::automatica(
-        Mecanica::do_modelo(modelo),
-        modelo.gesto().into(),
-        lido.dimensoes,
+    // A referencia julga o papel que de fato vai a impressora, nao o tamanho original da pagina.
+    let medidas = match pedido.papel_de_ajuste {
+        Some(papel) => papel.dimensoes_no_papel(&lido.dimensoes),
+        None => lido.dimensoes,
+    };
+    let backend = DriverDeTeste::novo(
+        SimGuiado::automatica(Mecanica::do_modelo(modelo), modelo.gesto().into(), medidas),
+        false,
     );
     preparo_simulado(modelo, backend, lotes)
 }
 
 fn preparo_simulado(
     modelo: ModeloImpressora,
-    backend: SimGuiado,
+    backend: DriverDeTeste<SimGuiado>,
     lotes: Vec<LoteDoFluxo>,
-) -> Result<Preparo<SimGuiado>, Motivo> {
+) -> Result<Preparo<DriverDeTeste<SimGuiado>>, Motivo> {
     let condutor =
         Condutor::novo(backend, lotes, ESPERA_SIMULADA).map_err(|erro| motivo_do_job(&erro))?;
     let vira_para_ler = fluxo::vira_para_ler(modelo) && condutor.tem_lote_manual();
@@ -1079,7 +1301,11 @@ pub fn preparar_fila(
         )
     })?;
     let lido = leitura_pdf::ler_pdf(&pedido.caminho).map_err(|erro| motivo_do_pdf(&erro))?;
-    let lotes = planejar_pedido(&lido.dimensoes, pedido, entrada.perfil, entrada.automatico)?;
+    let mut lotes = planejar_pedido(&lido.dimensoes, pedido, entrada.perfil, entrada.automatico)?;
+    // So os lotes da rota manual mudam: quem sai em duas faces nao depende da ordem do driver.
+    if entrada.driver_inverte {
+        compensar_driver(&mut lotes);
+    }
     let pasta = impressoras::pasta_de_saida_do_sistema();
     let filas =
         plots_windows::listar_filas().map_err(|erro| Motivo::novo("sistema", erro.to_string()))?;
@@ -1092,9 +1318,14 @@ pub fn preparar_fila(
         ));
     }
     let dimensoes = dimensoes_do_envio(lido.dimensoes, pedido.intervalo);
-    let backend =
+    let dimensoes = pedido.papel_de_ajuste.map_or(dimensoes.clone(), |papel| {
+        papel.dimensoes_no_papel(&dimensoes)
+    });
+    let mut backend =
         plots_windows::BackendWindows::novo(fila, lido.origem, dimensoes, pasta.as_deref())
             .map_err(|erro| erro.para_motivo())?;
+    backend.definir_papel_de_saida(pedido.papel_de_ajuste.map(|papel| papel.medida_mm()));
+    backend.definir_marcas(lotes.iter().map(|item| item.marcas.clone()).collect());
     let condutor =
         Condutor::novo(backend, lotes, fluxo::ESPERA_REAL).map_err(|erro| motivo_do_job(&erro))?;
     let vira_para_ler =
@@ -1168,6 +1399,17 @@ pub struct ResumoDoEnvio {
     pub fluxos: Vec<TrechoDoFluxo>,
     /// Quantos trabalhos essa impressora faz fora da divisao, em que nao ha folhas por lote.
     pub lotes_automaticos: usize,
+    /// Intervalo das escalas aplicadas às páginas, quando há papel de destino.
+    pub escalas: Option<(f64, f64)>,
+    /// Qual impressora termina antes, quando o historico tem dados de todas e a diferenca e grande.
+    pub comparacao: Option<ComparacaoDoResumo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ComparacaoDoResumo {
+    pub rapida: String,
+    pub lenta: String,
+    pub razao: f64,
 }
 
 /// Paginas seguidas que seguem pelo mesmo fluxo, em ordem de documento.
@@ -1234,16 +1476,32 @@ pub struct ParteDoResumo {
 
 /// Lotes e papeis nao dependem do perfil: o plano padrao diz quantos sao. Com um trecho, tudo aqui
 /// conta so o trecho.
+#[cfg(test)]
 pub fn resumo_do_envio(
     caminho: &str,
     folhas: usize,
     intervalo: Option<IntervaloPaginas>,
 ) -> Result<ResumoDoEnvio, documento::ErroDocumento> {
+    resumo_do_envio_com_papel(caminho, folhas, intervalo, None)
+}
+
+pub fn resumo_do_envio_com_papel(
+    caminho: &str,
+    folhas: usize,
+    intervalo: Option<IntervaloPaginas>,
+    papel: Option<plots_core::ajuste::PapelDeAjuste>,
+) -> Result<ResumoDoEnvio, documento::ErroDocumento> {
     let lido = leitura_pdf::ler_pdf(caminho)?;
     let falha = || documento::falha_inesperada(caminho);
     let folhas = folhas.clamp(1, LOTE_MAXIMO);
+    let escalas = papel
+        .map(|formato| formato.faixa_de_escala(&lido.dimensoes, intervalo))
+        .transpose()
+        .map_err(|_| falha())?
+        .flatten();
+    let dimensoes_ajustadas = papel.map(|formato| formato.dimensoes_no_papel(&lido.dimensoes));
     let lotes = plano_lotes_do_intervalo(
-        &lido.dimensoes,
+        dimensoes_ajustadas.as_deref().unwrap_or(&lido.dimensoes),
         intervalo,
         folhas,
         OrdemPassadas::default(),
@@ -1251,7 +1509,7 @@ pub fn resumo_do_envio(
     )
     .map_err(|_| falha())?;
     let automatico = plano_automatico_do_intervalo(
-        &lido.dimensoes,
+        dimensoes_ajustadas.as_deref().unwrap_or(&lido.dimensoes),
         intervalo,
         folhas,
         OrdemPassadas::default(),
@@ -1281,6 +1539,8 @@ pub fn resumo_do_envio(
         faixas: faixas_dos_lotes(&lotes),
         fluxos: trechos_dos_fluxos(&automatico),
         lotes_automaticos: automatico.len(),
+        escalas,
+        comparacao: None,
     })
 }
 

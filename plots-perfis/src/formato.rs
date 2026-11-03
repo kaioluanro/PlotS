@@ -23,6 +23,10 @@ struct Cabecalho {
 #[serde(deny_unknown_fields)]
 struct ArquivoPerfis {
     versao: u32,
+    /// Ausente em arquivos antigos e também solto: só o valor falso desliga o histórico. Ligado, nem
+    /// é escrito, e o arquivo gravado fica igual ao de antes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    guardar_historico: Option<toml::Value>,
     #[serde(default)]
     filas: BTreeMap<String, EntradaArquivo>,
     /// Ausente em arquivos antigos; sem grupos, o arquivo gravado fica igual ao de antes. Valor
@@ -97,6 +101,9 @@ struct EntradaArquivo {
     /// Ausente em arquivos antigos. Valor solto, como `modelo`: um tipo errado vale como ausente.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     automatico: Option<toml::Value>,
+    /// Ausente em perfis antigos, e também solto: só o valor verdadeiro liga a compensação.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    driver_inverte: Option<toml::Value>,
 }
 
 const VIRADA_LATERAL: &str = "lateral";
@@ -174,6 +181,11 @@ impl From<EntradaArquivo> for EntradaPerfil {
             gesto_texto: entrada.gesto_texto,
             modelo,
             automatico,
+            driver_inverte: entrada
+                .driver_inverte
+                .as_ref()
+                .and_then(toml::Value::as_bool)
+                .unwrap_or(false),
         }
     }
 }
@@ -203,6 +215,7 @@ impl From<&EntradaPerfil> for EntradaArquivo {
                 .modelo
                 .map(|modelo| toml::Value::String(modelo.codigo().to_owned())),
             automatico: entrada.automatico.then_some(toml::Value::Boolean(true)),
+            driver_inverte: entrada.driver_inverte.then_some(toml::Value::Boolean(true)),
         }
     }
 }
@@ -267,6 +280,13 @@ pub(crate) fn decodificar(texto: &str, caminho: &Path) -> Result<Perfis, ErroPer
             detalhe: erro.to_string(),
         })?;
     let mut perfis = Perfis::new();
+    perfis.definir_guardar_historico(
+        arquivo
+            .guardar_historico
+            .as_ref()
+            .and_then(toml::Value::as_bool)
+            .unwrap_or(true),
+    );
     for (fila, entrada) in arquivo.filas {
         perfis.inserir(&fila, entrada.into());
     }
@@ -287,6 +307,7 @@ pub(crate) fn codificar(perfis: &Perfis) -> Result<String, ErroPerfis> {
     }
     let arquivo = ArquivoPerfis {
         versao: VERSAO_ATUAL,
+        guardar_historico: (!perfis.guardar_historico()).then_some(toml::Value::Boolean(false)),
         filas: perfis
             .filas()
             .map(|(fila, entrada)| (fila.to_owned(), EntradaArquivo::from(entrada)))

@@ -196,7 +196,7 @@ where
     let total = lotes.len();
     let mut condutor =
         Condutor::novo(backend, lotes.clone(), *espera).map_err(|erro| texto_do_job(&erro))?;
-    for (indice, LoteDoFluxo { papel, lote }) in lotes.iter().enumerate() {
+    for (indice, LoteDoFluxo { papel, lote, .. }) in lotes.iter().enumerate() {
         let numero = indice + 1;
         let fila = destino.fila;
         let nome_papel = nome_do_papel(papel);

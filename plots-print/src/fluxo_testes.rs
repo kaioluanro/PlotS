@@ -472,6 +472,22 @@ fn simulada_automatica_recusa_papel_que_nao_seja_a4_ou_carta() {
     }
 }
 
+fn folha_com(frente: Option<usize>, verso: Option<usize>) -> Folha {
+    let marca = |numero: Option<usize>| {
+        numero.map(|pagina| crate::Marca {
+            pagina: Some(pagina),
+            girada: false,
+        })
+    };
+    Folha {
+        face_a: marca(frente),
+        face_b: marca(verso),
+        face_a_para_cima: true,
+        girada: false,
+        sobreimpressao: None,
+    }
+}
+
 #[test]
 fn simulada_sem_medidas_recusa_as_duas_faces() {
     let plano = lotes(&[A4; 2], 50, ModeloImpressora::JatoDeTinta.perfil());
@@ -483,4 +499,23 @@ fn simulada_sem_medidas_recusa_as_duas_faces() {
         backend.enviar(Passada::DuasFaces, &plano[0].lote.passada1),
         Err(ErroSimulacao::DuasFacesRecusadas)
     ));
+}
+
+#[test]
+fn a_conferencia_olha_o_par_e_o_lugar_da_folha_na_leitura() {
+    let esperados = [(Some(1), Some(2)), (Some(3), Some(4))];
+    // A ultima da pilha e a primeira que se le.
+    let lida_certa = [folha_com(Some(3), Some(4)), folha_com(Some(1), Some(2))];
+    assert_eq!(folhas_certas_na_ordem(&lida_certa, &esperados), (2, 2));
+
+    let de_tras_para_a_frente = [folha_com(Some(1), Some(2)), folha_com(Some(3), Some(4))];
+    assert_eq!(
+        folhas_certas_na_ordem(&de_tras_para_a_frente, &esperados),
+        (0, 2)
+    );
+
+    let par_trocado = [folha_com(Some(3), Some(2)), folha_com(Some(1), Some(4))];
+    assert_eq!(folhas_certas_na_ordem(&par_trocado, &esperados), (0, 2));
+
+    assert_eq!(folhas_certas_na_ordem(&[], &[]), (0, 0));
 }

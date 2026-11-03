@@ -23,6 +23,7 @@ export type PaginasDaAba =
 
 /** Espelho: cada impressora imprime tudo. Divisao: os lotes sao repartidos entre elas. */
 export type ModoDistribuicao = "espelho" | "divisao";
+export type PapelDeAjuste = "a4" | "a5" | "carta" | "oficio" | "legal";
 
 /** So quem recebe de fato conta: com menos de duas, o modo nao altera o envio. */
 export function modoDoEnvio(modo: ModoDistribuicao, destinos: number): ModoDistribuicao {
@@ -59,6 +60,9 @@ export interface Aba {
   /** De qual a qual pagina, como foi escrito; `null` e o documento inteiro. */
   intervalo: RascunhoIntervalo | null;
   modo: ModoDistribuicao;
+  papelDeAjuste?: PapelDeAjuste | null;
+  /** Escreve o lote e a folha no verso de cada folha. */
+  controle?: boolean;
   /** O ultimo envio em divisao; sem valor, o ultimo foi em espelho. */
   divisao: DivisaoDoEnvio | null;
   paginas: PaginasDaAba;
@@ -89,6 +93,8 @@ export type AcaoAbas =
   | { tipo: "definir_lote"; id: number; tamanho: number }
   | { tipo: "definir_intervalo"; id: number; intervalo: RascunhoIntervalo | null }
   | { tipo: "definir_modo"; id: number; modo: ModoDistribuicao }
+  | { tipo: "definir_papel_ajuste"; id: number; papel: PapelDeAjuste | null }
+  | { tipo: "definir_controle"; id: number; ligado: boolean }
   | { tipo: "aplicar_grupo"; id: number; impressoras: readonly string[]; modo: ModoDistribuicao }
   | { tipo: "divisao_enviada"; id: number; divisao: DivisaoDoEnvio | null }
   | { tipo: "paginas_contadas"; id: number; total: number }
@@ -213,6 +219,8 @@ export function reduzirAbas(estado: EstadoAbas, acao: AcaoAbas): EstadoAbas {
         tamanhoLote: LOTE_PADRAO,
         intervalo: null,
         modo: "espelho",
+        papelDeAjuste: null,
+        controle: false,
         divisao: null,
         paginas: { estado: "contando" },
         cartoes: [],
@@ -266,6 +274,10 @@ export function reduzirAbas(estado: EstadoAbas, acao: AcaoAbas): EstadoAbas {
       );
     case "definir_modo":
       return mudarAba(estado, acao.id, (aba) => ({ ...aba, modo: acao.modo }));
+    case "definir_papel_ajuste":
+      return mudarAba(estado, acao.id, (aba) => ({ ...aba, papelDeAjuste: acao.papel }));
+    case "definir_controle":
+      return mudarAba(estado, acao.id, (aba) => ({ ...aba, controle: acao.ligado }));
     case "aplicar_grupo":
       return mudarAba(estado, acao.id, (aba) => ({
         ...aba,

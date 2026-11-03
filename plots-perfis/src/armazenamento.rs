@@ -76,7 +76,7 @@ pub fn salvar(caminho: &Path, perfis: &Perfis) -> Result<(), ErroPerfis> {
     gravar_atomico(caminho, texto.as_bytes()).map_err(|erro| gravacao(caminho, erro))
 }
 
-fn gravar_atomico(destino: &Path, conteudo: &[u8]) -> io::Result<()> {
+pub(crate) fn gravar_atomico(destino: &Path, conteudo: &[u8]) -> io::Result<()> {
     let temporario = caminho_temporario(destino)?;
     // Só remove o temporário depois de criá-lo aqui; um nome já existente nunca é apagado.
     let arquivo = OpenOptions::new()

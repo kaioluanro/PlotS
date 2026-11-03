@@ -21,6 +21,9 @@ export interface Impressora {
   gestoManual?: "jato" | "laser";
   /** Esta fila nunca recebe da janela. */
   recusa?: "pede_arquivo" | "fax";
+  /** A opcao de compensar o driver vale para esta linha. */
+  podeInverter?: boolean;
+  driverInverte?: boolean;
 }
 
 export interface Aviso {
@@ -75,7 +78,8 @@ export function resumoDoLote(
   const textoPaginas = traduzir(idioma, paginas === 1 ? "folhas.paginas.um" : "folhas.paginas.varios", {
     n: String(paginas),
   });
-  // Sem gesto, folhas por lote nao reparte nada: a contagem de lotes nao diria o que vai acontecer.
+  // Sem gesto, folhas por lote nao reparte nada, e cada papel reparte os seus lotes: nos dois casos
+  // a conta simples de lotes nao diria o que vai acontecer.
   if (soAutomaticas) return textoPaginas;
   const textoLotes = traduzir(idioma, lotes === 1 ? "folhas.lotes.um" : "folhas.lotes.varios", {
     n: String(lotes),

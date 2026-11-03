@@ -48,6 +48,13 @@ const DIVISAO: DivisaoDoEnvio = {
 };
 
 describe("modo de distribuicao da aba", () => {
+  it("guarda a escolha de papel somente na aba correspondente", () => {
+    let estado = aberta();
+    expect(aba(estado).papelDeAjuste).toBeNull();
+    estado = reduzirAbas(estado, { tipo: "definir_papel_ajuste", id: 1, papel: "a4" });
+    estado = reduzirAbas(estado, { tipo: "abrir", documento: { caminho: "b.pdf", nome: "b.pdf" } });
+    expect(estado.abas.map((item) => item.papelDeAjuste)).toEqual(["a4", null]);
+  });
   it("comeca em espelho e cada aba guarda o seu", () => {
     let estado = aberta();
     expect(aba(estado).modo).toBe("espelho");

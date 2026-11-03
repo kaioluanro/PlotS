@@ -23,9 +23,10 @@ use pdfium_render::prelude::{
     PdfiumError,
 };
 use plots_core::{DimensoesPagina, Pagina};
-use plots_pdf::PdfOrigem;
+use plots_pdf::{OpcoesDaPassada, PdfOrigem};
 use plots_print::fluxo::{CondicaoDoAviso, DescreveFalha};
 use plots_print::job::{Backend, EstadoEnvio, Passada};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -60,6 +61,8 @@ pub struct BackendWindows {
     porta: String,
     impressora: Impressora,
     origem: PdfOrigem,
+    opcoes_pdf: OpcoesDaPassada,
+    marcas_dos_lotes: Vec<BTreeMap<Option<usize>, String>>,
     dimensoes: Vec<DimensoesPagina>,
     pasta_saida: Option<PathBuf>,
     /// Lote em andamento, começando em 1 depois da primeira frente.
@@ -107,6 +110,8 @@ impl BackendWindows {
             porta: fila.porta.clone(),
             impressora,
             origem,
+            opcoes_pdf: OpcoesDaPassada::default(),
+            marcas_dos_lotes: Vec::new(),
             dimensoes,
             pasta_saida,
             lote: 0,
@@ -120,6 +125,30 @@ impl BackendWindows {
             saiu_da_fila: false,
             ajuste_do_driver,
         })
+    }
+
+    /// Define o papel da saída antes de iniciar o trabalho.
+    pub fn definir_papel_de_saida(&mut self, papel_mm: Option<(f64, f64)>) {
+        self.opcoes_pdf.papel_mm = papel_mm;
+    }
+
+    /// O texto a escrever nos versos de cada lote deste trabalho, na ordem dos lotes.
+    pub fn definir_marcas(&mut self, marcas: Vec<BTreeMap<Option<usize>, String>>) {
+        self.marcas_dos_lotes = marcas;
+    }
+
+    /// As opções da passada do lote atual: o papel é o de sempre, e a marca segue a página.
+    fn opcoes_da_passada(&self) -> OpcoesDaPassada {
+        let marcas = self
+            .lote
+            .checked_sub(1)
+            .and_then(|indice| self.marcas_dos_lotes.get(indice))
+            .cloned()
+            .unwrap_or_default();
+        OpcoesDaPassada {
+            papel_mm: self.opcoes_pdf.papel_mm,
+            marcas,
+        }
     }
 
     /// Último estado bruto lido do spooler; `None` antes da primeira leitura ou depois que o
@@ -291,7 +320,7 @@ impl Backend for BackendWindows {
         // PDF da passada, sem senha, com a ordem, as páginas em branco e os giros do plano.
         let pdf = self
             .origem
-            .gerar_passada(paginas, self.dimensoes.len())
+            .gerar_passada_com(paginas, self.dimensoes.len(), &self.opcoes_da_passada())
             .map_err(|erro| ErroEnvio::Pdf(erro.to_string()))?;
         let documento = self
             .pdfium

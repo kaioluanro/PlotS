@@ -14,6 +14,7 @@ import {
   type FaixaDoLote,
   type PapelDoCartao,
   type ResumoDoEnvio,
+  type EscolhasDoEnvio,
 } from "./cartoes";
 import { linhasComTrecho, type LeituraIntervalo } from "./intervalo";
 import { filasComAjusteAgora, linhaDoAjusteNoEnvio } from "./preferencias";
@@ -343,6 +344,14 @@ function fluxosRecebidos(
   const faixas = comLote
     .filter((parte) => automaticas.has(parte.impressora))
     .flatMap((parte) => parte.faixas ?? []);
+  return trechosDasFaixas(faixas, fluxos);
+}
+
+/** Os trechos de fluxo dentro destas faixas, com os vizinhos da mesma rota juntos. */
+function trechosDasFaixas(
+  faixas: readonly FaixaDoLote[],
+  fluxos: NonNullable<ResumoDoEnvio["fluxos"]>,
+): NonNullable<ResumoDoEnvio["fluxos"]> {
   const pedacos = faixas.flatMap((faixa) =>
     fluxos.flatMap((fluxo) => {
       const inicio = Math.max(faixa.inicio, fluxo.inicio);
@@ -368,6 +377,7 @@ export function conteudoDaDivisao(
   resumo: ResumoComDivisao,
   leitura: LeituraIntervalo | null = null,
   idioma: Idioma = idiomaAtual,
+  escolhas: EscolhasDoEnvio = {},
 ): ConteudoConfirmacao {
   const partes = divisaoDoResumo(destinos, resumo, idioma);
   const comLote = partes.filter((parte) => parte.lotes.length > 0);
@@ -378,17 +388,30 @@ export function conteudoDaDivisao(
     recebem,
     { ...resumo, fluxos: fluxosRecebidos(recebem, comLote, resumo.fluxos ?? []) },
     idioma,
+    filasComAjusteAgora(),
+    {
+      ...escolhas,
+      divisao: true,
+      rotasNaDivisao: comLote
+        .filter((parte) => recebem.some((item) => item.id === parte.impressora && item.modo === "automatico"))
+        .map((parte) => ({
+          nome: parte.nome,
+          trechos: trechosDasFaixas(parte.faixas ?? [], resumo.fluxos ?? []),
+        })),
+    },
   );
   const doAjuste = linhaDoAjusteNoEnvio(destinos, filasComAjusteAgora(), idioma);
-  const notasDoEnvio = [
-    ...(doAjuste === null ? [] : [doAjuste]),
-    ...envio.notas,
+  const antesDasInstrucoes = [...envio.notasDaRota, ...(escolhas.notasDoMeio ?? [])];
+  const instrucoes = [...(doAjuste === null ? [] : [doAjuste]), ...envio.notasGerais];
+  // Com a escala ou a rota na linha do papel, a pilha nao repete o nome dele.
+  const pilha = ordemDaPilha(comLote, resumo.paginas, envio.papelComExtras ? [] : resumo.papeis, idioma);
+  const trecho = [
+    ...(leitura === null ? [] : linhasComTrecho(["", ""], leitura, idioma).slice(0, -2)),
+    ...(envio.papelComExtras ? [envio.linhaDoPapel] : []),
   ];
-  const pilha = ordemDaPilha(comLote, resumo.paginas, resumo.papeis, idioma);
-  const trecho = leitura === null ? [] : linhasComTrecho(["", ""], leitura, idioma).slice(0, -2);
   const unica = comLote[0];
   if (resumo.lotes === 1 && unica !== undefined && comLote.length === 1) {
-    return conteudoDeLoteUnico(unica, semLote, [...trecho, pilha.resumo], notasDoEnvio);
+    return conteudoDeLoteUnico(unica, semLote, [...trecho, pilha.resumo], [...antesDasInstrucoes, ...instrucoes]);
   }
   return {
     titulo: "modo.envio.titulo",
@@ -403,9 +426,10 @@ export function conteudoDaDivisao(
     pilha,
     notas: [
       ...semLote.map((parte) => traduzir(idioma, "modo.envio.semLote", { nome: parte.nome })),
+      ...antesDasInstrucoes,
       traduzir(idioma, "modo.juntar.separar"),
       traduzir(idioma, "modo.juntar.conferencia"),
-      ...notasDoEnvio,
+      ...instrucoes,
     ],
     confirmaAvancando: true,
   };

@@ -137,6 +137,16 @@
   white-space: nowrap;
 }
 
+/* O cartao precisa do espaco. A dica some da vista, e o controle continua descrito por ela. */
+.lateral[data-com-cartao] [data-dica-opcao] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .lendo {
   padding: 4px 8px;
   color: var(--fg-muted);
@@ -721,7 +731,7 @@
 
 .setaSeletor {
   position: absolute;
-  top: 7px;
+  top: 9px;
   right: 6px;
   color: var(--fg-muted);
   pointer-events: none;
@@ -730,7 +740,7 @@
 /* No lugar da seta: 2 px maior em cada eixo, centrado no mesmo ponto. */
 .indicadorGravacao {
   position: absolute;
-  top: 6px;
+  top: 8px;
   right: 5px;
   color: var(--fg-muted);
   pointer-events: none;
@@ -806,6 +816,57 @@
   gap: 8px;
 }
 
+.campoAjuste:hover:not(:disabled) {
+  border-color: var(--border-control-hover);
+}
+
+.campoAjuste:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.caixaAjuste {
+  position: relative;
+  display: block;
+}
+
+.campoAjuste {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 28px 0 10px;
+  overflow: hidden;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-md);
+  appearance: none;
+}
+
+.campoAjuste option {
+  color: var(--fg);
+  background: var(--bg-elevated);
+}
+
+.campoAjuste:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Depois da regra geral da seta: o campo e mais alto que o seletor da linha. */
+.setaAjuste {
+  top: 11px;
+  right: 10px;
+}
+
+.campoAjuste:disabled + .setaAjuste {
+  opacity: 0.5;
+}
+
 .rotuloLote {
   color: var(--fg-muted);
   font-size: 12px;
@@ -878,6 +939,26 @@
 }
 
 @media (forced-colors: active) {
+  .campoAjuste {
+    color: CanvasText;
+    border-color: CanvasText;
+  }
+
+  .campoAjuste:focus-visible {
+    outline-color: Highlight;
+  }
+
+  .campoAjuste:disabled {
+    color: GrayText;
+    border-color: GrayText;
+    opacity: 1;
+  }
+
+  .campoAjuste:disabled + .setaAjuste {
+    color: GrayText;
+    opacity: 1;
+  }
+
   .engrenagem,
   .voltarAoPadrao,
   .dispensarAviso {
@@ -1008,7 +1089,7 @@
   }
 }
 
-/* Em altura curta, Paginas, Modo e o botao nunca cedem. Cedem, nesta ordem: a dica do Modo, que
+/* Em altura curta, o botao nunca cede, e os campos rolam acima dele. Cedem, nesta ordem: a dica do Modo, que
    continua sendo lida pelo aria-describedby; lote e resumo com o nome de grupo aberto; e, com cartao
    na tela, lote, resumo e grupos, para o cartao ganhar o espaco. */
 @media (max-height: 560px) {
@@ -1017,17 +1098,25 @@
     display: none;
   }
 
+  /* Os campos rolam por conta propria: a lista mantem ao menos 140 px e o botao nunca sai da tela. */
   .camposDoRodape {
     gap: 6px;
+    max-height: calc(100vh - 266px);
+  }
+
+  .lateral:has([data-nome-aberto]) .camposDoRodape {
+    max-height: none;
   }
 
   .lateral:has([data-nome-aberto]) .lote,
-  .lateral:has([data-nome-aberto]) .resumo {
+  .lateral:has([data-nome-aberto]) .resumo,
+  .lateral:has([data-nome-aberto]) [data-opcoes-do-envio] {
     display: none;
   }
 
   .lateral[data-com-cartao] .lote,
   .lateral[data-com-cartao] [data-bloco-grupos],
+  .lateral[data-com-cartao] [data-opcoes-do-envio],
   .lateral[data-com-cartao] .resumo {
     display: none;
   }

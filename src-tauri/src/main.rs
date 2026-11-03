@@ -6,11 +6,14 @@ mod documento;
 mod duas_faces;
 mod fechamento;
 mod grupos;
+mod historico;
 mod impressoras;
+mod inversao;
 mod janela;
 mod leitura_pdf;
 mod lote;
 mod preferencias;
+mod tempo_de_impressao;
 mod trabalhos;
 
 use abertura::{Andamento, Passagem};
@@ -139,6 +142,7 @@ fn main() -> ExitCode {
         .manage(Mutex::new(EsperaDeResposta::default()))
         .manage(Mutex::new(abertura::Estado::default()))
         .manage(trabalhos::Gerente::default())
+        .manage(historico::Diarios::default())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if let Some(principal) = app.get_webview_window("main") {
@@ -176,6 +180,11 @@ fn main() -> ExitCode {
             grupos::aplicar_grupo,
             grupos::listar_grupos,
             grupos::salvar_grupo,
+            historico::listar_historico,
+            historico::apagar_historico,
+            historico::ler_guardar_historico,
+            historico::definir_guardar_historico,
+            inversao::definir_inversao,
             interface_montou,
             comandos_trabalho::iniciar_impressao,
             documento::ler_documento,
@@ -189,8 +198,9 @@ fn main() -> ExitCode {
 
     match resultado {
         Ok(app) => {
-            app.run(|_app, evento| {
+            app.run(|app, evento| {
                 if matches!(evento, RunEvent::Exit) {
+                    historico::ao_encerrar(app);
                     preferencias::ao_encerrar();
                 }
             });

@@ -1,3 +1,4 @@
+import type { ComparacaoDoEnvio } from "./opcoes-envio";
 import { idiomaAtual, traduzir, type Chave, type Idioma } from "./i18n";
 import { nomeDeExibicao, textoDoEstado, type Impressora } from "./impressoras";
 import { filasComAjusteAgora, linhaDoAjusteNoEnvio } from "./preferencias";
@@ -57,7 +58,7 @@ export interface Cartao {
   recolocar: Recolocar | null;
   trocaDePapel: PapelDoCartao | null;
   resultado: { corretas: number; folhas: number } | null;
-  sequencia: { frente: FaceDaSequencia[]; verso: FaceDaSequencia[] } | null;
+  sequencia: { frente: FaceDaSequencia[]; verso: FaceDaSequencia[]; marcas?: string[] } | null;
   viraParaLer: boolean;
   /** Na divisao, o numero de cada lote desta impressora no documento. */
   lotesNoDocumento?: readonly number[];
@@ -384,6 +385,22 @@ export function textoDasPaginas(faixa: FaixaDoLote, idioma: Idioma = idiomaAtual
       });
 }
 
+/** Varias faixas de uma vez: "págs. 3–4, 7–8". */
+export function textoDasFaixas(
+  faixas: readonly { inicio: number; fim: number }[],
+  idioma: Idioma = idiomaAtual,
+): string {
+  const unica = faixas[0];
+  if (faixas.length === 1 && unica !== undefined) {
+    return textoDasPaginas({ lote: 0, inicio: unica.inicio, fim: unica.fim }, idioma);
+  }
+  return traduzir(idioma, "modo.pilha.paginas.lista", {
+    lista: faixas
+      .map((faixa) => (faixa.inicio === faixa.fim ? String(faixa.inicio) : `${faixa.inicio}–${faixa.fim}`))
+      .join(", "),
+  });
+}
+
 /** Em "proximo lote", o trabalho ja avancou: o maco a retirar e o do lote anterior a este. */
 function fraseDeRetirar(cartao: Cartao, idioma: Idioma): string | null {
   const lote = cartao.lotesNoDocumento?.[cartao.lote - 2];
@@ -647,6 +664,34 @@ function folhasDoTrabalho(faces: readonly FaceDaSequencia[]): string {
   return folhas.join(", ");
 }
 
+/**
+ * As marcas chegam uma por folha, como saem no papel: "Lote 1 · folha 4". Na tela, cada lote vira um
+ * trecho so, na mesma ordem. O que nao tiver esse formato fica como veio.
+ */
+function listaDeMarcas(marcas: readonly string[], idioma: Idioma): string {
+  const trechos: ({ lote: string; folhas: string[] } | string)[] = [];
+  for (const marca of marcas) {
+    const [, lote, folha] = /^\S+ (\d{1,9}) · \S+ (\d{1,9})$/.exec(marca) ?? [];
+    if (lote === undefined || folha === undefined) {
+      trechos.push(marca);
+      continue;
+    }
+    const anterior = trechos[trechos.length - 1];
+    if (typeof anterior === "object" && anterior?.lote === lote) anterior.folhas.push(folha);
+    else trechos.push({ lote, folhas: [folha] });
+  }
+  return trechos
+    .map((trecho) =>
+      typeof trecho === "string"
+        ? trecho
+        : traduzir(idioma, trecho.folhas.length === 1 ? "controle.marcas.umaFolha" : "controle.marcas.folhas", {
+            lote: trecho.lote,
+            folhas: trecho.folhas.join(", "),
+          }),
+    )
+    .join("; ");
+}
+
 /** So a simulacao mostra a ordem: e o que ela existe para conferir. */
 export function sequenciaDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual): string[] {
   if (cartao.sequencia === null) return [];
@@ -654,6 +699,7 @@ export function sequenciaDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual):
   if (cartao.sequencia.verso.length === 0 && (cartao.loteAutomatico || cartao.temAutomatico)) {
     return [traduzir(idioma, "modo.automatico.folhas", { lista: folhasDoTrabalho(cartao.sequencia.frente) })];
   }
+  const marcas = cartao.sequencia.marcas ?? [];
   return [
     traduzir(idioma, "cartao.sequencia.frente", {
       lista: listaDeFaces(cartao.sequencia.frente, idioma),
@@ -661,6 +707,9 @@ export function sequenciaDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual):
     traduzir(idioma, "cartao.sequencia.verso", {
       lista: listaDeFaces(cartao.sequencia.verso, idioma),
     }),
+    ...(marcas.length > 0
+      ? [traduzir(idioma, "controle.marcas", { lista: listaDeMarcas(marcas, idioma) })]
+      : []),
   ];
 }
 
@@ -842,6 +891,25 @@ export interface ResumoDoEnvio {
   assinado: boolean;
   fluxos?: { automatico: boolean; inicio: number; fim: number }[];
   lotesAutomaticos?: number;
+  escalas?: [number, number] | null;
+  comparacao?: ComparacaoDoEnvio | null;
+}
+
+/** O que as opcoes do envio acrescentam ao que a confirmacao diz. */
+export interface EscolhasDoEnvio {
+  /** O papel de destino, ja com a escala, quando o documento vai ajustado. */
+  papel?: string | null;
+  /** O que vem entre a rota e as instrucoes gerais: folha de controle, driver e velocidade. */
+  notasDoMeio?: readonly string[];
+  /** Na divisao, os lotes de quem e manual aparecem na pilha: a nota do espelho nao se aplica. */
+  divisao?: boolean;
+  /** Na divisao, o que cada impressora automatica recebe, por rota: cada uma tem a sua nota. */
+  rotasNaDivisao?: readonly RotasDaImpressora[];
+}
+
+export interface RotasDaImpressora {
+  nome: string;
+  trechos: NonNullable<ResumoDoEnvio["fluxos"]>;
 }
 
 /** As linhas da confirmacao: quem recebe, quantas paginas e em que papel. */
@@ -850,45 +918,78 @@ export function linhasDoEnvio(
   resumo: ResumoDoEnvio,
   idioma: Idioma = idiomaAtual,
   filasComAjuste: ReadonlySet<string> = filasComAjusteAgora(),
-): { linhas: string[]; notas: string[] } {
+  escolhas: EscolhasDoEnvio = {},
+): {
+  linhas: string[];
+  notas: string[];
+  notasDaRota: string[];
+  notasGerais: string[];
+  linhaDoPapel: string;
+  papelComExtras: boolean;
+} {
   const reais = destinos.filter((impressora) => impressora.tipo === "fila");
   const simuladas = destinos.length - reais.length;
   const automaticas = destinos.filter((impressora) => impressora.modo === "automatico");
   const soAutomaticas = destinos.length > 0 && automaticas.length === destinos.length;
   // Sem gesto, folhas por lote nao limita nada: quem so tem automaticas ve os trabalhos que elas fazem.
   const lotes = soAutomaticas ? (resumo.lotesAutomaticos ?? resumo.lotes) : resumo.lotes;
+  const fluxos = resumo.fluxos ?? [];
+  // Uma rota so, para todas: cabe na linha do papel, e nenhuma nota precisa repetir o papel.
+  const rotaUnica = soAutomaticas && fluxos.length === 1 ? fluxos[0] : undefined;
+  const lista =
+    escolhas.papel ?? resumo.papeis.map((papel) => nomeDoPapel(papel, idioma)).join(", ");
+  const linhaDoPapel =
+    rotaUnica === undefined
+      ? traduzir(idioma, "cartao.envio.papel", { lista })
+      : traduzir(idioma, "cartao.envio.papelRota", {
+          lista,
+          rota: traduzir(idioma, rotaUnica.automatico ? "modo.automatico.rotaAuto" : "modo.automatico.rotaManual"),
+        });
   const linhas = [
     ...(reais.length > 0 ? reais : destinos).map((impressora) => nomeDeExibicao(impressora, idioma)),
     traduzir(idioma, lotes === 1 ? "cartao.envio.paginasUmLote" : "cartao.envio.paginas", {
       paginas: String(resumo.paginas),
       lotes: String(lotes),
     }),
-    traduzir(idioma, "cartao.envio.papel", {
-      lista: resumo.papeis.map((papel) => nomeDoPapel(papel, idioma)).join(", "),
-    }),
+    linhaDoPapel,
   ];
   const doAjuste = linhaDoAjusteNoEnvio(destinos, filasComAjuste, idioma);
   if (doAjuste !== null) linhas.push(doAjuste);
-  const notas: string[] = [];
-  if (automaticas.length > 0) {
-    const fluxos = resumo.fluxos ?? [];
+  const notasDaRota: string[] = [];
+  const listaDeNomes = (impressoras: readonly Impressora[]) =>
+    new Intl.ListFormat(idioma, { style: "long", type: "conjunction" }).format(
+      impressoras.map((impressora) => nomeDeExibicao(impressora, idioma)),
+    );
+  if (automaticas.length > 0 && rotaUnica === undefined) {
     // Sozinha, nao ha de quem mais falar; com outra impressora, a linha diz de qual ela fala.
     const sozinha = destinos.length === 1;
-    const nomes = new Intl.ListFormat(idioma, { style: "long", type: "conjunction" }).format(
-      automaticas.map((impressora) => nomeDeExibicao(impressora, idioma)),
-    );
-    for (const fluxo of fluxos) {
-      const chave: Chave = fluxo.automatico
+    const nomes = listaDeNomes(automaticas);
+    const notaDaRota = (automatico: boolean, nome: string, faixas: readonly { inicio: number; fim: number }[]) => {
+      const chave: Chave = automatico
         ? sozinha ? "modo.automatico.trecho" : "modo.automatico.trechoNela"
         : sozinha ? "modo.automatico.manual" : "modo.automatico.manualNela";
-      notas.push(
-        traduzir(idioma, chave, {
-          nomes,
-          paginas: textoDasPaginas({ lote: 0, inicio: fluxo.inicio, fim: fluxo.fim }, idioma),
-        }),
-      );
+      return traduzir(idioma, chave, { nomes: nome, paginas: textoDasFaixas(faixas, idioma) });
+    };
+    if (escolhas.rotasNaDivisao === undefined) {
+      for (const fluxo of fluxos) notasDaRota.push(notaDaRota(fluxo.automatico, nomes, [fluxo]));
+    } else {
+      for (const { nome, trechos } of escolhas.rotasNaDivisao) {
+        // A rota do primeiro trecho vem antes, para a nota seguir a ordem das paginas.
+        const primeira = trechos[0]?.automatico ?? true;
+        for (const automatico of [primeira, !primeira]) {
+          const daRota = trechos.filter((trecho) => trecho.automatico === automatico);
+          if (daRota.length > 0) notasDaRota.push(notaDaRota(automatico, nome, daRota));
+        }
+      }
     }
-    if (fluxos.some((fluxo) => fluxo.automatico)) notas.push(traduzir(idioma, "modo.automatico.papelNormal"));
+    const manuais = destinos.filter((impressora) => impressora.modo !== "automatico");
+    if (manuais.length > 0 && escolhas.divisao !== true) {
+      notasDaRota.push(traduzir(idioma, "modo.automatico.manualEm", { nomes: listaDeNomes(manuais) }));
+    }
+  }
+  const notas: string[] = [];
+  if (automaticas.length > 0 && fluxos.some((fluxo) => fluxo.automatico)) {
+    notas.push(traduzir(idioma, "modo.automatico.papelNormal"));
   }
   if (resumo.papeis.length > 1) notas.push(traduzir(idioma, "cartao.envio.variosPapeis"));
   for (const [a, b] of resumo.paresMistos) {
@@ -900,5 +1001,12 @@ export function linhasDoEnvio(
   }
   if (reais.length === 0) notas.push(traduzir(idioma, "modo.automatico.soSimuladas"));
   else if (simuladas > 0) notas.push(traduzir(idioma, "cartao.envio.simuladas"));
-  return { linhas, notas };
+  return {
+    linhas,
+    notas: [...notasDaRota, ...(escolhas.notasDoMeio ?? []), ...notas],
+    notasDaRota,
+    notasGerais: notas,
+    linhaDoPapel,
+    papelComExtras: rotaUnica !== undefined || (escolhas.papel ?? null) !== null,
+  };
 }

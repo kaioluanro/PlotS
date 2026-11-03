@@ -3,11 +3,12 @@
 //! como perguntar ao usuário. Nada aqui apaga um trabalho sem um pedido explícito.
 
 use crate::job::{Backend, ErroJob, EstadoEnvio, EstadoJob, Job, Passada, SimBackend};
-use crate::{conferir_folhas, ErroSimulacao, Mecanica, Recolocacao, Veredito};
+use crate::{conferir_folhas, ErroSimulacao, Folha, Mecanica, Recolocacao, Veredito};
 use plots_core::{
     papel_aceita_duas_faces, reconhecer_papel, DimensoesPagina, FormatoPapel, Lote, LotePapel,
     ModeloImpressora, Pagina, Papel, TOLERANCIA_PAPEL_MM,
 };
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 pub const FRASE_ESPERAR_FOLHA: &str = "Espere a última folha sair antes de recolocar o maço.";
@@ -68,6 +69,8 @@ pub trait DescreveFalha {
 pub struct LoteDoFluxo {
     pub papel: Papel,
     pub lote: Lote,
+    /// Texto que sai no verso, por página; a chave vazia é a face em branco. Vazio sem a opção.
+    pub marcas: BTreeMap<Option<usize>, String>,
 }
 
 /// Lotes do plano do documento, cada um com o seu papel.
@@ -89,6 +92,7 @@ pub fn lotes_do_plano(lotes: &[LotePapel]) -> Vec<LoteDoFluxo> {
                 passada2: lote.passada2.clone(),
                 duas_faces: lote.duas_faces,
             },
+            marcas: BTreeMap::new(),
         })
         .collect()
 }
@@ -300,6 +304,11 @@ impl<B: Backend + DescreveFalha> Condutor<B> {
         self.lotes.len()
     }
 
+    /// Todos os lotes deste trabalho, na ordem em que saem.
+    pub fn lotes(&self) -> &[LoteDoFluxo] {
+        &self.lotes
+    }
+
     /// Número do lote atual, começando em 1. Depois do último, continua nele.
     pub fn numero(&self) -> usize {
         self.job.lote_atual().saturating_add(1).min(self.total())
@@ -456,6 +465,9 @@ pub struct SimGuiado {
     /// Medidas do documento, na simulada que imprime as duas faces sozinha. Sem elas, a simulada
     /// só imprime uma face por vez, e um pedido de duas faces é recusado.
     medidas_em_duas_faces: Option<Vec<DimensoesPagina>>,
+    /// O último envio foi em duas faces: aí o maço sai como a impressora o entrega, e a pessoa vira
+    /// se preciso. A ordem de leitura só é julgada no lote manual, em que o gesto a produz.
+    ultimo_em_duas_faces: bool,
 }
 
 impl SimGuiado {
@@ -464,6 +476,7 @@ impl SimGuiado {
             sim: SimBackend::novo(mecanica),
             gesto,
             medidas_em_duas_faces: None,
+            ultimo_em_duas_faces: false,
         }
     }
 
@@ -503,6 +516,7 @@ impl SimGuiado {
 impl Backend for SimGuiado {
     type Erro = ErroSimulacao;
     fn enviar(&mut self, passada: Passada, paginas: &[Pagina]) -> Result<(), ErroSimulacao> {
+        self.ultimo_em_duas_faces = passada == Passada::DuasFaces;
         match passada {
             Passada::Frente => {}
             Passada::Verso => self.sim.recolocar(self.gesto)?,
@@ -527,13 +541,44 @@ impl DescreveFalha for SimGuiado {
     }
     fn folhas_conferidas(&self, paginas: &[Pagina]) -> Option<(usize, usize)> {
         let pilha = self.sim.simulador().folhas_para_leitura();
-        let vereditos = conferir_folhas(&pilha, &pares_esperados(paginas));
-        let corretas = vereditos
-            .iter()
-            .filter(|veredito| matches!(veredito, Veredito::Certa))
-            .count();
-        Some((corretas, vereditos.len()))
+        let esperados = pares_esperados(paginas);
+        if self.ultimo_em_duas_faces {
+            let vereditos = conferir_folhas(&pilha, &esperados);
+            let corretas = vereditos
+                .iter()
+                .filter(|veredito| matches!(veredito, Veredito::Certa))
+                .count();
+            return Some((corretas, vereditos.len()));
+        }
+        Some(folhas_certas_na_ordem(&pilha, &esperados))
     }
+}
+
+/// Folhas certas e total. Certa é a folha com o par esperado e no lugar em que o maço é lido: a
+/// última da pilha é a primeira. Um maço com todos os pares certos, mas de trás para a frente, não
+/// está certo.
+fn folhas_certas_na_ordem(
+    pilha: &[Folha],
+    esperados: &[(Option<usize>, Option<usize>)],
+) -> (usize, usize) {
+    let vereditos = conferir_folhas(pilha, esperados);
+    let corretas = pilha
+        .iter()
+        .rev()
+        .zip(vereditos.iter().rev())
+        .enumerate()
+        .filter(|(lugar, (folha, veredito))| {
+            let faces = (
+                folha.face_a.and_then(|marca| marca.pagina),
+                folha.face_b.and_then(|marca| marca.pagina),
+            );
+            matches!(veredito, Veredito::Certa)
+                && esperados
+                    .get(*lugar)
+                    .is_some_and(|par| *par == faces || (par.1, par.0) == faces)
+        })
+        .count();
+    (corretas, vereditos.len())
 }
 
 #[cfg(test)]

@@ -1,7 +1,10 @@
 //! Comandos que a interface usa para conduzir os trabalhos de impressao.
 
 use crate::documento::{self, ErroDocumento};
+use crate::historico::{self, CabecalhoDoEnvio, Diario, Diarios};
 use crate::impressoras;
+use crate::inversao;
+use crate::tempo_de_impressao::RelogioDoSistema;
 use crate::trabalhos::{
     self, Comando, Emissor, Gerente, Identidade, ModoDoEnvio, Motivo, ParteDoEnvio, ParteDoResumo,
     Pedido, ResumoDoEnvio,
@@ -12,6 +15,7 @@ use plots_core::distribuicao::{
 use plots_core::{IntervaloPaginas, ModeloImpressora};
 use plots_perfis::{ErroPerfis, Perfis};
 use plots_windows::plots_print::fluxo;
+use plots_windows::plots_print::opcoes::IdiomaDaMarca;
 use serde::Deserialize;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
@@ -33,6 +37,24 @@ impl From<IntervaloRecebido> for IntervaloPaginas {
     }
 }
 
+/// Em que idioma a marca da folha de controle sai no papel; ausente, nao ha marca.
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+pub enum MarcaRecebida {
+    #[serde(rename = "pt-BR")]
+    Portugues,
+    #[serde(rename = "en")]
+    Ingles,
+}
+
+impl From<MarcaRecebida> for IdiomaDaMarca {
+    fn from(marca: MarcaRecebida) -> Self {
+        match marca {
+            MarcaRecebida::Portugues => Self::Portugues,
+            MarcaRecebida::Ingles => Self::Ingles,
+        }
+    }
+}
+
 /// Le o PDF para a confirmacao dizer paginas, lotes e papeis antes de qualquer envio.
 #[tauri::command]
 pub async fn resumo_do_envio(
@@ -41,19 +63,72 @@ pub async fn resumo_do_envio(
     intervalo: Option<IntervaloRecebido>,
     modo: ModoDoEnvio,
     impressoras: Vec<String>,
+    papel_de_ajuste: Option<String>,
 ) -> Result<ResumoDoEnvio, ErroDocumento> {
     let falha = documento::falha_inesperada(&caminho);
     tauri::async_runtime::spawn_blocking(move || {
-        let mut resumo = trabalhos::resumo_do_envio(&caminho, folhas, intervalo.map(Into::into))?;
+        let papel = papel_de_ajuste
+            .as_deref()
+            .map(|codigo| {
+                plots_core::ajuste::PapelDeAjuste::de_codigo(codigo)
+                    .ok_or_else(|| documento::falha_inesperada(&caminho))
+            })
+            .transpose()?;
+        let mut resumo = trabalhos::resumo_do_envio_com_papel(
+            &caminho,
+            folhas,
+            intervalo.map(Into::into),
+            papel,
+        )?;
         if modo == ModoDoEnvio::Divisao {
             let perfis = impressoras::ler_perfis_do_sistema();
             resumo.divisao = divisao_do_resumo(resumo.lotes, &impressoras, &perfis)
                 .map_err(|_| documento::falha_inesperada(&caminho))?;
         }
+        let quem = quem_imprime(&impressoras, &resumo.divisao);
+        let perfis = impressoras::ler_perfis_do_sistema();
+        resumo.comparacao = rota_comum(&quem, perfis.as_ref().ok(), &resumo.fluxos)
+            .and_then(|automatico| historico::comparacao_do_envio(&quem, automatico));
         Ok(resumo)
     })
     .await
     .unwrap_or(Err(falha))
+}
+
+/// A rota em que todas as impressoras do envio imprimem, para comparar so o que e comparavel. Quem
+/// nao e automatica so tem a manual; a automatica segue os papeis deste envio.
+fn rota_comum(
+    quem: &[String],
+    perfis: Option<&Perfis>,
+    fluxos: &[trabalhos::TrechoDoFluxo],
+) -> Option<bool> {
+    let tem = |automatico: bool| fluxos.iter().any(|fluxo| fluxo.automatico == automatico);
+    let e_automatica = |id: &String| {
+        id == impressoras::ID_SIMULADA_AUTOMATICA
+            || id
+                .strip_prefix("fila:")
+                .and_then(|fila| perfis?.obter(fila))
+                .is_some_and(|entrada| entrada.automatico)
+    };
+    if tem(true) && quem.iter().all(e_automatica) {
+        Some(true)
+    } else if tem(false) || !quem.iter().any(e_automatica) {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+/// Quem de fato recebe lotes: na divisao, quem fica sem nenhum nao termina antes nem depois.
+fn quem_imprime(impressoras: &[String], divisao: &[ParteDoResumo]) -> Vec<String> {
+    if divisao.is_empty() {
+        return impressoras.to_vec();
+    }
+    divisao
+        .iter()
+        .filter(|parte| !parte.lotes.is_empty())
+        .map(|parte| parte.impressora.clone())
+        .collect()
 }
 
 /// O que cabe a cada impressora, com os lotes numerados a partir de 1. Quem fica sem lote aparece
@@ -148,6 +223,7 @@ fn iniciar_um(
     aba: u64,
     impressora: &str,
     pedido: Result<Pedido, Motivo>,
+    diario: &Arc<Diario>,
 ) -> bool {
     let (simulada, nome) = identificar(impressora);
     let identidade = Identidade {
@@ -156,18 +232,22 @@ fn iniciar_um(
         nome: nome.clone(),
         simulada: simulada.is_some(),
     };
+    let fim = Diario::fim_da_parte(diario, impressora, simulada.is_some());
+    let relogio = Arc::new(RelogioDoSistema::default());
     if let Some(modelo) = simulada {
         let automatica = impressora == impressoras::ID_SIMULADA_AUTOMATICA;
-        return gerente.iniciar(identidade, emitir, move || {
+        let id = impressora.to_owned();
+        return gerente.iniciar_medido(identidade, emitir, relogio, fim, move || {
             let pedido = pedido?;
             if automatica {
                 trabalhos::preparar_simulada_automatica(modelo, &pedido)
             } else {
-                trabalhos::preparar_simulada(modelo, &pedido)
+                let driver = inversao::driver_da_simulada(&id);
+                trabalhos::preparar_simulada(modelo, &pedido.com_driver_da_simulada(driver))
             }
         });
     }
-    iniciar_fila(gerente, identidade, emitir, nome, pedido)
+    iniciar_fila(gerente, identidade, emitir, nome, pedido, fim)
 }
 
 #[cfg(windows)]
@@ -177,8 +257,10 @@ fn iniciar_fila(
     emitir: Emissor,
     nome: String,
     pedido: Result<Pedido, Motivo>,
+    fim: trabalhos::FimDoTrabalho,
 ) -> bool {
-    gerente.iniciar(identidade, emitir, move || {
+    let relogio = Arc::new(RelogioDoSistema::default());
+    gerente.iniciar_medido(identidade, emitir, relogio, fim, move || {
         trabalhos::preparar_fila(&nome, &pedido?)
     })
 }
@@ -191,10 +273,16 @@ fn iniciar_fila(
     emitir: Emissor,
     _nome: String,
     _pedido: Result<Pedido, Motivo>,
+    fim: trabalhos::FimDoTrabalho,
 ) -> bool {
-    gerente.iniciar::<plots_windows::plots_print::fluxo::SimGuiado, _>(identidade, emitir, || {
-        Err(trabalhos::fila_indisponivel())
-    })
+    let relogio = Arc::new(RelogioDoSistema::default());
+    gerente.iniciar_medido::<plots_windows::plots_print::fluxo::SimGuiado, _>(
+        identidade,
+        emitir,
+        relogio,
+        fim,
+        || Err(trabalhos::fila_indisponivel()),
+    )
 }
 
 /// Inicia um trabalho por impressora. Cada um roda na propria thread e publica o proprio cartao.
@@ -202,6 +290,7 @@ fn iniciar_fila(
 pub fn iniciar_impressao(
     app: AppHandle,
     gerente: State<'_, Gerente>,
+    diarios: State<'_, Diarios>,
     aba: u64,
     caminho: String,
     folhas: usize,
@@ -210,22 +299,53 @@ pub fn iniciar_impressao(
     modo: ModoDoEnvio,
     lotes: usize,
     paginas: usize,
+    papel_de_ajuste: Option<String>,
+    marca_controle: Option<MarcaRecebida>,
 ) -> Vec<String> {
     let emitir: Emissor = Arc::new(move |cartao| {
         // Sem janela nao ha quem mostrar; o trabalho segue e termina sozinho.
         let _ = app.emit(trabalhos::EVENTO_DO_CARTAO, cartao);
     });
-    destinos_do_envio(impressoras, modo, lotes, paginas)
+    let destinos = destinos_do_envio(impressoras, modo, lotes, paginas);
+    let diario = diarios.abrir(
+        CabecalhoDoEnvio {
+            arquivo: caminho.clone(),
+            intervalo: intervalo.map(|trecho| (trecho.inicio, trecho.fim)),
+            divisao: modo == ModoDoEnvio::Divisao,
+            lotes_confirmados: lotes,
+        },
+        destinos.iter().map(|(nome, _)| nome.clone()).collect(),
+    );
+    destinos
         .into_iter()
         .filter(|(impressora, parte)| {
-            iniciar_um(
+            let aceito = iniciar_um(
                 &gerente,
                 Arc::clone(&emitir),
                 aba,
                 impressora,
-                Pedido::novo(caminho.clone(), folhas, intervalo.map(Into::into))
-                    .map(|pedido| pedido.com_parte(*parte)),
-            )
+                Pedido::novo(caminho.clone(), folhas, intervalo.map(Into::into)).and_then(
+                    |pedido| {
+                        let papel = papel_de_ajuste
+                            .as_deref()
+                            .map(|codigo| {
+                                plots_core::ajuste::PapelDeAjuste::de_codigo(codigo)
+                                    .ok_or_else(|| Motivo::novo("pdf", "papel de destino inválido"))
+                            })
+                            .transpose()?;
+                        Ok(pedido
+                            .com_parte(*parte)
+                            .com_papel_de_ajuste(papel)
+                            .com_controle(marca_controle.map(Into::into)))
+                    },
+                ),
+                &diario,
+            );
+            // A impressora ja tinha um trabalho: este nao comecou e nao entra no registro.
+            if !aceito {
+                diario.desistir(impressora);
+            }
+            aceito
         })
         .map(|(impressora, _)| impressora)
         .collect()
@@ -343,6 +463,70 @@ mod testes {
         let manual = trabalhos::planejar_pedido(&dimensoes, &pedido, perfil, false).unwrap();
         assert_eq!(automatica.len(), 1);
         assert_eq!(manual.len(), 4);
+    }
+
+    #[test]
+    fn a_comparacao_so_vale_na_rota_em_que_todas_imprimem() {
+        let fluxo = |automatico| trabalhos::TrechoDoFluxo {
+            automatico,
+            inicio: 1,
+            fim: 2,
+        };
+        let mut perfis = Perfis::new();
+        perfis.definir_automatico("Auto", None);
+        perfis.definir_automatico("Outra", None);
+        perfis.definir_modelo("Manual", ModeloImpressora::Laser);
+        let so_duas_faces = [fluxo(true)];
+        let so_manual = [fluxo(false)];
+        let misto = [fluxo(true), fluxo(false)];
+        let rota = |nomes: &[&str], fluxos: &[trabalhos::TrechoDoFluxo]| {
+            rota_comum(&ids(nomes), Some(&perfis), fluxos)
+        };
+        assert_eq!(
+            rota(&["fila:Auto", "fila:Outra"], &so_duas_faces),
+            Some(true)
+        );
+        assert_eq!(rota(&["fila:Auto", "fila:Outra"], &misto), Some(true));
+        assert_eq!(rota(&["fila:Auto", "fila:Outra"], &so_manual), Some(false));
+        assert_eq!(rota(&["fila:Auto", "fila:Manual"], &so_duas_faces), None);
+        assert_eq!(rota(&["fila:Auto", "fila:Manual"], &misto), Some(false));
+        assert_eq!(
+            rota(&["fila:Manual", "simulada:gaveta"], &so_duas_faces),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn comparar_so_vale_entre_quem_de_fato_imprime() {
+        let todas = ids(&["a", "b", "c"]);
+        assert_eq!(
+            quem_imprime(&todas, &[]),
+            todas,
+            "no espelho, todas imprimem"
+        );
+        let parte = |nome: &str, lotes: Vec<usize>| ParteDoResumo {
+            impressora: nome.to_owned(),
+            lotes,
+            vira_para_ler: None,
+        };
+        let divisao = [
+            parte("a", vec![1, 3]),
+            parte("b", vec![2]),
+            parte("c", Vec::new()),
+        ];
+        assert_eq!(quem_imprime(&todas, &divisao), ids(&["a", "b"]));
+    }
+
+    #[test]
+    fn idioma_da_marca_desconhecido_para_na_mensagem() {
+        let ler = |texto: &str| {
+            MarcaRecebida::deserialize(
+                serde::de::value::StrDeserializer::<serde::de::value::Error>::new(texto),
+            )
+        };
+        assert_eq!(ler("pt-BR").unwrap(), MarcaRecebida::Portugues);
+        assert_eq!(ler("en").unwrap(), MarcaRecebida::Ingles);
+        assert!(ler("<script>").is_err());
     }
 
     #[test]

@@ -194,6 +194,7 @@ fn calibrar_ajusta_o_perfil_salvo_e_mantem_apelido_e_texto() {
             gesto_texto: Some("virar o maço".into()),
             modelo: None,
             automatico: false,
+            driver_inverte: false,
         },
     );
     salvar(&perfis, &anteriores).unwrap();

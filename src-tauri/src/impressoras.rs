@@ -87,6 +87,12 @@ pub struct Impressora {
     /// O driver declara ter duas faces. Nao quer dizer que a unidade exista: quem escolhe e a pessoa.
     #[serde(rename = "duasFaces", skip_serializing_if = "std::ops::Not::not")]
     pub duas_faces: bool,
+    /// A opcao de compensar o driver cabe aqui: fila com perfil. Na fila automatica, ela so vale para
+    /// os papeis da rota manual, e quem decide se aparece e a lateral, que conhece o documento.
+    #[serde(rename = "podeInverter")]
+    pub pode_inverter: bool,
+    #[serde(rename = "driverInverte")]
+    pub driver_inverte: bool,
 }
 
 /// Por que esta fila nunca recebe da janela, seja qual for o estado dela.
@@ -349,6 +355,8 @@ fn simulada(id: &str, nome: &str, modo: Modo) -> Impressora {
         recusa: None,
         gesto_manual: None,
         duas_faces: false,
+        pode_inverter: crate::inversao::modo_de_teste() && id != ID_SIMULADA_AUTOMATICA,
+        driver_inverte: crate::inversao::simulada_compensa(id),
     }
 }
 
@@ -380,6 +388,8 @@ fn impressora_da_fila(fila: &Fila, perfis: Option<&Perfis>, duas_faces: bool) ->
         recusa: recusa_da_porta(&fila.porta),
         gesto_manual,
         duas_faces,
+        pode_inverter: entrada.is_some(),
+        driver_inverte: entrada.is_some_and(|entrada| entrada.driver_inverte),
     }
 }
 
@@ -724,6 +734,45 @@ mod testes {
         assert_eq!(lista.impressoras[1].tipo, Tipo::Simulada);
         assert_eq!(lista.impressoras[2].modo, Modo::Automatico);
         assert_eq!(lista.impressoras[2].tipo, Tipo::Simulada);
+    }
+
+    #[test]
+    fn so_a_fila_com_perfil_oferece_a_opcao_do_driver_e_mostra_o_que_esta_gravado() {
+        let mut perfis = Perfis::new();
+        perfis.definir_modelo("Com", ModeloImpressora::Laser);
+        perfis.definir_modelo("Ligada", ModeloImpressora::Laser);
+        perfis.definir_driver_inverte("Ligada", true);
+        let lista = montar(
+            Ok(vec![fila("Com", 0), fila("Ligada", 0), fila("Sem", 0)]),
+            Ok(perfis),
+        );
+        let dados: Vec<_> = lista
+            .impressoras
+            .iter()
+            .map(|linha| {
+                (
+                    linha.nome.as_str(),
+                    linha.pode_inverter,
+                    linha.driver_inverte,
+                )
+            })
+            .collect();
+        assert_eq!(dados[0], ("Com", true, false));
+        assert_eq!(dados[1], ("Ligada", true, true));
+        assert_eq!(dados[2], ("Sem", false, false));
+        let mut automatica = Perfis::new();
+        automatica.definir_automatico("Auto", None);
+        let lista_automatica = montar(Ok(vec![fila("Auto", 0)]), Ok(automatica));
+        assert!(
+            lista_automatica.impressoras[0].pode_inverter,
+            "a lateral decide pela rota do envio"
+        );
+        assert!(
+            lista.impressoras[3..]
+                .iter()
+                .all(|linha| !linha.pode_inverter),
+            "fora do modo de teste, as simuladas nao oferecem"
+        );
     }
 
     #[test]

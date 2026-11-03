@@ -152,6 +152,7 @@ fn entrada_completa() -> EntradaPerfil {
         gesto_texto: Some("Vire o maço e encoste a borda curta primeiro".to_owned()),
         modelo: None,
         automatico: false,
+        driver_inverte: false,
     }
 }
 
@@ -206,6 +207,7 @@ fn todas_as_combinacoes_de_perfil_voltam_iguais() {
             gesto_texto: None,
             modelo: None,
             automatico: false,
+            driver_inverte: false,
         };
         let fila = format!("fila-{mascara}");
         perfis.inserir(&fila, entrada.clone());
@@ -491,6 +493,45 @@ fn arquivo_antigo_regravado_nao_ganha_campos_nem_muda_de_versao() {
 }
 
 #[test]
+fn guardar_historico_vem_ligado_em_arquivo_antigo_e_ausente() {
+    let pasta = Pasta::nova("guardar-antigo");
+    assert!(carregar(&pasta.arquivo()).unwrap().guardar_historico());
+    assert!(ler_texto(&pasta, SEM_CAMPOS_NOVOS)
+        .unwrap()
+        .guardar_historico());
+}
+
+#[test]
+fn guardar_historico_desligado_vai_e_volta_junto_dos_perfis() {
+    let pasta = Pasta::nova("guardar-ida");
+    let mut perfis = ler_texto(&pasta, SEM_CAMPOS_NOVOS).unwrap();
+    perfis.definir_guardar_historico(false);
+    salvar(&pasta.arquivo(), &perfis).unwrap();
+    let lido = carregar(&pasta.arquivo()).unwrap();
+    assert!(!lido.guardar_historico());
+    assert!(lido.obter("x").is_some());
+    assert_eq!(lido, perfis);
+
+    // Religar deixa o arquivo sem o campo, como era antes.
+    let mut religado = lido;
+    religado.definir_guardar_historico(true);
+    salvar(&pasta.arquivo(), &religado).unwrap();
+    assert!(!fs::read_to_string(pasta.arquivo())
+        .unwrap()
+        .contains("guardar_historico"));
+}
+
+#[test]
+fn guardar_historico_de_tipo_errado_vale_como_ligado_sem_recusar_o_arquivo() {
+    let pasta = Pasta::nova("guardar-tipo");
+    let texto =
+        SEM_CAMPOS_NOVOS.replace("versao = 1\n", "versao = 1\nguardar_historico = \"nao\"\n");
+    let lido = ler_texto(&pasta, &texto).unwrap();
+    assert!(lido.guardar_historico());
+    assert!(lido.obter("x").is_some());
+}
+
+#[test]
 fn modelo_e_virada_vao_e_voltam_nos_dois_modelos() {
     for (modelo, codigo) in [
         (ModeloImpressora::JatoDeTinta, "jato"),
@@ -756,4 +797,51 @@ fn nao_grava_modelo_com_valores_de_outro() {
     let erro = salvar(&pasta.arquivo(), &perfis).expect_err("gravação recusada");
     assert!(matches!(erro, ErroPerfis::Serializacao { .. }), "{erro:?}");
     assert!(!pasta.arquivo().exists());
+}
+
+#[test]
+fn perfil_antigo_sem_o_campo_carrega_com_o_driver_normal() {
+    let texto = "versao = 1\n\n[filas.Sala]\npassada1_inversa = true\npassada2_inversa = false\nverso_girar_180 = false\nvirar_maco = true\nborda_primeiro = \"curta\"\n";
+    let perfis = crate::formato::decodificar(texto, std::path::Path::new("x")).unwrap();
+    assert!(!perfis.obter("Sala").unwrap().driver_inverte);
+}
+
+#[test]
+fn inverter_o_driver_vai_ao_arquivo_so_quando_ligado_e_volta_igual() {
+    let mut perfis = Perfis::new();
+    perfis.definir_modelo("Sala", plots_core::ModeloImpressora::Laser);
+    let desligado = crate::formato::codificar(&perfis).unwrap();
+    assert!(!desligado.contains("driver_inverte"));
+    assert!(perfis.definir_driver_inverte("Sala", true));
+    let ligado = crate::formato::codificar(&perfis).unwrap();
+    assert!(ligado.contains("driver_inverte = true"));
+    let lido = crate::formato::decodificar(&ligado, std::path::Path::new("x")).unwrap();
+    assert!(lido.obter("Sala").unwrap().driver_inverte);
+    assert_eq!(
+        lido.obter("Sala").unwrap().modelo,
+        Some(plots_core::ModeloImpressora::Laser)
+    );
+}
+
+#[test]
+fn valor_de_tipo_errado_no_driver_nao_recusa_o_arquivo_e_fica_desligado() {
+    let texto = "versao = 1\n\n[filas.Sala]\npassada1_inversa = true\npassada2_inversa = false\nverso_girar_180 = false\nvirar_maco = true\nborda_primeiro = \"curta\"\ndriver_inverte = \"sim\"\n";
+    let perfis = crate::formato::decodificar(texto, std::path::Path::new("x")).unwrap();
+    assert!(!perfis.obter("Sala").unwrap().driver_inverte);
+}
+
+#[test]
+fn trocar_o_modelo_nao_esquece_o_que_se_sabe_do_driver() {
+    let mut perfis = Perfis::new();
+    perfis.definir_modelo("Sala", plots_core::ModeloImpressora::Laser);
+    perfis.definir_driver_inverte("Sala", true);
+    perfis.definir_modelo("Sala", plots_core::ModeloImpressora::JatoDeTinta);
+    assert!(perfis.obter("Sala").unwrap().driver_inverte);
+}
+
+#[test]
+fn sem_perfil_a_opcao_do_driver_nao_tem_onde_ficar() {
+    let mut perfis = Perfis::new();
+    assert!(!perfis.definir_driver_inverte("Sala", true));
+    assert!(perfis.is_empty());
 }

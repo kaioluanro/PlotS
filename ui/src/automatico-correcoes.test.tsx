@@ -122,19 +122,19 @@ describe("linhas de trecho na confirmacao", () => {
 describe("nome da fila nas linhas de trecho", () => {
   it("junto de uma manual, usa o nome da automatica", () => {
     const { notas } = linhasDoEnvio([SALA, GAVETA], MISTO, "pt-BR", new Set());
-    expect(notas).toContain("Em Sala, págs. 1–4: frente e verso automático.");
-    expect(notas).toContain("Em Sala, págs. 5–6: frente e verso manual.");
+    expect(notas).toContain("Em Sala, págs. 1–4: frente e verso automático, sem gesto.");
+    expect(notas).toContain("Em Sala, págs. 5–6: frente e verso manual, com gesto.");
     expect(notas.join(" ")).not.toContain("Na impressora automática");
     const ingles = linhasDoEnvio([SALA, GAVETA], MISTO, "en", new Set()).notas;
-    expect(ingles).toContain("On Sala, pp. 1–4: automatic duplex.");
-    expect(ingles).toContain("On Sala, pp. 5–6: manual duplex.");
+    expect(ingles).toContain("On Sala, pp. 1–4: automatic duplex, no handling.");
+    expect(ingles).toContain("On Sala, pp. 5–6: manual duplex, with handling.");
   });
 
   it("com duas automaticas, lista os nomes", () => {
     const { notas } = linhasDoEnvio([SALA, RECEPCAO, GAVETA], MISTO, "pt-BR", new Set());
-    expect(notas).toContain("Em Sala e Recepção, págs. 1–4: frente e verso automático.");
+    expect(notas).toContain("Em Sala e Recepção, págs. 1–4: frente e verso automático, sem gesto.");
     const so = linhasDoEnvio([SALA, RECEPCAO], MISTO, "en", new Set()).notas;
-    expect(so).toContain("On Sala and Recepção, pp. 5–6: manual duplex.");
+    expect(so).toContain("On Sala and Recepção, pp. 5–6: manual duplex, with handling.");
   });
 });
 
@@ -164,10 +164,10 @@ describe("recusa do driver", () => {
     const frases = textos(cartao(recusa, { lote: 3, total: 3 }));
     expect(frases.join(" ")).not.toContain("Nada foi enviado");
     expect(frases).toContain(
-      "O driver recusou duas faces. Este trabalho não saiu; os lotes anteriores saíram. Escolha um modelo manual.",
+      "O driver recusou duas faces. Este lote não saiu; os anteriores saíram. Escolha um modelo manual.",
     );
     expect(textos(cartao(recusa, { lote: 2, total: 2 }), "en")).toContain(
-      "The driver rejected two-sided printing. This job did not print; the earlier batches did. Choose a manual model.",
+      "The driver rejected two-sided printing. This batch did not print; the earlier ones did. Choose a manual model.",
     );
   });
 

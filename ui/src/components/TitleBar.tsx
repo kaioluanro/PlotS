@@ -1,5 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Copy, Minus, PanelLeftClose, PanelLeftOpen, Plus, Square, X } from "lucide-react";
+import { Copy, History, Minus, PanelLeftClose, PanelLeftOpen, Plus, Square, X } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { assinar } from "../backend";
 import { situacaoDaAba } from "../cartoes";
@@ -32,6 +32,7 @@ interface Props {
   aoAtivar: (id: number) => void;
   aoFechar: (id: number) => void;
   aoAbrir: () => void;
+  aoAbrirHistorico: () => void;
   idLateral: string;
   idPainel: string;
 }
@@ -44,6 +45,7 @@ export function TitleBar({
   aoAtivar,
   aoFechar,
   aoAbrir,
+  aoAbrirHistorico,
   idLateral,
   idPainel,
 }: Props) {
@@ -211,6 +213,15 @@ export function TitleBar({
         <Plus size={14} />
       </button>
       <div className={styles.arrasto} data-tauri-drag-region />
+      <button
+        type="button"
+        className={styles.botaoIcone}
+        aria-label={t("historico.abrir")}
+        title={t("historico.abrir")}
+        onClick={aoAbrirHistorico}
+      >
+        <History size={14} />
+      </button>
       <div className={styles.controles}>
         <button
           type="button"

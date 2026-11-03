@@ -196,7 +196,7 @@ describe("confirmacao com impressora automatica", () => {
 
   it("junto de outra impressora, diz de qual ela fala", () => {
     const { notas } = linhasDoEnvio([AUTOMATICA, TRASEIRA], RESUMO, "en", new Set());
-    expect(notas).toContain("On Simulated — Automatic, pp. 1–8: automatic duplex.");
+    expect(notas).toContain("On Simulated — Automatic, pp. 1–8: automatic duplex, no handling.");
   });
 
   it("sem nenhum trecho automatico, nao pede papel normal", () => {
@@ -266,9 +266,52 @@ describe("confirmacao da divisao com impressora automatica", () => {
       null,
       "pt-BR",
     );
-    expect(conteudo.notas ?? []).toContain("Em Simulada — Automática, págs. 1–2: frente e verso automático.");
-    expect(conteudo.notas ?? []).toContain("Em Simulada — Automática, págs. 5–6: frente e verso manual.");
+    expect(conteudo.notas ?? []).toContain("Em Simulada — Automática, págs. 1–2: frente e verso automático, sem gesto.");
+    expect(conteudo.notas ?? []).toContain("Em Simulada — Automática, págs. 5–6: frente e verso manual, com gesto.");
     expect((conteudo.notas ?? []).join(" ")).not.toContain("págs. 7–8");
+  });
+
+  it("uma nota por impressora e rota, com todas as faixas que ela recebe", () => {
+    const conteudo = conteudoDaDivisao(
+      [AUTOMATICA, TRASEIRA],
+      {
+        ...resumo,
+        lotes: 5,
+        paginasDoDocumento: 9,
+        fluxos: [{ automatico: true, inicio: 1, fim: 9 }],
+        faixas: [...resumo.faixas, { lote: 5, inicio: 9, fim: 9 }],
+        divisao: [
+          { impressora: AUTOMATICA.id, lotes: [2, 4, 5], viraParaLer: null },
+          { impressora: TRASEIRA.id, lotes: [1, 3], viraParaLer: true },
+        ],
+      },
+      null,
+      "pt-BR",
+    );
+    expect((conteudo.notas ?? []).filter((nota) => nota.startsWith("Em Simulada — Automática"))).toEqual([
+      "Em Simulada — Automática, págs. 3–4, 7–9: frente e verso automático, sem gesto.",
+    ]);
+  });
+
+  it("duas automaticas nao dividem a mesma nota, e cada uma diz a sua rota", () => {
+    const outra = { ...AUTOMATICA, id: "simulada:outra", nome: "Outra" };
+    const conteudo = conteudoDaDivisao(
+      [AUTOMATICA, outra],
+      {
+        ...resumo,
+        divisao: [
+          { impressora: AUTOMATICA.id, lotes: [1, 3], viraParaLer: null },
+          { impressora: outra.id, lotes: [2, 4], viraParaLer: null },
+        ],
+      },
+      null,
+      "en",
+    );
+    const daRota = (conteudo.notas ?? []).filter((nota) => /^On .*handling\.$/.test(nota));
+    expect(daRota).toHaveLength(3);
+    expect(daRota[0]).toMatch(/, pp\. 1–2: automatic duplex/);
+    expect(daRota[1]).toMatch(/, pp\. 5–6: manual duplex/);
+    expect(daRota[2]).toMatch(/, pp\. 3–4, 7–8: automatic duplex/);
   });
 
   it("a automatica que fica de fora nao aparece nas notas", () => {
