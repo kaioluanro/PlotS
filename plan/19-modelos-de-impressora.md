@@ -43,6 +43,7 @@ Conforme a p. 33 do manual da série HL-1210W, nesta laser o maço volta à band
 - [x] O perfil salvo guarda o modelo, e a barra lateral deixou de deduzi-lo de `passada1_inversa` (826b726)
 - [x] Perfil salvo expressa a virada pela borda de cima (826b726)
 - [ ] Confirmar com um lote de 2 ou 3 folhas, quando houver impressora
+- [ ] No mesmo teste, ver qual extremidade do maço entra primeiro: o modelo só distingue borda curta de longa, não cabeça de pé, e nem a frase nem a figura dizem isso. Se o lado errado deixar os versos de cabeça para baixo, a frase e a seta da figura precisam dizer qual borda entra
 
 ## Modelo físico
 

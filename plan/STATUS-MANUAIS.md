@@ -1,6 +1,6 @@
 # STATUS
 
-Requisitos: OK 46 · PARTIAL 34 · MISSING 11 · BUG 0 · N/A 2 (93). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
+Requisitos: OK 48 · PARTIAL 33 · MISSING 10 · BUG 0 · N/A 2 (93). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
 
 | Plano | OK | PARTIAL | MISSING | BUG | N/A | Estado |
 |---|---|---|---|---|---|---|
@@ -17,9 +17,9 @@ Requisitos: OK 46 · PARTIAL 34 · MISSING 11 · BUG 0 · N/A 2 (93). Detalhes e
 | [Tela de abertura](10-splash.md) | 0 | 1 | 0 | 0 | 0 | Em andamento |
 | [Barra lateral de impressoras](11-lateral-impressoras.md) | 3 | 0 | 0 | 0 | 0 | Concluído |
 | [Visualizador de PDF](12-visualizador.md) | 3 | 0 | 0 | 0 | 0 | Concluído |
-| [Fluxo de impressão e recolocação](13-fluxo-e-recolocacao.md) | 3 | 3 | 0 | 0 | 0 | Em andamento |
+| [Fluxo de impressão e recolocação](13-fluxo-e-recolocacao.md) | 5 | 1 | 0 | 0 | 0 | Em andamento |
 | [Padrão visual e idiomas](14-padrao-visual-e-idiomas.md) | 2 | 1 | 0 | 0 | 0 | Em andamento |
-| [Múltiplas impressoras](15-multiplas-impressoras.md) | 0 | 3 | 5 | 0 | 0 | Em andamento |
+| [Múltiplas impressoras](15-multiplas-impressoras.md) | 0 | 4 | 4 | 0 | 0 | Em andamento |
 | [Impressora virtual](16-impressora-virtual.md) | 0 | 0 | 1 | 0 | 0 | Não iniciado |
 | [Acabamento e instalador](17-acabamento.md) | 1 | 1 | 1 | 0 | 0 | Em andamento |
 | [Linux e macOS](18-linux-e-macos.md) | 0 | 0 | 1 | 0 | 0 | Não iniciado |
@@ -52,8 +52,9 @@ Requisitos: OK 46 · PARTIAL 34 · MISSING 11 · BUG 0 · N/A 2 (93). Detalhes e
 | visualizador | `b29796e` | concluído; conferido com PDFs de teste, sem o intervalo de páginas |
 | intervalo-paginas | `ccb1ebc` | concluído; simuladas e fila de PDF, gesto real de arrastar não verificado |
 | instalador | `1a1f6d7` | concluído; instalador gerado, não executado |
+| gesto-e-spooler | `ca10be1` | concluído; simuladas e backend falso, sem driver real nem papel |
 
-**Próximo:** figura do gesto e avisos do spooler (`13-fluxo-e-recolocacao`), modos de impressão múltipla (`15-multiplas-impressoras`), engrenagem do driver (`20-preferencias-do-driver`) e frente e verso automático (`21-frente-e-verso-automatico`).
+**Próximo:** modos de impressão múltipla (`15-multiplas-impressoras`), engrenagem do driver (`20-preferencias-do-driver`) e frente e verso automático (`21-frente-e-verso-automatico`).
 
 ## Bloqueado ou dependente do usuário
 

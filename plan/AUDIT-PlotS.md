@@ -27,7 +27,7 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | --- | --- | --- | --- | --- |
 | PS-A001 | Visão geral | Enviar as passadas à impressora real pelo spooler, sem driver manual | PARTIAL (126ac26) | `plots imprimir` envia ao spooler (sem impressora real; conferido só na fila de PDF do Windows). |
 | PS-A002 | Perfis | Perfil com os 4 parâmetros: `passada1_inversa`, `passada2_inversa`, `verso_girar_180`, `gesto_recolocar` | OK | `plots-core/src/lib.rs:59-66` (`PerfilImpressora`). |
-| PS-A003 | Perfis | `gesto_recolocar` com texto e figura para o usuário | PARTIAL (`256e8ce`) | Texto do gesto no cartão e no CLI, pelo mesmo código. Falta a figura. |
+| PS-A003 | Perfis | `gesto_recolocar` com texto e figura para o usuário | OK (`ca10be1`) | Frase e figura vêm de lado e virada; oito combinações conferidas com o plano 19, sem papel. |
 | PS-A004 | Perfis | Jato (traseira) inverte a passada 1; laser (gaveta) não | OK | `plots-cli/src/lib.rs:27-33`. Execução: traseira "Passada 1: 4, 2"; gaveta "Passada 1: 2, 4". |
 | PS-A005 | Perfis | `passada2_inversa` e `verso_girar_180` ficam "a calibrar", sem presunção | PARTIAL | `plots-cli/src/lib.rs:30`: a traseira já pré-define `passada2_inversa = true`. Não há calibração que confirme isso. |
 | PS-A006 | Algoritmo | Total ímpar recebe página em branco no fim, que entra na passada das pares | OK | `plots-core/src/lib.rs:147-148` e `185-191`; teste `uma_folha_tem_frente_par_vazia_e_verso_impar` (lib.rs:512). Execução: 5 páginas, lote 2 traseira, "Passada 1: branca" no lote 2. |
@@ -36,7 +36,7 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A009 | Algoritmo | Função pura `plano_lote(paginas, perfil) -> (Vec<Pagina>, Vec<Pagina>)`, com testes | PARTIAL | A função não existe com esse nome (grep sem resultado). Equivalentes: `plano_documento` (`plots-core/src/lib.rs:135`, retorna `Vec<Lote>`) e `plano_lotes_por_papel` (lib.rs:357). Testes unitários existem. |
 | PS-A010 | Algoritmo | Gerar `passada1.pdf` e `passada2.pdf` temporários com lopdf | PARTIAL | Gerados como `lote-NNNN-passada-N.pdf` (`plots-cli/src/lib.rs:278-284`), persistentes, não temporários. Nome diverge da especificação. |
 | PS-A011 | Algoritmo | Mostrar o gesto de recolocação e esperar "Imprimir verso" antes da passada 2 | OK (`256e8ce`) | Cartão mostra o gesto e espera "Imprimir verso"; conferido no app com as duas simuladas. |
-| PS-A012 | Gesto único | Cartão com a frase fixa e a figura do gesto | PARTIAL (`256e8ce`) | Cartão com a frase do gesto. Falta a figura. |
+| PS-A012 | Gesto único | Cartão com a frase fixa e a figura do gesto | OK (`ca10be1`) | Cartão com a frase física e a figura; substitui a frase fixa da especificação. |
 | PS-A013 | Fluxo | Abrir PDF (arrastar, "Abrir com") e escolher o intervalo de páginas | OK (`ccb1ebc`) | Trecho contínuo por aba até o plano, com os números originais; soltar um PDF abre a aba. O gesto nativo de arrastar não foi feito no teste. |
 | PS-A014 | Fluxo | Marcar impressoras e tamanho do lote (padrão 10 folhas) | OK (f6e3433) | Caixas por aba e campo de lote com padrão 10, de 1 a 50. |
 | PS-A015 | Fluxo | "Imprimir frente" envia para cada impressora a ordem do seu perfil | PARTIAL (`256e8ce`) | Envio pela janela conferido nas simuladas e na fila de PDF; sem impressora real. |
@@ -90,7 +90,7 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A063 | Múltiplas | Perfil por fila: chave com o nome da fila e apelido amigável | PARTIAL | Chave pelo nome exato da fila e apelido em `plots-perfis` (72030fb); falta a tela de apelido. |
 | PS-A064 | Múltiplas | Máquina de estados por job: Ocioso, FrenteEnviada, AguardandoRecolocacao, VersoEnviado, Concluído, Erro | PARTIAL | `plots-print/src/job.rs:28-35` usa `Pronto` no lugar de `Ocioso`. Demais estados existem. |
 | PS-A065 | Múltiplas | Modos espelho e divisão | PARTIAL | `plots-core/src/distribuicao.rs:52-80`, testes em lib 86-124. Não é usado por CLI nem UI. |
-| PS-A066 | Múltiplas | Consulta periódica do spooler; avisa papel acabado ou atolado | MISSING | Fase 5. |
+| PS-A066 | Múltiplas | Consulta periódica do spooler; avisa papel acabado ou atolado | PARTIAL (`ca10be1`) | Consulta distingue papel acabado, atolado e sem resposta; só com backend falso, sem driver real. |
 | PS-A067 | Múltiplas | Grupos salvos de impressoras ("Todas do escritório") | MISSING | Fase 5. |
 | PS-A068 | Fase 1 | Testes unitários: lotes pares, ímpares, 1 folha e as 8 combinações de perfil | OK | `plots-core/src/lib.rs:512-586`. `cargo test` passa. |
 | PS-A069 | Fase 1 | Crate `plots-core` com lógica pura, sem E/S | OK | `plots-core/src/` (sem dependências externas em `plots-core/Cargo.toml`). |

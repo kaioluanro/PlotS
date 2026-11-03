@@ -1,6 +1,6 @@
 # Múltiplas impressoras
 
-**Estado:** Em andamento · OK 0 · PARTIAL 3 · MISSING 5 · BUG 0 · N/A 0
+**Estado:** Em andamento · OK 0 · PARTIAL 4 · MISSING 4 · BUG 0 · N/A 0
 
 ## Objetivo
 
@@ -11,7 +11,7 @@ Enviar o mesmo documento a várias impressoras, cada uma com o próprio perfil.
 - [x] Modos espelho e divisão no núcleo
 - [x] Máquina de estados por job
 - [ ] Jobs paralelos com `tokio`
-- [ ] Consulta periódica ao spooler, com aviso de papel acabado ou atolado
+- [x] Consulta periódica ao spooler, com aviso de papel acabado ou atolado (`ca10be1`); falta conferir com driver real
 - [ ] Grupos salvos de impressoras
 - [ ] Modos na interface
 
@@ -32,7 +32,7 @@ Duas impressoras avançam de forma independente e entregam o mesmo maço.
 | PS-A062 | Descoberta das filas do sistema (EnumPrintersW) | PARTIAL (a9f9185) |
 | PS-A064 | Máquina de estados por job: Ocioso, FrenteEnviada, AguardandoRecolocacao, VersoEnviado, Concluído, Erro | PARTIAL |
 | PS-A065 | Modos espelho e divisão | PARTIAL |
-| PS-A066 | Consulta periódica do spooler; avisa papel acabado ou atolado | MISSING |
+| PS-A066 | Consulta periódica do spooler; avisa papel acabado ou atolado | PARTIAL |
 | PS-A067 | Grupos salvos de impressoras ("Todas do escritório") | MISSING |
 | PS-A080 | Várias impressoras, jobs paralelos, espelho e divisão, status do spooler, fila virtual "PlotS" | MISSING |
 
