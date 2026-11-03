@@ -1,0 +1,83 @@
+{
+  "pacotes": {
+    "crate/alloc-stdlib@0.2.4": {
+      "arquivo": "alloc-stdlib-0.2.4.txt",
+      "sha256": "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae",
+      "versao": "0.2.4",
+      "origem": "https://raw.githubusercontent.com/dropbox/rust-alloc-no-stdlib/ae42d22078b98549e987d2f03d12df7b984fde47/LICENSE",
+      "nota": "o pacote alloc-stdlib 0.2.4 não traz arquivo de licença (declara BSD-3-Clause)"
+    },
+    "crate/alloc-stdlib@0.3.0": {
+      "arquivo": "alloc-stdlib-0.3.0.txt",
+      "sha256": "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae",
+      "versao": "0.3.0",
+      "origem": "https://raw.githubusercontent.com/dropbox/rust-alloc-no-stdlib/0a81fd6928ea3b33c8cd484aa4575d50ffb98012/LICENSE",
+      "nota": "o pacote alloc-stdlib 0.3.0 não traz arquivo de licença (declara BSD-3-Clause)"
+    },
+    "crate/webview2-com@0.39.1": {
+      "arquivo": "webview2-rs.txt",
+      "sha256": "0dcf41516e608bbcb6cdc5229feb7b86fe4a643b85e7df251133c93408fdac73",
+      "versao": "0.39.1",
+      "origem": "https://raw.githubusercontent.com/wravery/webview2-rs/edc2caf886175ccaebe86078c9cfe1ae2a187328/LICENSE",
+      "nota": "o pacote webview2-com 0.39.1 não traz arquivo de licença (declara MIT)"
+    },
+    "crate/webview2-com-sys@0.39.1": {
+      "arquivo": "webview2-rs.txt",
+      "sha256": "0dcf41516e608bbcb6cdc5229feb7b86fe4a643b85e7df251133c93408fdac73",
+      "versao": "0.39.1",
+      "origem": "https://raw.githubusercontent.com/wravery/webview2-rs/edc2caf886175ccaebe86078c9cfe1ae2a187328/LICENSE",
+      "nota": "o pacote webview2-com-sys 0.39.1 não traz arquivo de licença (declara MIT)"
+    },
+    "npm/react-remove-scroll-bar@2.3.8": {
+      "arquivo": "react-remove-scroll-bar.txt",
+      "sha256": "a79aae0c0f21990d9d963bb3c5a79cdcea9a46f8523ba55c58d7fe776b6ebc84",
+      "versao": "2.3.8",
+      "origem": "https://raw.githubusercontent.com/theKashey/react-remove-scroll-bar/7301c160fda44cb8cf2b9fdfde61efad35736196/LICENSE",
+      "nota": "o pacote 2.3.8 declara MIT e não traz arquivo; texto adicionado depois pelo autor, no commit 7301c16"
+    }
+  },
+  "componentes": [
+    {
+      "titulo": "Microsoft Edge WebView2 SDK 1.0.3800.47 (WebView2LoaderStatic.lib, ligado estaticamente por webview2-com-sys)",
+      "versao": "1.0.3800.47",
+      "origem": "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/1.0.3800.47/microsoft.web.webview2.1.0.3800.47.nupkg (LICENSE.txt e NOTICE.txt do pacote; sha256 do nupkg 56c9f26bdd07916a2d1949fb58a5c7e434dfa1173577dca879206050c4e718db)",
+      "arquivos": [
+        { "arquivo": "webview2-sdk-LICENSE.txt", "sha256": "0af8f1b807512aae39c2ac1aa4d0cae65cabecb6fd554b8439a5162a0d6eca55" },
+        { "arquivo": "webview2-sdk-NOTICE.txt", "sha256": "106423785c5b7eba0a8e61d1837f2132e9c828e20ad530f565d981c1df60dd90" }
+      ]
+    },
+    {
+      "titulo": "libc++ (LLVM, na pdfium.dll)",
+      "versao": "revisão 97b436da4c33663581d394f4ee0a5977fc38c2f4 do ramo chromium/8125 do PDFium",
+      "origem": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libcxx/+/97b436da4c33663581d394f4ee0a5977fc38c2f4/LICENSE.TXT",
+      "arquivos": [
+        { "arquivo": "libcxx-LICENSE.TXT", "sha256": "539dd7aed86e8a4f12cbdd0e6c50c189c7d74847e4fecc64ce2c6ee3a01da38b" }
+      ]
+    },
+    {
+      "titulo": "libc++abi (LLVM, na pdfium.dll)",
+      "versao": "revisão 09351f6ec00c2b65f2d03585ae6da07098b024dc do ramo chromium/8125 do PDFium",
+      "origem": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libcxxabi/+/09351f6ec00c2b65f2d03585ae6da07098b024dc/LICENSE.TXT",
+      "arquivos": [
+        { "arquivo": "libcxxabi-LICENSE.TXT", "sha256": "e2b35be49f7284a45b7baca8fc7b3ab7440e7902392b2528a457816b5bb2a15c" }
+      ]
+    },
+    {
+      "titulo": "NSIS 3.13 (gera o instalador; COPYING inteiro)",
+      "versao": "3.13",
+      "origem": "arquivo COPYING de nsis-3.13.zip, baixado pelo tauri-bundler de https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.13/nsis-3.13.zip; código-fonte em https://nsis.sourceforge.io/Download",
+      "arquivos": [
+        { "arquivo": "nsis-COPYING", "sha256": "388357c1215ff403c5ebde3a5ecd273e68f8b79a579996775245d1ee65442aba" }
+      ]
+    },
+    {
+      "titulo": "nsis_tauri_utils 0.5.3 (plugin do instalador, MIT e Apache-2.0)",
+      "versao": "0.5.3, a versão que a CLI do Tauri 2.12.4 baixou ao gerar o instalador",
+      "origem": "https://raw.githubusercontent.com/tauri-apps/nsis-tauri-utils/13d9edd27b69310e108d6fbd49f90992f8a05390/ (LICENSE_MIT e LICENSE_APACHE-2.0, commit da tag nsis_tauri_utils-v0.5.3)",
+      "arquivos": [
+        { "arquivo": "nsis-tauri-utils-LICENSE_MIT", "sha256": "1c1020fa10a6bf318717e82c911bcc54ebdfb9bb280460ae332bcb2f82f57fbe" },
+        { "arquivo": "nsis-tauri-utils-LICENSE_APACHE-2.0", "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594" }
+      ]
+    }
+  ]
+}

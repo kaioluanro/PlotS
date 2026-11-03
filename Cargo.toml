@@ -3,3 +3,7 @@ members = ["plots-core", "plots-print", "plots-cli", "plots-pdf", "plots-perfis"
 resolver = "2"
 
 
+
+[profile.release]
+# Sem simbolos de depuracao: o binario publicado nao leva caminhos nem nomes da maquina de build.
+strip = "symbols"

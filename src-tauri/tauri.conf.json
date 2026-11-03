@@ -1,11 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "PlotS",
+  "mainBinaryName": "PlotS",
   "version": "0.1.0",
   "identifier": "io.github.kaioluanro.plots",
   "build": {
     "frontendDist": "../ui/dist",
-    "beforeBuildCommand": "npm --prefix ../ui run build"
+    "beforeBuildCommand": "npm --prefix ui run build"
   },
   "app": {
     "windows": [
@@ -40,6 +41,18 @@
   },
   "bundle": {
     "active": false,
-    "icon": ["icons/icon.ico"]
+    "targets": ["nsis"],
+    "icon": ["icons/icon.ico"],
+    "publisher": "Kaio Luan",
+    "copyright": "Copyright (c) 2026 Kaio Luan",
+    "shortDescription": "PlotS: impressão frente e verso manual",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerHooks": "../scripts/instalador/hooks.nsh",
+        "languages": ["PortugueseBR", "English"],
+        "displayLanguageSelector": false
+      }
+    }
   }
 }
