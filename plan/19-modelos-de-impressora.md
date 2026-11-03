@@ -1,6 +1,6 @@
 # Modelos de impressora
 
-**Estado:** Em andamento: impressoras virtuais prontas (166adee); falta levar os modelos à calibração e à escolha de modo.
+**Estado:** Em andamento: impressoras virtuais e seletor prontos; falta a confirmação em papel. Impressoras virtuais (166adee); falta levar os modelos à calibração e à escolha de modo.
 
 ## Objetivo
 
@@ -39,9 +39,9 @@ Conforme a p. 33 do manual da série HL-1210W, nesta laser o maço volta à band
 - [x] Registrar o comportamento dos dois modelos
 - [x] Levar os dois modelos ao simulador, em `Mecanica` e nos perfis embutidos, com a virada pela borda de cima e o gesto sem virar, e testes contra o simulador (166adee)
 - [x] Ajustar `plots simular` e `plots imprimir --simular`; os nomes `Simulada — Traseira` e `Simulada — Gaveta` ficam
-- [ ] Usar os dois modelos como ponto de partida ao calibrar uma fila real, e na escolha de modo da barra lateral
-- [ ] **Corrigir o modo que a barra lateral deduz de `passada1_inversa`** (`src-tauri/src/impressoras.rs`): agora a laser também inverte a frente, e uma fila calibrada como laser apareceria como "Traseira". O perfil salvo precisa guardar o modelo
-- [ ] Perfil salvo expressar a virada pela borda de cima: `GestoRecolocar` hoje só guarda virar ou não
+- [x] Escolher o modelo na barra lateral e por `plots perfil` (826b726), com `calibrar` partindo do perfil salvo
+- [x] O perfil salvo guarda o modelo, e a barra lateral deixou de deduzi-lo de `passada1_inversa` (826b726)
+- [x] Perfil salvo expressa a virada pela borda de cima (826b726)
 - [ ] Confirmar com um lote de 2 ou 3 folhas, quando houver impressora
 
 ## Modelo físico

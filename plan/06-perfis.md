@@ -29,6 +29,10 @@ Um perfil salvo é reaberto igual, e arquivo corrompido nunca derruba o programa
 | PS-A045 | Config com serde, toml e directories; perfis em `%APPDATA%/plots/perfis.toml` | PARTIAL |
 | PS-A063 | Perfil por fila: chave com o nome da fila e apelido amigável | PARTIAL |
 
+## Campos e leitura
+
+`modelo` e `borda_virada` são opcionais, e `versao` continua 1. Um valor de modelo ou de borda desconhecido, ou um modelo cujos valores não conferem, faz só aquela entrada abrir como personalizada; a recusa fica ao gravar. Ainda recusam o arquivo: TOML malformado, `borda_primeiro` ausente e tipo errado nos outros campos. Binários antigos recusam arquivos com os campos novos.
+
 ## Licenças de terceiros
 
 `option-ext` 0.2.0, usado por `directories` e `dirs-sys`, é MPL-2.0 e não permissivo. Usado sem alterações, por decisão do usuário em 2026-11-02. Ao distribuir o binário: incluir o texto da MPL 2.0 nos avisos de terceiros e informar a origem do código-fonte, https://github.com/soc/option-ext.

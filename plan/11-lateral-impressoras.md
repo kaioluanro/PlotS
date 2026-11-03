@@ -1,6 +1,6 @@
 # Barra lateral de impressoras
 
-**Estado:** Em andamento · OK 2 · PARTIAL 1 · MISSING 0 · BUG 0 · N/A 0
+**Estado:** Concluído · OK 3 · PARTIAL 0 · MISSING 0 · BUG 0 · N/A 0
 
 ## Objetivo
 
@@ -47,7 +47,7 @@ Trocar de aba troca a seleção, e o modelo escolhido define o perfil inteiro da
 | ID | Requisito | Situação |
 |---|---|---|
 | PS-A014 | Marcar impressoras e tamanho do lote (padrão 10 folhas) | OK (f6e3433) |
-| PS-A021 | Barra lateral de impressoras com caixa de seleção e seletor de modelo (Jato de tinta, Laser, "Calibrar…") | PARTIAL (f6e3433) |
+| PS-A021 | Barra lateral de impressoras com caixa de seleção e seletor de modelo (Jato de tinta, Laser, "Calibrar…") | OK (826b726) |
 | PS-A024 | Seleção de impressoras por documento (decidido no AGENTS) | OK (f6e3433) |
 
 ## Especificação

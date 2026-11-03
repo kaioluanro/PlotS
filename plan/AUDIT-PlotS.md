@@ -2,7 +2,7 @@
 
 Data: 2026-11-02. A especificação foi dividida depois em `plan/`, então as linhas de `AGENTS.md` citadas abaixo são da versão anterior. Escopo: especificação em `AGENTS.md` (seções de Fases, Modo simulação, Perfis, Papel, Múltiplas impressoras, Windows e Interface). Nenhum código de produto foi alterado. Nenhum commit. `Cargo.toml`, `Cargo.lock`, `AGENTS.md`, `CLAUDE.md` e `estilo-ui-ux.md` mantêm os mesmos hashes (md5 conferido antes e depois). **Atenção:** o `.gitignore` foi reescrito às 13:56:41, durante a auditoria, por outro processo ou usuário (este agente não o editou). O conteúdo novo acrescenta `/.claude/`, `/.codex/`, `/estilo-ui-ux.md`, `/plan/`, `/AUDIT-*.md` e `/STATUS-MANUAIS.md`, e por isso o `git status` mostra só `AGENTS.md` e `CLAUDE.md`. Não foi revertido; decisão do usuário.
 
-Contagem: **OK 37 · PARTIAL 34 · MISSING 20 · BUG 0 · N/A 2** (93 requisitos)
+Contagem: **OK 38 · PARTIAL 33 · MISSING 20 · BUG 0 · N/A 2** (93 requisitos)
 
 Verificação executada:
 - `cargo test --workspace --locked`: 51 testes passam (9 de integração do CLI, 19 em plots-core, 12 em plots-pdf, 11 em plots-print). Tempo de 30 s.
@@ -45,7 +45,7 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A018 | Fluxo | "Reimprimir lote" refaz só aquele lote | PARTIAL | `Job::reiniciar_lote` (`job.rs:76-83`) e `Simulador::cancelar_lote` (`plots-print/src/lib.rs:144-155`). Nenhum comando no CLI nem na UI. |
 | PS-A019 | Interface | Janela sem menus; barra superior única (ícone, botão da lateral, abas, "+", controles) | OK (353f54d) | Barra sem menus, medidas conferidas no app. |
 | PS-A020 | Interface | Splash 480×300, carregamento até 10 s, depois a janela principal | MISSING | Fase 4. |
-| PS-A021 | Interface | Barra lateral de impressoras com caixa de seleção e seletor de modo (Traseira, Gaveta, "Calibrar…") | PARTIAL (f6e3433) | Lista real com caixa, estado e modo somente leitura; falta o seletor interativo. |
+| PS-A021 | Interface | Barra lateral de impressoras com caixa de seleção e seletor de modo (Traseira, Gaveta, "Calibrar…") | OK (826b726) | Lista real com caixa, estado e seletor de modelo: Jato de tinta, Laser e Calibrar. |
 | PS-A022 | Interface | Abas por documento com estado próprio; confirmação ao fechar com impressão em andamento | PARTIAL (353f54d) | A aba guarda só a impressão em andamento; faltam impressoras, intervalo e lote. |
 | PS-A023 | Interface | Atalhos Ctrl+O, Ctrl+T, Ctrl+W, Ctrl+Tab, Ctrl+B; arrastar PDF abre aba | PARTIAL (353f54d) | Ctrl+W, Ctrl+Tab e Ctrl+B testados no app; seletor e arrasto nativos sem teste real. |
 | PS-A024 | Interface | Seleção de impressoras por documento (decidido no AGENTS) | OK (f6e3433) | Cada aba guarda as próprias impressoras; aba nova começa sem marcas. |
