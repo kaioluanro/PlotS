@@ -25,8 +25,8 @@ Requisitos: OK 51 · PARTIAL 33 · MISSING 6 · BUG 0 · N/A 3 (93). Detalhes em
 | [Linux e macOS](18-linux-e-macos.md) | 0 | 0 | 1 | 0 | 0 | Não iniciado |
 | [Modelos de impressora](19-modelos-de-impressora.md) | — | — | — | — | — | Em andamento |
 | [Preferências do driver](20-preferencias-do-driver.md) | — | — | — | — | — | Em andamento |
-| [Frente e verso automático](21-frente-e-verso-automatico.md) | — | — | — | — | — | Em andamento |
-| [Opções de envio e histórico](22-opcoes-de-envio-e-historico.md) | — | — | — | — | — | Em andamento |
+| [Frente e verso automático](21-frente-e-verso-automatico.md) | — | — | — | — | — | Concluído no código |
+| [Opções de envio e histórico](22-opcoes-de-envio-e-historico.md) | — | — | — | — | — | Concluído no código |
 | [PlotSim](23-plotsim.md) | — | — | — | — | — | Em andamento |
 
 ## Lotes
@@ -58,12 +58,12 @@ Requisitos: OK 51 · PARTIAL 33 · MISSING 6 · BUG 0 · N/A 3 (93). Detalhes em
 | varias-impressoras | `62d51a4` | concluído; simuladas, fila real só até a confirmação, sem papel |
 | preferencias-driver | `ec46630` | concluído no código; janela real aberta e fechada, sem clicar em OK |
 | frente-e-verso-automatico | `0a8f451` | concluído no código; simulada e fila sem duas faces, sem envio real em duas faces nem papel |
+| opcoes-de-envio | `1ad3307` | concluído no código; simuladas e fila de PDF, sem impressora real |
 
 **Próximo:**
 
-1. Rebase de `opcoes-de-envio` sobre o automático, em `.deps-fetch/retomada-opcoes`, brief `briefs/brief-opcoes-de-envio-correcoes.md`.
-2. Revisar e integrar, com CI completo no `master`, e apagar a cópia e as pastas de compilação dela.
-3. Revisar as linhas desatualizadas de `AUDIT-PlotS.md`, gerar o instalador final e fazer o teste do usuário.
+1. Integrar a correção da laser e as filas do PlotSim. Depois, as fases 4 a 6 do PlotSim (`23-plotsim`).
+2. Revisar as linhas desatualizadas de `AUDIT-PlotS.md`, gerar o instalador final e fazer o teste do usuário.
 
 Depois da primeira versão: impressora virtual, Linux e macOS, divisão por velocidade (`15-multiplas-impressoras`) e medir se o Graphify economiza tokens, com 3 perguntas respondidas com e sem ele.
 

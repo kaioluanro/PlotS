@@ -1,6 +1,6 @@
 # Opções de envio e histórico
 
-**Estado:** Em andamento, em revisão
+**Estado:** Concluído no código (`1ad3307`); sem impressora real
 
 ## Objetivo
 
@@ -18,10 +18,19 @@ Dar as opções finais de impressão: conferir o maço, imprimir em outro papel,
 
 ## Plano de implementação
 
-- [ ] Folha de controle
-- [ ] Ajustar ao papel
-- [ ] Aviso e compensação de driver que inverte a ordem
-- [ ] Histórico
+- [x] Folha de controle
+- [x] Ajustar ao papel
+- [x] Aviso e compensação de driver que inverte a ordem
+- [x] Histórico, com tempo por impressora e "Guardar histórico"
+
+## Decisões e limitações
+
+- **Face da marca:** a de trás real da folha (página par ou a branca do fim), que sai na primeira passada e fica à vista na recolocação. Lote numerado como no documento, inclusive na divisão. Automático não leva marca.
+- **"Imprimir de novo" fora:** o histórico guarda só o nome, sem a pasta.
+- **Arquivo de perfis ilegível:** nenhum envio é registrado, para quem desligou o histórico não voltar a ser registrado. Apagar a pasta `plots` religa a opção, e o README avisa.
+- **Face em branco:** só existe no fim do documento ou do trecho, porque par de papéis diferentes é recusado. A medida dela depende dessa regra: `plots-windows/src/backend.rs`. Falta um teste que prenda isso.
+- **`PLOTS_HISTORICO` ativa em produção**, como `PLOTS_PERFIS`; só apaga outro nome se o arquivo for um histórico válido.
+- **Não verificado:** impressora real e driver que inverte de verdade, só simulada e ordem no PDF; tempo em impressora física; compensação em fila automática com papel manual de ponta a ponta; leitor de tela e cores forçadas reais.
 
 ## Pronto quando
 
