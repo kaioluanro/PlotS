@@ -1,6 +1,6 @@
 # Opções de envio e histórico
 
-**Estado:** Em pausa, com trabalho parcial em worktree, sem CI nem revisão (ver `STATUS-MANUAIS.md`)
+**Estado:** Em andamento, em revisão
 
 ## Objetivo
 
@@ -13,7 +13,8 @@ Dar as opções finais de impressão: conferir o maço, imprimir em outro papel,
 - **Driver que inverte a ordem:** o PlotS não consegue detectar isso em todo driver, porque a opção costuma ser privada de cada fabricante. Por isso há duas partes: um aviso em texto antes do envio manual e uma opção no perfil da impressora, "O driver inverte a ordem", com que o PlotS compensa a ordem enviada para o maço sair certo mesmo assim.
 - **Histórico:** lista local do que foi impresso: documento, data, impressoras, páginas, resultado e tempo de cada impressora. Fica só no computador, com limite de tamanho, e pode ser apagado inteiro.
 - **Tempo de impressão:** conta só o tempo em que a impressora trabalhou, sem a espera da pessoa na recolocação. A velocidade de cada fila sai do histórico, com pelo menos 10 folhas medidas.
-- **Aviso de compensação:** com duas ou mais impressoras marcadas e dados de todas, se a diferença de velocidade passar de 25%, a confirmação avisa qual termina antes e em qual deixar mais papel. É só aviso: os lotes continuam repartidos em rodízio.
+- **Aviso de velocidade:** com duas ou mais impressoras marcadas e dados de todas, se a diferença passar de 25%, a confirmação avisa qual termina antes. É só aviso: os lotes continuam repartidos em rodízio, então as duas gastam quase o mesmo papel. O conselho de deixar mais papel volta com a divisão por velocidade (`15-multiplas-impressoras`). Decisão do usuário em 2026-11-03.
+- **Guardar histórico:** opção ligada por padrão. Desligada, nada novo é registrado, e a lista existente fica até ser apagada.
 
 ## Plano de implementação
 

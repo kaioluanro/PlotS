@@ -1,6 +1,6 @@
 # Frente e verso automático
 
-**Estado:** Em pausa, com trabalho parcial em worktree, sem CI nem revisão (ver `STATUS-MANUAIS.md`).
+**Estado:** Concluído no código (`0a8f451`); falta a conferência em impressora com duas faces.
 
 ## Objetivo
 
@@ -8,16 +8,7 @@ Aceitar impressoras que imprimem as duas faces sozinhas, como a referência Epso
 
 ## O que a referência diz
 
-Manual do usuário da L4360, p. 53 e 54:
-
-| Papel | Automático | Manual |
-|---|---|---|
-| Normal, cópia: Carta ou A4 | até 100 folhas | até 30 folhas |
-| Normal, cópia: Executivo, Meia carta, A6 | não | até 30 folhas |
-| Normal, cópia: Ofício e parecidos | não | 1 folha |
-| Fotográfico, envelope | não imprime nas duas faces | não imprime nas duas faces |
-
-Papel pré-perfurado também não aceita o automático (p. 50). Opções de encadernação: borda longa ou borda curta (p. 101). **Consequência:** a mesma máquina precisa dos dois fluxos, conforme o papel. O produto usa nome genérico, sem marca.
+Consulta ao manual do usuário da L4360 (cpd64038, p. 50, 53, 54 e 101). Na referência, o automático só serve para papel comum em A4 ou Carta, e os outros tamanhos comuns só têm o fluxo manual. Papel fotográfico e envelope não saem em duas faces em nenhum fluxo, e papel furado fica fora do automático. A virada pode ser pela borda longa ou pela borda curta. **Consequência:** a mesma máquina precisa dos dois fluxos, conforme o papel. O produto usa nome genérico, sem marca.
 
 ## Comportamento proposto
 
@@ -30,11 +21,13 @@ Papel pré-perfurado também não aceita o automático (p. 50). Opções de enca
 - Sem páginas de teste: nada foi medido em papel. Uma terceira impressora simulada imita esse modelo.
 - Espelho, divisão e intervalo de páginas continuam valendo. Em aviso de papel, "Reimprimir lote" refaz o lote inteiro.
 
-## A decidir no brief
+## Decisões
 
-- Como juntar isso à máquina de estados, sem a espera entre as passadas.
-- Se "Folhas por lote" faz sentido nesse modelo, sem gesto para limitar o maço.
-- Se a borda curta entra agora ou fica para depois.
+- **Lotes:** o lote automático segue sozinho, sem clique. "Folhas por lote" não se aplica a ele; só com automáticas, o rodapé mostra só as páginas.
+- **Borda curta:** fica para depois. Página deitada gira para caber na folha em pé e vira pela borda longa, lendo como calendário. Conferir em papel.
+- **Pergunta ao driver:** em thread própria, 1,5 s no total por leitura, resposta guardada por 60 s, sem perguntar a fila offline. Resposta tardia só aparece na próxima leitura.
+- **Pendente, entra junto do lote de opções:** seletor do gesto sem `disabled`, centro da seta, contagem de lotes em documento misto, linhas com impressoras de modelos diferentes, palavra "lote" na recusa, altura da lista em 640x420.
+- **Não verificado:** envio real em duas faces e `DC_DUPLEX` verdadeiro, porque a única fila aqui não declara duas faces; driver lento de verdade; recusa real no meio; ordem de saída, borda longa e página deitada em papel.
 
 ## Pronto quando
 
