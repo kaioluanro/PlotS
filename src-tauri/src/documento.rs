@@ -5,6 +5,8 @@ use serde::Serialize;
 use std::fs::File;
 use std::io::{ErrorKind, Read};
 use std::path::Path;
+use std::sync::{Mutex, PoisonError};
+use tauri::ipc::Response;
 
 /// Documento aceito para abrir em uma aba.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -72,19 +74,53 @@ pub fn contar_paginas(caminho: &str) -> Result<usize, ErroDocumento> {
 }
 
 fn contar_com_limite(caminho: &str, limite: u64) -> Result<usize, ErroDocumento> {
+    carregar_validado(caminho, limite).map(|(_, total)| total)
+}
+
+/// Bytes do PDF para a interface mostrar, sempre depois da mesma barreira da impressao. Um PDF
+/// recusado aqui nunca chega ao leitor da interface, que nao recebe senha nem abre PDF protegido.
+///
+/// Devolve os bytes crus, sem passar por JSON. A leitura roda em uma thread propria, e o que a
+/// interromper vira recusa.
+#[tauri::command]
+pub async fn ler_documento(caminho: String) -> Result<Response, ErroDocumento> {
+    let falha = falha_inesperada(&caminho);
+    tauri::async_runtime::spawn_blocking(move || ler_validado(&caminho))
+        .await
+        .unwrap_or(Err(falha))
+        .map(Response::new)
+}
+
+fn ler_validado(caminho: &str) -> Result<Vec<u8>, ErroDocumento> {
+    ler_com_limite_validado(caminho, LIMITE_BYTES_PDF)
+}
+
+fn ler_com_limite_validado(caminho: &str, limite: u64) -> Result<Vec<u8>, ErroDocumento> {
+    carregar_validado(caminho, limite).map(|(bytes, _)| bytes)
+}
+
+/// Um PDF por vez: a contagem e a leitura de varias abas nao disputam a memoria ao mesmo tempo.
+static CARGA_EM_ANDAMENTO: Mutex<()> = Mutex::new(());
+
+fn carregar_validado(caminho: &str, limite: u64) -> Result<(Vec<u8>, usize), ErroDocumento> {
     let documento = abrir(caminho)?;
     let erro = |codigo| ErroDocumento {
         codigo,
         nome: documento.nome.clone(),
     };
+    let _vez = CARGA_EM_ANDAMENTO
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
     let bytes = ler_com_limite(Path::new(caminho), limite).map_err(erro)?;
-    let origem = PdfOrigem::carregar(&bytes).map_err(|falha| {
-        erro(match falha {
-            ErroPdf::Criptografado => CodigoErro::Criptografado,
-            _ => CodigoErro::PdfInvalido,
-        })
-    })?;
-    Ok(origem.total_paginas())
+    let total = PdfOrigem::carregar(&bytes)
+        .map_err(|falha| {
+            erro(match falha {
+                ErroPdf::Criptografado => CodigoErro::Criptografado,
+                _ => CodigoErro::PdfInvalido,
+            })
+        })?
+        .total_paginas();
+    Ok((bytes, total))
 }
 
 /// Le o arquivo sem passar do limite, mesmo que ele cresca depois de medido. Faltar memoria para o
@@ -369,6 +405,74 @@ mod testes {
         assert_eq!(contar_com_limite(&caminho, limite), Ok(1));
         assert_eq!(
             contar_com_limite(&caminho, limite - 1).map_err(|erro| erro.codigo),
+            Err(CodigoErro::Grande)
+        );
+    }
+
+    #[test]
+    fn leitura_devolve_exatamente_os_bytes_do_pdf_aceito() {
+        let pasta = PastaTemporaria::nova();
+        let bytes = pdf(3, &[], "");
+        let caminho = gravar(&pasta, "tres.pdf", &bytes);
+        assert_eq!(
+            ler_com_limite_validado(&caminho, LIMITE_BYTES_PDF),
+            Ok(bytes)
+        );
+    }
+
+    #[test]
+    fn leitura_recusa_arquivo_inexistente_com_o_nome() {
+        let pasta = PastaTemporaria::nova();
+        let sumiu = pasta.0.join("sumiu.pdf");
+        assert_eq!(
+            ler_validado(&sumiu.to_string_lossy()),
+            Err(ErroDocumento {
+                codigo: CodigoErro::NaoEncontrado,
+                nome: "sumiu.pdf".to_owned(),
+            })
+        );
+    }
+
+    #[test]
+    fn leitura_recusa_pdf_protegido_sem_entregar_bytes() {
+        let pasta = PastaTemporaria::nova();
+        let hexa = "A".repeat(64);
+        let cifra = format!("<< /Filter /Standard /V 1 /R 2 /O <{hexa}> /U <{hexa}> /P -4 >>");
+        let caminho = gravar(
+            &pasta,
+            "cifrado.pdf",
+            &pdf(2, &[&cifra], "/Encrypt 5 0 R /ID [<00> <00>]"),
+        );
+        assert_eq!(
+            ler_validado(&caminho).map_err(|erro| erro.codigo),
+            Err(CodigoErro::Criptografado)
+        );
+    }
+
+    #[test]
+    fn leitura_recusa_o_que_a_barreira_do_pdf_nao_aceita() {
+        let pasta = PastaTemporaria::nova();
+        let quebrado = pasta.arquivo("quebrado.pdf");
+        assert_eq!(
+            ler_validado(&quebrado).map_err(|erro| erro.codigo),
+            Err(CodigoErro::PdfInvalido)
+        );
+        let texto = pasta.arquivo("notas.txt");
+        assert_eq!(
+            ler_validado(&texto).map_err(|erro| erro.codigo),
+            Err(CodigoErro::NaoEPdf)
+        );
+    }
+
+    #[test]
+    fn leitura_acima_do_limite_vira_recusa_antes_de_interpretar() {
+        let pasta = PastaTemporaria::nova();
+        let bytes = pdf(1, &[], "");
+        let caminho = gravar(&pasta, "grande.pdf", &bytes);
+        let limite = u64::try_from(bytes.len()).expect("tamanho do teste");
+        assert_eq!(ler_com_limite_validado(&caminho, limite), Ok(bytes));
+        assert_eq!(
+            ler_com_limite_validado(&caminho, limite - 1).map_err(|erro| erro.codigo),
             Err(CodigoErro::Grande)
         );
     }

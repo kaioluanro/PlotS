@@ -162,6 +162,7 @@ fn main() -> ExitCode {
             definir_modelo,
             interface_montou,
             comandos_trabalho::iniciar_impressao,
+            documento::ler_documento,
             limitar_lote,
             listar_impressoras,
             pedido_de_fechamento_recebido,

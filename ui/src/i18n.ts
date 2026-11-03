@@ -118,7 +118,6 @@ const ptBR = {
   "documento.vazioTexto": "Abra um PDF ou arraste o arquivo para esta janela.",
   "documento.abrir": "Abrir PDF",
   "documento.atalhoAbrir": "Ctrl+O",
-  "documento.semVisualizacao": "Esta versão ainda não mostra o documento.",
   "documento.soltar": "Solte para abrir",
   "seletor.filtro": "Documentos PDF",
   "confirmar.titulo": "Fechar aba com impressão em andamento?",
@@ -145,7 +144,8 @@ const ptBR = {
     "{nome} foi recusado: o PDF está danificado ou usa um recurso que o PlotS não aceita. Salve uma nova cópia pelo programa de origem e abra de novo.",
   "erro.criptografado":
     "{nome} foi recusado: o PDF está protegido por senha. Se você tiver permissão para isso, salve uma cópia sem senha e abra de novo.",
-  "erro.grande": "{nome} foi recusado: o arquivo passa de 1 GB ou não coube na memória.",
+  "erro.grande":
+    "{nome} foi recusado: o arquivo passa de 1 GB ou não coube na memória. Feche outros programas ou divida o PDF em partes menores e abra de novo.",
   "erro.desconhecido": "Não foi possível abrir o documento. Tente de novo.",
   "erro.varios": "{n} arquivos não abriram.",
   "erro.seletor":
@@ -298,6 +298,28 @@ const ptBR = {
   "cartao.motivo.filaPedeArquivo":
     "Esta fila pede o nome de um arquivo em um diálogo, e esta versão não abre esse diálogo.",
   "cartao.motivo.sistema": "O sistema recusou uma etapa do envio.",
+  "visualizador.carregando": "Abrindo o PDF…",
+  "visualizador.documento": "Páginas de {nome}",
+  "visualizador.barra": "Controles do documento",
+  "visualizador.semPagina": "Página ainda não disponível",
+  "visualizador.paginaDeTotal": "Página {atual} de {total}",
+  "visualizador.zoomAtual": "Zoom em {percentual}%",
+  "visualizador.diminuir": "Diminuir zoom (Ctrl+-)",
+  "visualizador.aumentar": "Aumentar zoom (Ctrl++)",
+  "visualizador.ajustar": "Ajustar à largura (Ctrl+0)",
+  "visualizador.miniaturas.titulo": "Miniaturas",
+  "visualizador.miniaturas.mostrar": "Mostrar miniaturas",
+  "visualizador.miniaturas.ocultar": "Ocultar miniaturas",
+  "visualizador.miniaturas.ir": "Ir para a página {n}",
+  "visualizador.pagina.rotulo": "Página {n}",
+  "visualizador.pagina.carregando": "Carregando a página {n}",
+  "visualizador.pagina.erro":
+    "Não foi possível mostrar a página {n}. Salve uma nova cópia no programa de origem e abra de novo.",
+  "visualizador.pagina.rotuloErro": "Página {n}: não foi possível mostrar",
+  "visualizador.miniaturas.irErro": "Ir para a página {n}: não foi possível mostrar",
+  "visualizador.tentarDeNovo": "Tentar de novo",
+  "visualizador.erro.texto":
+    "Não foi possível mostrar este PDF. Tente de novo; se continuar, salve uma nova cópia no programa de origem.",
 } as const;
 
 export type Chave = keyof typeof ptBR;
@@ -420,7 +442,6 @@ const en: Record<Chave, string> = {
   "documento.vazioTexto": "Open a PDF or drag the file into this window.",
   "documento.abrir": "Open PDF",
   "documento.atalhoAbrir": "Ctrl+O",
-  "documento.semVisualizacao": "This version does not show the document yet.",
   "documento.soltar": "Drop to open",
   "seletor.filtro": "PDF documents",
   "confirmar.titulo": "Close tab with a print in progress?",
@@ -445,7 +466,8 @@ const en: Record<Chave, string> = {
     "{nome} was refused: the PDF is damaged or uses a feature PlotS does not accept. Save a new copy from the original program and open it again.",
   "erro.criptografado":
     "{nome} was refused: the PDF is password protected. If you are allowed to, save a copy without a password and open it again.",
-  "erro.grande": "{nome} was refused: the file is over 1 GB or did not fit in memory.",
+  "erro.grande":
+    "{nome} was refused: the file is over 1 GB or did not fit in memory. Close other programs or split the PDF into smaller parts and open it again.",
   "erro.desconhecido": "Could not open the document. Try again.",
   "erro.varios": "{n} files did not open.",
   "erro.seletor": "Could not show the file picker. Try again or drag the PDF into the window.",
@@ -597,6 +619,28 @@ const en: Record<Chave, string> = {
   "cartao.motivo.filaPedeArquivo":
     "This queue asks for a file name in a dialog, and this version does not open that dialog.",
   "cartao.motivo.sistema": "The system refused a step of the job.",
+  "visualizador.carregando": "Opening the PDF…",
+  "visualizador.documento": "Pages of {nome}",
+  "visualizador.barra": "Document controls",
+  "visualizador.semPagina": "Page not available yet",
+  "visualizador.paginaDeTotal": "Page {atual} of {total}",
+  "visualizador.zoomAtual": "Zoom at {percentual}%",
+  "visualizador.diminuir": "Zoom out (Ctrl+-)",
+  "visualizador.aumentar": "Zoom in (Ctrl++)",
+  "visualizador.ajustar": "Fit to width (Ctrl+0)",
+  "visualizador.miniaturas.titulo": "Thumbnails",
+  "visualizador.miniaturas.mostrar": "Show thumbnails",
+  "visualizador.miniaturas.ocultar": "Hide thumbnails",
+  "visualizador.miniaturas.ir": "Go to page {n}",
+  "visualizador.pagina.rotulo": "Page {n}",
+  "visualizador.pagina.carregando": "Loading page {n}",
+  "visualizador.pagina.erro":
+    "Could not show page {n}. Save a new copy from the original program and open it again.",
+  "visualizador.pagina.rotuloErro": "Page {n}: could not be shown",
+  "visualizador.miniaturas.irErro": "Go to page {n}: could not be shown",
+  "visualizador.tentarDeNovo": "Try again",
+  "visualizador.erro.texto":
+    "Could not show this PDF. Try again; if it keeps failing, save a new copy from the original program.",
 };
 
 export const traducoes: Record<Idioma, Record<Chave, string>> = { "pt-BR": ptBR, en };

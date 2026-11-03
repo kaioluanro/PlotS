@@ -1,0 +1,381 @@
+.visualizador {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+}
+
+/* Barra de 28 px: a linha de 1 px fica na area abaixo, para os botoes ocuparem a altura toda. */
+.barra {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 4px 0 12px;
+  background: var(--bg);
+}
+
+.dado {
+  flex-shrink: 0;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.zoom {
+  min-width: 40px;
+  text-align: center;
+}
+
+.vao {
+  flex: 1 1 0;
+  min-width: 8px;
+}
+
+.divisor {
+  flex-shrink: 0;
+  width: 1px;
+  height: 14px;
+  margin: 0 4px;
+  background: var(--border);
+}
+
+.oculto {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.botao {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--fg-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--anim-fast) ease,
+    border-color var(--anim-fast) ease,
+    color var(--anim-fast) ease,
+    transform var(--anim-instant) var(--ease-out-fluid);
+}
+
+/* O fundo do estado fica 2 px para dentro da area de 28 x 28: a borda do botao nao o encosta. */
+.botao::before {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  transition: background-color var(--anim-fast) ease;
+}
+
+/* O fundo fica sob o icone: o icone sobe para a mesma camada posicionada do fundo. */
+.botao > svg {
+  position: relative;
+}
+
+.botao:hover {
+  color: var(--fg);
+}
+
+.botao:hover:not([aria-disabled='true'])::before {
+  background: var(--panel-hover);
+}
+
+.botao:active {
+  transform: scale(0.97);
+}
+
+.botao:focus-visible {
+  outline-offset: -2px;
+}
+
+.botao[aria-pressed='true'] {
+  color: var(--fg);
+  border-color: var(--border-control);
+}
+
+.botao[aria-pressed='true']::before {
+  background: var(--accent-bg-soft);
+}
+
+.botao[aria-disabled='true'] {
+  color: var(--fg-muted);
+  background: transparent;
+  border-color: transparent;
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
+}
+
+.botao[aria-disabled='true']::before {
+  background: transparent;
+}
+
+.corpo {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  border-top: 1px solid var(--border);
+}
+
+.centro {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 0;
+  gap: 8px;
+  min-height: 0;
+  padding: 24px;
+  overflow: auto;
+  color: var(--fg-muted);
+}
+
+.rolavel {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--fg-muted) 40%, transparent) transparent;
+}
+
+.rolavel:focus-visible {
+  outline-offset: -2px;
+}
+
+.conteudo {
+  position: relative;
+}
+
+.pagina {
+  position: absolute;
+  overflow: hidden;
+  background: var(--bg-sunken);
+  outline: 1px solid var(--border-control);
+}
+
+.tela {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+/* O canvas guarda os pixels do desenho; o tamanho na tela vem da caixa, e o zoom estica o antigo. */
+.tela canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* No alto da pagina: em zoom grande, o meio dela pode estar fora da janela. */
+.textoErroDaPagina {
+  max-width: 100%;
+  min-width: 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.aviso {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px 8px 8px;
+  color: var(--fg-faint);
+  font-size: 11px;
+  text-align: center;
+}
+
+.numero {
+  font-family: var(--font-mono);
+}
+
+.iconeErro {
+  flex-shrink: 0;
+  color: var(--status-offline-text);
+}
+
+/* A rotacao continua com movimento reduzido, porque indica atividade. */
+.girando {
+  flex-shrink: 0;
+  animation: girar 900ms linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .girando {
+    animation-duration: 900ms !important;
+  }
+}
+
+@keyframes girar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.miniaturas {
+  display: flex;
+  flex-shrink: 0;
+  width: 136px;
+  min-height: 0;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+}
+
+.listaMiniaturas {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--fg-muted) 40%, transparent) transparent;
+}
+
+.pilhaMiniaturas {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.itemMiniatura {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.miniatura {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 124px;
+  padding: 6px 6px 2px;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color var(--anim-fast) ease;
+}
+
+.miniatura:hover {
+  background: var(--panel-hover);
+}
+
+.miniatura:focus-visible {
+  outline-offset: -2px;
+}
+
+.imagemMiniatura {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  background: var(--bg-sunken);
+  outline: 1px solid var(--border-control);
+}
+
+.iconeMiniatura {
+  position: absolute;
+  top: calc(50% - 7px);
+  left: calc(50% - 7px);
+}
+
+.rotuloMiniatura {
+  position: relative;
+  align-self: stretch;
+  text-align: center;
+  height: 18px;
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.miniatura:hover .rotuloMiniatura {
+  color: var(--fg-muted);
+}
+
+/* A atual se distingue pela moldura grossa e pelo numero em negrito com marca, nao so pela cor. */
+.miniaturaAtual .imagemMiniatura {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.miniaturaAtual .rotuloMiniatura,
+.miniaturaAtual:hover .rotuloMiniatura {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+/* A marca fica numa margem propria, para o numero continuar centrado na miniatura. */
+.marcaAtual {
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  color: var(--fg);
+}
+
+@media (forced-colors: active) {
+  /* Com as cores do sistema, o estado tambem aparece na espessura da borda, nao so na cor. */
+  .botao[aria-pressed='true'] {
+    background: Highlight;
+    color: HighlightText;
+    border-width: 2px;
+    border-color: Highlight;
+  }
+
+  .botao:hover:not([aria-disabled='true']) {
+    border-color: Highlight;
+  }
+
+  .miniatura:hover {
+    outline: 1px solid Highlight;
+  }
+
+  .divisor {
+    background: CanvasText;
+  }
+
+  .botao[aria-disabled='true'] {
+    color: GrayText;
+    opacity: 1;
+  }
+
+  /* O fundo do estado vira cor do sistema; o icone precisa continuar visivel sobre ele. */
+  .botao::before {
+    background: transparent !important;
+  }
+
+  /* O foco de teclado em botao marcado usa a cor de texto do destaque, para se ver sobre o fundo. */
+  .botao[aria-pressed='true']:focus-visible {
+    outline-color: HighlightText;
+    outline-offset: -5px;
+  }
+
+  .miniaturaAtual .imagemMiniatura {
+    outline-color: Highlight;
+  }
+}

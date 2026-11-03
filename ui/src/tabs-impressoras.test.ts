@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Cartao } from "./cartoes";
 import { estadoInicial, reduzirAbas, type EstadoAbas } from "./tabs";
 
 function comAbas(...nomes: string[]): EstadoAbas {
@@ -87,5 +88,31 @@ describe("lote e paginas por aba", () => {
     estado = reduzirAbas(estado, { tipo: "pedir_fechamento", id });
     const fechada = estado;
     expect(reduzirAbas(estado, { tipo: "paginas_contadas", id, total: 3 })).toBe(fechada);
+  });
+});
+
+describe("documento da aba mantem a identidade ao mexer em marcas e cartoes", () => {
+  it("cartao em andamento e troca de marcas deixam o mesmo objeto de documento, que chaveia o estado de leitura", () => {
+    let estado = comAbas("a.pdf");
+    const id = idDa(estado, 0);
+    const antes = abaDe(estado, id)?.documento;
+    const cartao: Cartao = {
+      aba: id,
+      impressora: "simulada:gaveta",
+      nome: "gaveta",
+      simulada: true,
+      lote: 1,
+      total: 3,
+      papel: null,
+      estado: { tipo: "preparando" },
+      recolocar: null,
+      trocaDePapel: null,
+      resultado: null,
+      sequencia: null,
+      viraParaLer: false,
+    };
+    estado = reduzirAbas(estado, { tipo: "cartao", cartao });
+    estado = reduzirAbas(estado, { tipo: "alternar_impressora", id, impressora: "simulada:gaveta" });
+    expect(abaDe(estado, id)?.documento).toBe(antes);
   });
 });

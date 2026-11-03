@@ -59,3 +59,10 @@ describe("traduzir", () => {
     expect(traduzir("en", "aba.fechar")).toContain("{nome}");
   });
 });
+
+describe("chaves retiradas", () => {
+  it("a chave sem uso do documento nao existe mais em nenhum idioma", () => {
+    expect(Object.keys(traducoes["pt-BR"])).not.toContain("documento.semVisualizacao");
+    expect(Object.keys(traducoes.en)).not.toContain("documento.semVisualizacao");
+  });
+});

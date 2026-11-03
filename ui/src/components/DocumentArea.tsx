@@ -1,6 +1,7 @@
-import { CircleAlert, FileText, FileUp, X } from "lucide-react";
+import { CircleAlert, FileUp, X } from "lucide-react";
 import { t } from "../i18n";
 import type { Documento } from "../tabs";
+import { Visualizador } from "../visualizador/Visualizador";
 import botoes from "./Botao.module.css";
 import styles from "./DocumentArea.module.css";
 import { EmptyState } from "./EmptyState";
@@ -51,30 +52,41 @@ export function DocumentArea({
           </button>
         </div>
       )}
-      <div className={styles.centro}>
-        {documento && recusa !== null ? (
-          <div role="alert">
-            <EmptyState icone={<CircleAlert size={18} />} titulo={documento.nome} texto={recusa} />
-          </div>
-        ) : documento ? (
-          <EmptyState
-            icone={<FileText size={18} />}
-            titulo={documento.nome}
-            texto={t("documento.semVisualizacao")}
-          />
-        ) : (
-          <EmptyState
-            icone={<FileUp size={18} />}
-            titulo={t("documento.vazioTitulo")}
-            texto={t("documento.vazioTexto")}
-          >
-            <button type="button" className={`${botoes.botao} ${botoes.secundario}`} onClick={aoAbrir}>
-              {t("documento.abrir")}
-              <kbd className={styles.atalho}>{t("documento.atalhoAbrir")}</kbd>
-            </button>
-          </EmptyState>
-        )}
-      </div>
+      {documento && recusa === null ? (
+        // A chave separa as abas: trocar de aba solta o PDF anterior, mesmo com o mesmo arquivo.
+        <Visualizador key={idAbaAtiva} documento={documento} />
+      ) : (
+        <div className={styles.centro}>
+          {documento ? (
+            <div role="alert">
+              <EmptyState icone={<CircleAlert size={18} />} titulo={documento.nome} texto={recusa ?? ""}>
+                <button
+                  type="button"
+                  className={`${botoes.botao} ${botoes.secundario}`}
+                  onClick={aoAbrir}
+                >
+                  {t("documento.abrir")}
+                </button>
+              </EmptyState>
+            </div>
+          ) : (
+            <EmptyState
+              icone={<FileUp size={18} />}
+              titulo={t("documento.vazioTitulo")}
+              texto={t("documento.vazioTexto")}
+            >
+              <button
+                type="button"
+                className={`${botoes.botao} ${botoes.secundario}`}
+                onClick={aoAbrir}
+              >
+                {t("documento.abrir")}
+                <kbd className={styles.atalho}>{t("documento.atalhoAbrir")}</kbd>
+              </button>
+            </EmptyState>
+          )}
+        </div>
+      )}
       {arrastando && (
         <div className={styles.soltar} role="status">
           {t("documento.soltar")}
