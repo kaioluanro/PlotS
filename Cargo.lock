@@ -2617,6 +2617,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "plotsim-physics"
+version = "0.1.0"
+dependencies = [
+ "plots-core",
+ "plots-print",
+ "proptest",
+]
+
+[[package]]
 name = "png"
 version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

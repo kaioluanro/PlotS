@@ -1,0 +1,12 @@
+[package]
+name = "plotsim-physics"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+
+[dev-dependencies]
+plots-core = { path = "../../plots-core" }
+plots-print = { path = "../../plots-print" }
+proptest = { version = "1.11", default-features = false, features = ["std"] }
