@@ -250,6 +250,8 @@ pub struct Cartao {
     pub resultado: Option<Resultado>,
     pub sequencia: Option<Sequencia>,
     pub vira_para_ler: bool,
+    /// O driver nao aceitou o ajuste salvo: este trabalho saiu com o padrao da impressora.
+    pub ajuste_recusado: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -276,6 +278,7 @@ impl Identidade {
             resultado: None,
             sequencia: None,
             vira_para_ler: false,
+            ajuste_recusado: false,
         }
     }
 }
@@ -317,6 +320,7 @@ struct Andamento<'a, B: Backend> {
     /// Sem consultas ate o usuario decidir: a fila nao responde ou nao confirmou a tempo.
     parado: bool,
     passada: PassadaDoCartao,
+    ajuste_recusado: bool,
 }
 
 impl<B> Andamento<'_, B>
@@ -335,6 +339,7 @@ where
         cartao.recolocar = Some(self.recolocar.clone());
         cartao.vira_para_ler = self.vira_para_ler;
         cartao.resultado = self.resultado;
+        cartao.ajuste_recusado = self.ajuste_recusado;
         cartao.troca_de_papel = self
             .condutor
             .troca_de_papel()
@@ -383,8 +388,14 @@ where
             PassadaDoCartao::Frente => self.condutor.enviar_frente(),
             PassadaDoCartao::Verso => self.condutor.enviar_verso(),
         };
-        if let Err(erro) = enviado {
-            self.publicar_erro(motivo_do_job(&erro));
+        let recusou =
+            !self.identidade.simulada && crate::preferencias::tomar_recusa(&self.identidade.nome);
+        self.ajuste_recusado |= recusou;
+        match enviado {
+            Err(erro) => self.publicar_erro(motivo_do_job(&erro)),
+            // A recusa aparece logo: o proximo estado pode demorar a mudar.
+            Ok(_) if recusou => self.publicar(EstadoCartao::Imprimindo { passada }),
+            Ok(_) => {}
         }
     }
 
@@ -586,6 +597,7 @@ fn conduzir<B>(
         aviso: None,
         parado: false,
         passada: PassadaDoCartao::Frente,
+        ajuste_recusado: false,
     };
     // Os recados chegados durante a preparacao valem antes do primeiro envio: soltar a aba ou
     // cancelar nesse intervalo nao pode mandar a frente para a fila.

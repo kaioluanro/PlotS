@@ -1,5 +1,6 @@
 import { idiomaAtual, traduzir, type Chave, type Idioma } from "./i18n";
 import { nomeDeExibicao, textoDoEstado, type Impressora } from "./impressoras";
+import { filasComAjusteAgora, linhaDoAjusteNoEnvio } from "./preferencias";
 import type { Aba } from "./tabs";
 
 export type Passada = "frente" | "verso";
@@ -62,6 +63,8 @@ export interface Cartao {
   lotesNoDocumento?: readonly number[];
   /** As paginas desses lotes, como o backend as planejou. */
   faixasNoDocumento?: readonly FaixaDoLote[];
+  /** O driver nao aceitou o ajuste salvo: este trabalho saiu com o padrao da impressora. */
+  ajusteRecusado?: boolean;
 }
 
 /** De qual a qual pagina vai um lote, com os numeros do documento. */
@@ -806,6 +809,7 @@ export function linhasDoEnvio(
   destinos: readonly Impressora[],
   resumo: ResumoDoEnvio,
   idioma: Idioma = idiomaAtual,
+  filasComAjuste: ReadonlySet<string> = filasComAjusteAgora(),
 ): { linhas: string[]; notas: string[] } {
   const reais = destinos.filter((impressora) => impressora.tipo === "fila");
   const simuladas = destinos.length - reais.length;
@@ -819,6 +823,8 @@ export function linhasDoEnvio(
       lista: resumo.papeis.map((papel) => nomeDoPapel(papel, idioma)).join(", "),
     }),
   ];
+  const doAjuste = linhaDoAjusteNoEnvio(reais, filasComAjuste, idioma);
+  if (doAjuste !== null) linhas.push(doAjuste);
   const notas: string[] = [];
   if (resumo.papeis.length > 1) notas.push(traduzir(idioma, "cartao.envio.variosPapeis"));
   for (const [a, b] of resumo.paresMistos) {

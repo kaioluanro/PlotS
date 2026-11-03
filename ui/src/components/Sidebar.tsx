@@ -1,4 +1,14 @@
-import { Check, ChevronDown, CircleAlert, LoaderCircle, RefreshCw } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  CircleAlert,
+  Info,
+  LoaderCircle,
+  RefreshCw,
+  Settings,
+  SlidersHorizontal,
+  X,
+} from "lucide-react";
 import { Fragment, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 import {
   cartaoEmAndamento,
@@ -45,11 +55,22 @@ import {
   type Impressora,
   type Modelo,
 } from "../impressoras";
+import {
+  ajustesSemLinha,
+  aoVoltarOFoco,
+  avisosSemLinha,
+  conteudoDoVoltarAoPadrao,
+  temPreferencias,
+  textoDoAvisoDoAjuste,
+  type CodigoAvisoDoAjuste,
+} from "../preferencias";
+import { usePreferencias } from "../preferencias-estado";
 import type { Aba } from "../tabs";
 import { BlocoIntervalo } from "./BlocoIntervalo";
 import { JuncaoDosMacos } from "./BlocoModo";
 import botoes from "./Botao.module.css";
 import { CartaoImpressao } from "./CartaoImpressao";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { LinhaRolagemAdiada } from "./LinhaRolagemAdiada";
 import styles from "./Sidebar.module.css";
 
@@ -116,6 +137,9 @@ export function Sidebar({
   const cartoes = aba?.cartoes ?? [];
   const idBotao = useId();
   const idNotaDoModelo = useId();
+  const preferencias = usePreferencias(lendo, impressoras);
+  const botaoAtualizar = useRef<HTMLButtonElement>(null);
+  const [pedidoDeVolta, setPedidoDeVolta] = useState<PedidoDeVolta | null>(null);
   const idDaLinhaComFalha = linhaDaFalha(falhaAoGravar, impressoras);
   const haSeletor = impressoras.some(
     (impressora) => estadoDoSeletor(impressora, undefined) !== null,
@@ -144,6 +168,7 @@ export function Sidebar({
         </span>
         {/* Nao usa `disabled`: o foco de quem usa o teclado continuaria no mesmo lugar ao terminar. */}
         <button
+          ref={botaoAtualizar}
           type="button"
           className={styles.atualizar}
           aria-label={t("lateral.atualizar")}
@@ -175,6 +200,42 @@ export function Sidebar({
             <AvisoTexto aviso={aviso} />
           </p>
         ))}
+        {avisosSemLinha(preferencias.avisos, impressoras).map(([fila, codigo]) => (
+          <AvisoDoAjuste
+            key={`ajuste-${fila}`}
+            fila={fila}
+            codigo={codigo}
+            aoDispensar={() => {
+              botaoAtualizar.current?.focus();
+              preferencias.dispensarAviso(fila);
+            }}
+          />
+        ))}
+        {!lendo &&
+          ajustesSemLinha(preferencias.salvas, impressoras).map((fila) => (
+            <div key={`sem-linha-${fila}`} className={styles.ajusteSemLinha}>
+              <SlidersHorizontal size={12} className={styles.iconeNota} aria-hidden="true" />
+              <span className={styles.ajusteSemLinhaTexto}>
+                {t("preferencias.salvo.semFila", { nome: fila })}
+              </span>
+              <button
+                type="button"
+                className={styles.voltarAoPadrao}
+                aria-label={t("preferencias.voltar.rotulo", { nome: fila })}
+                title={t("preferencias.voltar.rotulo", { nome: fila })}
+                onClick={(evento) =>
+                  setPedidoDeVolta({
+                    fila,
+                    nome: fila,
+                    origem: evento.currentTarget,
+                    destino: () => botaoAtualizar.current,
+                  })
+                }
+              >
+                {t("preferencias.voltar")}
+              </button>
+            </div>
+          ))}
         {!lendo && impressoras.length === 0 && avisos.length === 0 && (
           <p className={styles.vazia}>{t("lateral.vazia")}</p>
         )}
@@ -210,6 +271,16 @@ export function Sidebar({
               aoEscolherModelo={aoEscolherModelo}
               aoPedirSubstituicao={aoPedirSubstituicao}
               aoCalibrar={aoCalibrar}
+              comAjuste={temPreferencias(impressora) && preferencias.salvas.has(impressora.nome)}
+              duasFaces={temPreferencias(impressora) && preferencias.duasFaces.has(impressora.nome)}
+              janelaAberta={temPreferencias(impressora) && preferencias.abertas.has(impressora.nome)}
+              avisoDoAjuste={
+                temPreferencias(impressora) ? (preferencias.avisos.get(impressora.nome) ?? null) : null
+              }
+              comCartaoNaTela={cartoes.some((cartao) => cartao.impressora === impressora.id)}
+              aoAbrirPreferencias={preferencias.abrir}
+              aoPedirVolta={setPedidoDeVolta}
+              aoDispensarAviso={preferencias.dispensarAviso}
             />
           ))}
         </ul>
@@ -255,6 +326,20 @@ export function Sidebar({
           )}
         </div>
       </div>
+      <ConfirmDialog
+        conteudo={pedidoDeVolta === null ? null : conteudoDoVoltarAoPadrao(pedidoDeVolta.nome)}
+        aoCancelar={() => setPedidoDeVolta(null)}
+        aoConfirmar={() => {
+          if (pedidoDeVolta === null) return;
+          const { fila, origem, destino } = pedidoDeVolta;
+          setPedidoDeVolta(null);
+          // So depois de o dialogo devolver o foco: o botao de origem some junto com o ajuste.
+          aoVoltarOFoco(origem, () => {
+            destino()?.focus();
+            preferencias.voltarAoPadrao(fila);
+          });
+        }}
+      />
     </aside>
   );
 }
@@ -302,6 +387,22 @@ interface PropsLinha {
   aoEscolherModelo: (fila: string, modelo: Modelo) => void;
   aoPedirSubstituicao: (fila: string, modelo: Modelo) => void;
   aoCalibrar: (fila: string) => void;
+  comAjuste: boolean;
+  duasFaces: boolean;
+  janelaAberta: boolean;
+  avisoDoAjuste: CodigoAvisoDoAjuste | null;
+  comCartaoNaTela: boolean;
+  aoAbrirPreferencias: (fila: string) => void;
+  aoPedirVolta: (pedido: PedidoDeVolta) => void;
+  aoDispensarAviso: (fila: string) => void;
+}
+
+/** O pedido de apagar um ajuste: de onde veio e para onde o foco vai se a pessoa confirmar. */
+interface PedidoDeVolta {
+  fila: string;
+  nome: string;
+  origem: HTMLElement;
+  destino: () => HTMLElement | null;
 }
 
 const CLASSE_DO_NIVEL = {
@@ -311,7 +412,7 @@ const CLASSE_DO_NIVEL = {
   problema: styles.pontoProblema,
 } as const;
 
-function LinhaImpressora({
+export function LinhaImpressora({
   impressora,
   marcada,
   desabilitada,
@@ -323,8 +424,17 @@ function LinhaImpressora({
   aoEscolherModelo,
   aoPedirSubstituicao,
   aoCalibrar,
+  comAjuste,
+  duasFaces,
+  janelaAberta,
+  avisoDoAjuste,
+  comCartaoNaTela,
+  aoAbrirPreferencias,
+  aoPedirVolta,
+  aoDispensarAviso,
 }: PropsLinha) {
   const linha = useRef<HTMLLIElement>(null);
+  const engrenagem = useRef<HTMLButtonElement>(null);
   const [decorridoDaGravacao, setDecorridoDaGravacao] = useState(0);
   const idCaixa = useId();
   const idModo = useId();
@@ -337,7 +447,7 @@ function LinhaImpressora({
   const classes = [styles.linha];
   if (marcada) classes.push(styles.marcada);
   if (desabilitada) classes.push(styles.inerte);
-  if (falha !== null) classes.push(styles.comFalha);
+  if (falha !== null || avisoDoAjuste !== null || janelaAberta) classes.push(styles.comFalha);
   const classesDoEstado = [styles.estado];
   if (impressora.nivel === "atencao" || impressora.nivel === "problema") {
     classesDoEstado.push(styles.estadoDestaque);
@@ -373,6 +483,89 @@ function LinhaImpressora({
   useEffect(() => {
     if (falha !== null) linha.current?.scrollIntoView({ block: "nearest" });
   }, [falha]);
+  // Com o cartao da mesma impressora na tela, ele ja conta o que houve: a lista fica onde esta.
+  const avisoQueRola = avisoDoAjuste !== null && !comCartaoNaTela;
+  useEffect(() => {
+    if (avisoQueRola) linha.current?.scrollIntoView({ block: "nearest" });
+  }, [avisoQueRola, avisoDoAjuste]);
+
+  const real = temPreferencias(impressora);
+  // Fila real tem uma anatomia so: o modo fica sempre na segunda fileira, na mesma largura.
+  const modoDaLinha = (
+    <>
+    {seletor !== null && (
+      <span className={styles.seletorCaixa}>
+        {/* Nao usa `disabled` ao gravar: o foco de quem usa o teclado ficaria perdido. */}
+        <select
+          className={styles.seletor}
+          value={seletor.valor}
+          title={gravacaoDemorada ? t("modo.seletor.gravando") : seletor.titulo}
+          aria-label={t("modo.seletor.rotulo", { nome })}
+          aria-describedby={idNotaDoModelo}
+          aria-busy={gravando !== undefined}
+          onKeyDown={(evento) => {
+            if (teclaAbreALista(evento.key) && abrirListaPeloTeclado(evento.currentTarget)) {
+              evento.preventDefault();
+            }
+          }}
+          onChange={(evento) => {
+            const escolha = interpretarEscolha(evento.target.value);
+            // A opcao escolhida some com a lista: o foco volta daqui quando o dialogo fechar.
+            if (escolha.acao === "calibrar") {
+              evento.target.focus();
+              aoCalibrar(impressora.nome);
+            }
+            if (escolha.acao !== "gravar") return;
+            if (pedeConfirmacao(impressora.modo, gravando)) {
+              evento.target.focus();
+              aoPedirSubstituicao(impressora.nome, escolha.modelo);
+            } else {
+              aoEscolherModelo(impressora.nome, escolha.modelo);
+            }
+          }}
+        >
+          {seletor.opcoes.map((opcao) => (
+            <Fragment key={opcao.valor}>
+              {opcao.divisorAntes === true && <hr className={styles.divisorSeletor} />}
+              <option
+                value={opcao.valor}
+                disabled={opcao.soEstado}
+                hidden={opcao.soEstado}
+                // O ponteiro leva o foco junto: a lista nunca mostra dois itens ativos.
+                onPointerMove={(evento) => evento.currentTarget.focus()}
+              >
+                {opcao.rotulo}
+              </option>
+            </Fragment>
+          ))}
+        </select>
+        {gravacaoDemorada ? (
+          <LoaderCircle
+            size={12}
+            className={`${styles.indicadorGravacao} ${styles.girando}`}
+            aria-hidden="true"
+          />
+        ) : (
+          <ChevronDown size={10} className={styles.setaSeletor} aria-hidden="true" />
+        )}
+        <span role="status" className={styles.ocultoVisual}>
+          {gravacaoDemorada ? t("modo.seletor.gravando") : ""}
+        </span>
+      </span>
+    )}
+    {impressora.modo === "desconhecido" && (
+      <span id={idModo} className={styles.modoDesconhecido} title={t("modo.desconhecido.titulo")}>
+        <CircleAlert size={12} aria-hidden="true" />
+        <span>{t("modo.desconhecido")}</span>
+      </span>
+    )}
+    {seletor === null && modelo !== null && (
+      <span id={idModo} className={styles.modoNome} title={tituloDoModelo}>
+        {modelo}
+      </span>
+    )}
+    </>
+  );
 
   return (
     <li ref={linha} className={classes.join(" ")}>
@@ -390,84 +583,29 @@ function LinhaImpressora({
       </label>
       {/* Duas linhas independentes: o texto do modo nao tira largura do nome por causa da face. */}
       <div className={styles.textos}>
-        <div
-          className={`${styles.fileira} ${styles.fileiraDoNome} ${seletor !== null ? styles.fileiraComSeletor : ""}`}
-        >
+        <div className={`${styles.fileira} ${styles.fileiraDoNome}`}>
           <label htmlFor={idCaixa} className={styles.nome} title={nome}>
             {nome}
           </label>
-          {seletor !== null && (
-            <span className={styles.seletorCaixa}>
-              {/* Nao usa `disabled` ao gravar: o foco de quem usa o teclado ficaria perdido. */}
-              <select
-                className={styles.seletor}
-                value={seletor.valor}
-                title={gravacaoDemorada ? t("modo.seletor.gravando") : seletor.titulo}
-                aria-label={t("modo.seletor.rotulo", { nome })}
-                aria-describedby={idNotaDoModelo}
-                aria-busy={gravando !== undefined}
-                onKeyDown={(evento) => {
-                  if (teclaAbreALista(evento.key) && abrirListaPeloTeclado(evento.currentTarget)) {
-                    evento.preventDefault();
-                  }
-                }}
-                onChange={(evento) => {
-                  const escolha = interpretarEscolha(evento.target.value);
-                  // A opcao escolhida some com a lista: o foco volta daqui quando o dialogo fechar.
-                  if (escolha.acao === "calibrar") {
-                    evento.target.focus();
-                    aoCalibrar(impressora.nome);
-                  }
-                  if (escolha.acao !== "gravar") return;
-                  if (pedeConfirmacao(impressora.modo, gravando)) {
-                    evento.target.focus();
-                    aoPedirSubstituicao(impressora.nome, escolha.modelo);
-                  } else {
-                    aoEscolherModelo(impressora.nome, escolha.modelo);
-                  }
-                }}
-              >
-                {seletor.opcoes.map((opcao) => (
-                  <Fragment key={opcao.valor}>
-                    {opcao.divisorAntes === true && <hr className={styles.divisorSeletor} />}
-                    <option
-                      value={opcao.valor}
-                      disabled={opcao.soEstado}
-                      hidden={opcao.soEstado}
-                      // O ponteiro leva o foco junto: a lista nunca mostra dois itens ativos.
-                      onPointerMove={(evento) => evento.currentTarget.focus()}
-                    >
-                      {opcao.rotulo}
-                    </option>
-                  </Fragment>
-                ))}
-              </select>
-              {gravacaoDemorada ? (
-                <LoaderCircle
-                  size={12}
-                  className={`${styles.indicadorGravacao} ${styles.girando}`}
-                  aria-hidden="true"
-                />
-              ) : (
-                <ChevronDown size={10} className={styles.setaSeletor} aria-hidden="true" />
-              )}
-              <span role="status" className={styles.ocultoVisual}>
-                {gravacaoDemorada ? t("modo.seletor.gravando") : ""}
-              </span>
-            </span>
-          )}
-          {impressora.modo === "desconhecido" && (
-            <span id={idModo} className={styles.modoDesconhecido} title={t("modo.desconhecido.titulo")}>
-              <CircleAlert size={12} aria-hidden="true" />
-              <span>{t("modo.desconhecido")}</span>
-            </span>
-          )}
-          {seletor === null && modelo !== null && (
-            <span id={idModo} className={styles.modoNome} title={tituloDoModelo}>
-              {modelo}
-            </span>
+          {real ? (
+            // Fora dos rotulos da linha: clicar aqui nunca marca nem desmarca a impressora.
+            <button
+              ref={engrenagem}
+              type="button"
+              className={`${styles.engrenagem} ${janelaAberta ? styles.engrenagemAberta : ""}`}
+              aria-label={t("preferencias.rotulo", { nome })}
+              aria-haspopup="dialog"
+              aria-busy={janelaAberta}
+              title={t("preferencias.titulo")}
+              onClick={() => aoAbrirPreferencias(impressora.nome)}
+            >
+              <Settings size={14} aria-hidden="true" />
+            </button>
+          ) : (
+            modoDaLinha
           )}
         </div>
+        {real && <div className={`${styles.fileira} ${styles.fileiraDoModo}`}>{modoDaLinha}</div>}
         <div className={`${styles.fileira} ${styles.fileiraDoEstado}`}>
           <label htmlFor={idCaixa} className={classesDoEstado.join(" ")} title={estado}>
             <span
@@ -484,14 +622,109 @@ function LinhaImpressora({
             </span>
           )}
         </div>
+        {comAjuste && (
+          <AjusteDaLinha
+            nome={nome}
+            duasFaces={duasFaces}
+            aoVoltar={(origem) =>
+              aoPedirVolta({
+                fila: impressora.nome,
+                nome,
+                origem,
+                destino: () => engrenagem.current,
+              })
+            }
+          />
+        )}
       </div>
+      {janelaAberta && (
+        <p className={styles.notaNaLinha} role="status">
+          <Info size={12} className={styles.iconeNota} aria-hidden="true" />
+          <span>{t("preferencias.aberta.nota")}</span>
+        </p>
+      )}
       {falha !== null && (
         <p className={`${styles.aviso} ${styles.avisoNaLinha}`} role="alert">
           <CircleAlert size={12} className={styles.iconeAviso} aria-hidden="true" />
           <AvisoTexto aviso={falha} />
         </p>
       )}
+      {avisoDoAjuste !== null && (
+        <AvisoDoAjuste
+          fila={impressora.nome}
+          codigo={avisoDoAjuste}
+          naLinha
+          aoDispensar={() => {
+            engrenagem.current?.focus();
+            aoDispensarAviso(impressora.nome);
+          }}
+        />
+      )}
     </li>
+  );
+}
+
+/** Mostra em texto e icone que a impressora tem ajuste proprio, e o caminho de volta. */
+export function AjusteDaLinha({
+  nome,
+  duasFaces,
+  aoVoltar,
+}: {
+  nome: string;
+  duasFaces: boolean;
+  aoVoltar: (origem: HTMLElement) => void;
+}) {
+  const idTexto = useId();
+  return (
+    <>
+      <div className={styles.ajusteSalvo}>
+        <span id={idTexto} className={styles.ajusteSalvoTexto} title={t("preferencias.salvo.titulo")}>
+          <SlidersHorizontal size={10} aria-hidden="true" />
+          {t("preferencias.salvo")}
+          <span className={styles.ocultoVisual}>{t("preferencias.salvo.titulo")}</span>
+        </span>
+        <button
+          type="button"
+          className={styles.voltarAoPadrao}
+          aria-label={t("preferencias.voltar.rotulo", { nome })}
+          aria-describedby={idTexto}
+          title={t("preferencias.voltar.rotulo", { nome })}
+          onClick={(evento) => aoVoltar(evento.currentTarget)}
+        >
+          {t("preferencias.voltar")}
+        </button>
+      </div>
+      {duasFaces && <p className={styles.ajusteDuasFaces}>{t("preferencias.salvo.duasFaces")}</p>}
+    </>
+  );
+}
+
+/** Aviso sobre o ajuste de uma fila, na linha dela ou no topo da lista, que a pessoa pode dispensar. */
+export function AvisoDoAjuste({
+  fila,
+  codigo,
+  naLinha = false,
+  aoDispensar,
+}: {
+  fila: string;
+  codigo: CodigoAvisoDoAjuste;
+  naLinha?: boolean;
+  aoDispensar: () => void;
+}) {
+  return (
+    <p className={`${styles.aviso} ${naLinha ? styles.avisoNaLinha : ""}`} role="alert">
+      <CircleAlert size={12} className={styles.iconeAviso} aria-hidden="true" />
+      <span className={styles.avisoDoAjusteTexto}>{textoDoAvisoDoAjuste(codigo, fila)}</span>
+      <button
+        type="button"
+        className={styles.dispensarAviso}
+        aria-label={t("preferencias.aviso.dispensar", { nome: fila })}
+        title={t("preferencias.aviso.dispensar", { nome: fila })}
+        onClick={aoDispensar}
+      >
+        <X size={12} aria-hidden="true" />
+      </button>
+    </p>
   );
 }
 

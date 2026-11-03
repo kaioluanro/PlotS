@@ -187,7 +187,28 @@
   z-index: 2;
 }
 
+/* Sem caixa: o cartao continua dizendo o estado, e esta linha so conta com que ajuste ele saiu. */
+.ajusteRecusado {
+  display: flex;
+  gap: 4px;
+  margin: 0;
+  color: var(--fg);
+  font-size: 11px;
+  line-height: 15px;
+  overflow-wrap: anywhere;
+}
+
+.iconeAjusteRecusado {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--status-offline-text);
+}
+
 @media (forced-colors: active) {
+  .iconeAjusteRecusado {
+    color: CanvasText;
+  }
+
   .cartao,
   .selo {
     border-color: CanvasText;

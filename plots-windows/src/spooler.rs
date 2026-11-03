@@ -8,20 +8,21 @@ use crate::papel::{
     conferir_devmode, AjustePapel, CampoLido, LeituraDevmode, DMPAPER_USER, ESCALA_REAL,
     ORIENTACAO_RETRATO, UMA_COPIA, UMA_POR_FOLHA,
 };
+use crate::preferencias_driver::{montar, DriverDaFila};
 use crate::raster::{bytes_do_bitmap, Dispositivo, PlanoPagina};
 use crate::texto::{deslocamento_no_buffer, texto_utf16_le};
 use crate::LIMITE_BUFFER_BYTES;
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 use windows::core::{w, Error, HRESULT, PCWSTR};
-use windows::Win32::Foundation::{ERROR_INSUFFICIENT_BUFFER, ERROR_INVALID_PARAMETER};
+use windows::Win32::Foundation::{ERROR_INSUFFICIENT_BUFFER, ERROR_INVALID_PARAMETER, HWND};
 use windows::Win32::Graphics::Gdi::{
     CreateDCW, DeleteDC, GetDeviceCaps, StretchDIBits, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
     DEVMODEW, DEVMODE_FIELD_FLAGS, DIB_RGB_COLORS, DMCOLLATE_FALSE, DMDUP_SIMPLEX, DM_COLLATE,
-    DM_COPIES, DM_DUPLEX, DM_FORMNAME, DM_IN_BUFFER, DM_NUP, DM_ORIENTATION, DM_OUT_BUFFER,
-    DM_PAPERLENGTH, DM_PAPERSIZE, DM_PAPERWIDTH, DM_SCALE, HDC, HORZRES, LOGPIXELSX, LOGPIXELSY,
-    PHYSICALHEIGHT, PHYSICALOFFSETX, PHYSICALOFFSETY, PHYSICALWIDTH, RASTERCAPS, RC_STRETCHDIB,
-    SRCCOPY, VERTRES,
+    DM_COPIES, DM_DUPLEX, DM_FORMNAME, DM_IN_BUFFER, DM_IN_PROMPT, DM_NUP, DM_ORIENTATION,
+    DM_OUT_BUFFER, DM_PAPERLENGTH, DM_PAPERSIZE, DM_PAPERWIDTH, DM_SCALE, HDC, HORZRES, LOGPIXELSX,
+    LOGPIXELSY, PHYSICALHEIGHT, PHYSICALOFFSETX, PHYSICALOFFSETY, PHYSICALWIDTH, RASTERCAPS,
+    RC_STRETCHDIB, SRCCOPY, VERTRES,
 };
 use windows::Win32::Graphics::Printing::{
     ClosePrinter, DocumentPropertiesW, GetJobW, GetPrinterW, OpenPrinterW, SetJobW,
@@ -29,14 +30,12 @@ use windows::Win32::Graphics::Printing::{
 };
 use windows::Win32::Storage::Xps::{AbortDoc, EndDoc, EndPage, StartDocW, StartPage, DOCINFOW};
 
-/// Resposta de sucesso de `DocumentPropertiesW`.
-const IDOK: i32 = 1;
 /// Nível de `GetJobW` que traz o estado e o texto de estado do trabalho.
 const NIVEL_INFO_2: u32 = 2;
 /// Quantas vezes pedir o trabalho: o texto de estado pode crescer entre o tamanho e a leitura.
 const LEITURAS_DO_TRABALHO: u32 = 5;
 
-fn sistema(chamada: &'static str) -> ErroEnvio {
+pub(crate) fn sistema(chamada: &'static str) -> ErroEnvio {
     ErroEnvio::Sistema {
         chamada,
         codigo: Error::from_thread().code().0 as u32,
@@ -79,50 +78,15 @@ impl Impressora {
         Ok(Self { handle, nome })
     }
 
-    /// `DEVMODE` da fila com os campos que o envio precisa fixar. O driver informa o tamanho,
-    /// preenche os seus valores e depois valida o que foi mudado; o que ele não aplicar é
-    /// recusado antes de qualquer envio.
-    pub(crate) fn devmode(&self, ajuste: AjustePapel) -> Result<BufferDevmode, ErroEnvio> {
-        let nome = PCWSTR::from_raw(self.nome.as_ptr());
-        // Garantia: `self.handle` e `nome` são válidos. Com modo zero e sem buffers, a função só
-        // devolve o tamanho.
-        let tamanho = unsafe { DocumentPropertiesW(None, self.handle, nome, None, None, 0) };
-        let mut base = BufferDevmode::com_tamanho(tamanho)?;
-        // Garantia: `base` tem `tamanho` bytes, como o próprio driver pediu, alinhados para
-        // `DEVMODEW`, e vive durante a chamada.
-        let lido = unsafe {
-            DocumentPropertiesW(
-                None,
-                self.handle,
-                nome,
-                Some(base.ponteiro_mut()),
-                None,
-                DM_OUT_BUFFER.0,
-            )
-        };
-        if lido != IDOK {
-            return Err(sistema("DocumentPropertiesW"));
-        }
-        base.aplicar(ajuste);
-        let mut mesclado = BufferDevmode::com_tamanho(tamanho)?;
-        // Garantia: os dois buffers têm o tamanho pedido pelo driver e são distintos; a entrada
-        // foi preenchida pelo driver na chamada anterior.
-        let aceito = unsafe {
-            DocumentPropertiesW(
-                None,
-                self.handle,
-                nome,
-                Some(mesclado.ponteiro_mut()),
-                Some(base.ponteiro()),
-                (DM_IN_BUFFER | DM_OUT_BUFFER).0,
-            )
-        };
-        if aceito != IDOK {
-            return Err(sistema("DocumentPropertiesW"));
-        }
-        mesclado.conferir_simplex()?;
-        mesclado.conferir_aplicado()?;
-        Ok(mesclado)
+    /// `DEVMODE` da fila com os campos que o envio precisa fixar, partindo do ajuste salvo quando
+    /// há. O driver informa o tamanho, preenche os seus valores e depois valida o que foi mudado; o
+    /// que ele não aplicar é recusado antes de qualquer envio.
+    pub(crate) fn devmode(
+        &self,
+        ajuste: AjustePapel,
+        salvo: Option<&[u8]>,
+    ) -> Result<BufferDevmode, ErroEnvio> {
+        montar(self, ajuste, salvo)
     }
 
     /// Estado atual do trabalho. `None` quando ele já não está na fila.
@@ -212,6 +176,66 @@ impl Impressora {
             chamada: "SetJobW",
             codigo: erro.0 as u32,
         })
+    }
+}
+
+impl DriverDaFila for Impressora {
+    fn tamanho(&self) -> i32 {
+        // Garantia: `self.handle` e o nome são válidos. Com modo zero e sem buffers, a função só
+        // devolve o tamanho.
+        unsafe {
+            DocumentPropertiesW(
+                None,
+                self.handle,
+                PCWSTR::from_raw(self.nome.as_ptr()),
+                None,
+                None,
+                0,
+            )
+        }
+    }
+
+    fn ler(&self, destino: &mut BufferDevmode) -> i32 {
+        // Garantia: `destino` tem o tamanho pedido pelo driver, está alinhado para `DEVMODEW` e
+        // vive durante a chamada.
+        unsafe {
+            DocumentPropertiesW(
+                None,
+                self.handle,
+                PCWSTR::from_raw(self.nome.as_ptr()),
+                Some(destino.ponteiro_mut()),
+                None,
+                DM_OUT_BUFFER.0,
+            )
+        }
+    }
+
+    fn mesclar(&self, destino: &mut BufferDevmode, entrada: &BufferDevmode) -> i32 {
+        // Garantia: os dois buffers têm pelo menos o tamanho pedido pelo driver e são distintos.
+        unsafe {
+            DocumentPropertiesW(
+                None,
+                self.handle,
+                PCWSTR::from_raw(self.nome.as_ptr()),
+                Some(destino.ponteiro_mut()),
+                Some(entrada.ponteiro()),
+                (DM_IN_BUFFER | DM_OUT_BUFFER).0,
+            )
+        }
+    }
+
+    fn perguntar(&self, destino: &mut BufferDevmode, entrada: &BufferDevmode, dono: isize) -> i32 {
+        // Garantia: como em `mesclar`. `dono` foi conferido por quem chamou; zero é sem dona.
+        unsafe {
+            DocumentPropertiesW(
+                (dono != 0).then_some(HWND(dono as *mut core::ffi::c_void)),
+                self.handle,
+                PCWSTR::from_raw(self.nome.as_ptr()),
+                Some(destino.ponteiro_mut()),
+                Some(entrada.ponteiro()),
+                (DM_IN_PROMPT | DM_IN_BUFFER | DM_OUT_BUFFER).0,
+            )
+        }
     }
 }
 
@@ -306,7 +330,7 @@ fn decodificar_estado_da_fila(buffer: &[u8]) -> Option<Estado> {
 pub(crate) struct BufferDevmode(Vec<u64>);
 
 impl BufferDevmode {
-    fn com_tamanho(tamanho: i32) -> Result<Self, ErroEnvio> {
+    pub(crate) fn com_tamanho(tamanho: i32) -> Result<Self, ErroEnvio> {
         let tamanho = u32::try_from(tamanho)
             .ok()
             .filter(|bytes| *bytes <= LIMITE_BUFFER_BYTES)
@@ -316,12 +340,36 @@ impl BufferDevmode {
         Ok(Self(vec![0u64; tamanho.div_ceil(8)]))
     }
 
-    fn ponteiro_mut(&mut self) -> *mut DEVMODEW {
+    pub(crate) fn ponteiro_mut(&mut self) -> *mut DEVMODEW {
         self.0.as_mut_ptr().cast()
     }
 
-    fn ponteiro(&self) -> *const DEVMODEW {
+    pub(crate) fn ponteiro(&self) -> *const DEVMODEW {
         self.0.as_ptr().cast()
+    }
+
+    /// Copia `bytes` para o início do buffer. O que não couber fica de fora.
+    pub(crate) fn preencher(&mut self, bytes: &[u8]) {
+        for (palavra, pedaco) in self.0.iter_mut().zip(bytes.chunks(8)) {
+            let mut oito = [0u8; 8];
+            for (destino, byte) in oito.iter_mut().zip(pedaco) {
+                *destino = *byte;
+            }
+            *palavra = u64::from_ne_bytes(oito);
+        }
+    }
+
+    /// Os primeiros `total` bytes, se o buffer tiver tantos.
+    pub(crate) fn copia_de(&self, total: usize) -> Option<Vec<u8>> {
+        let mut bytes: Vec<u8> = self
+            .0
+            .iter()
+            .flat_map(|palavra| palavra.to_ne_bytes())
+            .collect();
+        (total <= bytes.len()).then(|| {
+            bytes.truncate(total);
+            bytes
+        })
     }
 
     /// O campo de páginas por folha vem depois da parte antiga do `DEVMODE`: um driver com
@@ -337,7 +385,7 @@ impl BufferDevmode {
     /// Fixa uma cópia, escala real, retrato, uma página por folha, uma face, sem agrupar, e o
     /// papel. A bandeja continua a do driver. As preferências da fila não valem aqui: o
     /// alinhamento entre frente e verso depende desses valores, então eles não são preferência.
-    fn aplicar(&mut self, ajuste: AjustePapel) {
+    pub(crate) fn aplicar(&mut self, ajuste: AjustePapel) {
         let tem_paginas_por_folha = self.tem_paginas_por_folha();
         // Garantia: o buffer tem pelo menos `size_of::<DEVMODEW>()` bytes, conferidos em
         // `com_tamanho`, está alinhado a 8 bytes e foi preenchido pelo driver. A referência
@@ -377,7 +425,7 @@ impl BufferDevmode {
     }
 
     /// Um driver sem duplex pode deixar o campo sem efeito; só um valor de duas faces é recusado.
-    fn conferir_simplex(&self) -> Result<(), ErroEnvio> {
+    pub(crate) fn conferir_simplex(&self) -> Result<(), ErroEnvio> {
         // Garantia: mesmo tamanho e alinhamento de `aplicar`; o driver preencheu o buffer.
         let modo = unsafe { &*self.ponteiro() };
         let duas_faces = modo.dmDuplex.0 != DMDUP_SIMPLEX.0 && modo.dmDuplex.0 != 0;
@@ -388,7 +436,7 @@ impl BufferDevmode {
     }
 
     /// Lê os campos que `aplicar` fixou e recusa o que o driver não aplicou.
-    fn conferir_aplicado(&self) -> Result<(), ErroEnvio> {
+    pub(crate) fn conferir_aplicado(&self) -> Result<(), ErroEnvio> {
         let tem_paginas_por_folha = self.tem_paginas_por_folha();
         // Garantia: mesmo tamanho e alinhamento de `aplicar`; o driver preencheu o buffer. Os
         // campos dessas uniões lidos aqui são inteiros, válidos em qualquer padrão de bits.

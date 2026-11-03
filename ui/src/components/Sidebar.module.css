@@ -280,6 +280,169 @@
   min-width: 0;
 }
 
+/* Abre a janela do driver. O contorno marca o hover tambem sobre o fundo de hover da propria linha. */
+.engrenagem {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--fg-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    color var(--anim-fast) ease,
+    box-shadow var(--anim-fast) ease,
+    transform var(--anim-fast) ease;
+}
+
+.engrenagem:hover {
+  color: var(--fg);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+.engrenagem:active,
+.voltarAoPadrao:active {
+  transform: scale(0.97);
+}
+
+/* A janela do driver esta aberta. A nota abaixo da linha diz isso em palavras. */
+.engrenagemAberta {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+/* A mesma geometria do aviso na linha, sem o tom de problema. */
+.notaNaLinha {
+  display: flex;
+  flex: 0 0 100%;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 4px 8px;
+  color: var(--fg);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.iconeNota {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--fg-muted);
+}
+
+/* Ajuste de uma fila fora da lista: a mesma nota, com a saida para apaga-lo. */
+.ajusteSemLinha {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 2px 6px;
+  margin: 0 0 4px;
+  padding: 4px 8px;
+  color: var(--fg);
+  font-size: 11px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.ajusteSemLinhaTexto {
+  flex: 1 1 120px;
+  min-width: 0;
+  padding-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.avisoDoAjusteTexto {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* Alvo de 24 px sem aumentar a altura de um aviso de uma linha so. */
+.dispensarAviso {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin: -4px -6px -4px 0;
+  padding: 0;
+  color: var(--fg-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    color var(--anim-fast) ease,
+    box-shadow var(--anim-fast) ease;
+}
+
+.dispensarAviso:hover {
+  color: var(--fg);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+.ajusteSalvo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 6px;
+  min-width: 0;
+  /* Usa parte da folga direita da linha: o texto e o botao cabem juntos nos dois idiomas. */
+  margin: 2px -4px 0 0;
+}
+
+.ajusteSalvoTexto {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.ajusteDuasFaces {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+/* Sublinhado para ser lido como acao mesmo sem cor; a altura mantem o alvo de 24 px. */
+.voltarAoPadrao {
+  min-height: 24px;
+  padding: 0 2px;
+  color: var(--fg);
+  font-size: 11px;
+  line-height: 16px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    box-shadow var(--anim-fast) ease,
+    transform var(--anim-fast) ease;
+}
+
+.voltarAoPadrao:hover {
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+/* Sem folga: o anel nao cobre o texto logo ao lado nem o da fileira de cima. */
+.voltarAoPadrao:focus-visible {
+  outline-width: 2px;
+  outline-offset: 0;
+}
+
 /* Ate duas linhas: quem escolhe a impressora precisa distinguir nomes que so mudam no fim. */
 .nome {
   display: -webkit-box;
@@ -419,9 +582,11 @@
   flex-basis: 88px;
 }
 
-/* O nome ocupa o que precisa: se nao couber em uma linha ao lado do seletor, o seletor desce. */
-.fileiraComSeletor .nome {
-  flex: 1 1 auto;
+/* Fila real: o modo fica sempre abaixo do nome, e o que cresce ao lado dele desce sem apertar. */
+.fileiraDoModo {
+  flex-wrap: wrap;
+  row-gap: 2px;
+  margin-bottom: 4px;
 }
 
 /* Largura fixa: trocar de modelo nao muda a altura da linha nem o lugar do seletor. */
@@ -685,6 +850,48 @@
 }
 
 @media (forced-colors: active) {
+  .engrenagem,
+  .voltarAoPadrao,
+  .dispensarAviso {
+    color: ButtonText;
+  }
+
+  /* O sistema apaga as sombras nas cores forcadas: o contorno mantem o hover visivel. */
+  .engrenagem:hover,
+  .voltarAoPadrao:hover,
+  .dispensarAviso:hover {
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
+
+  .engrenagemAberta {
+    outline: 1px solid CanvasText;
+    outline-offset: -1px;
+  }
+
+  .iconeAviso,
+  .iconeNota {
+    color: CanvasText;
+  }
+
+  .dispensarAviso:focus-visible {
+    outline: 2px solid Highlight;
+  }
+
+  .engrenagem:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+
+  .voltarAoPadrao:focus-visible {
+    outline: 2px solid Highlight;
+  }
+
+  .ajusteSalvoTexto,
+  .ajusteDuasFaces {
+    color: CanvasText;
+  }
+
   .marcada {
     outline: 1px solid CanvasText;
     outline-offset: -1px;

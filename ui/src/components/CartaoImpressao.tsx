@@ -1,3 +1,4 @@
+import { CircleAlert } from "lucide-react";
 import { Fragment, useEffect, useRef } from "react";
 import {
   acoesDoCartao,
@@ -145,6 +146,12 @@ export function CartaoImpressao({ cartao, aoComandar, aoPedirCancelar, aoDispens
         <p className={lote ? modo.loteDetalhe : styles.dados}>{dados.join(" · ")}</p>
       )}
       {lote?.semImprimir != null && <p className={modo.loteTitulo}>{lote.semImprimir}</p>}
+      {cartao.ajusteRecusado === true && (
+        <p className={styles.ajusteRecusado}>
+          <CircleAlert size={12} className={styles.iconeAjusteRecusado} aria-hidden="true" />
+          <span>{t("preferencias.cartao.recusado")}</span>
+        </p>
+      )}
       {sequencia.length > 0 && (
         <div className={styles.sequencia}>
           {sequencia.map((linha, indice) => (

@@ -9,6 +9,8 @@ use crate::passada::{
     caminhos_da_biblioteca, escolher_biblioteca, nome_arquivo_saida, nome_documento,
     papel_da_passada, VARIAVEL_PASTA_BIBLIOTECA,
 };
+use crate::preferencias::{ajuste_salvo, avisar_recusa};
+use crate::preferencias_driver::com_recuo_ao_padrao;
 use crate::raster::{
     conferir_papel, fator_de_unidade, marcar_ponto_discreto, planejar_pagina,
     ponto_da_pagina_em_branco, Dispositivo, PlanoPagina,
@@ -72,6 +74,8 @@ pub struct BackendWindows {
     mensagem_do_driver: Option<String>,
     /// O trabalho atual foi visto fora da fila.
     saiu_da_fila: bool,
+    /// Ajuste do driver lido ao preparar: mudar a preferência não atinge o trabalho em andamento.
+    ajuste_do_driver: Option<Vec<u8>>,
 }
 
 impl BackendWindows {
@@ -96,6 +100,7 @@ impl BackendWindows {
             .transpose()?;
         let pdfium = biblioteca()?;
         let impressora = Impressora::abrir(&fila.nome)?;
+        let ajuste_do_driver = ajuste_salvo(&fila.nome);
         Ok(Self {
             pdfium,
             nome_fila: fila.nome.clone(),
@@ -113,6 +118,7 @@ impl BackendWindows {
             condicao: None,
             mensagem_do_driver: None,
             saiu_da_fila: false,
+            ajuste_do_driver,
         })
     }
 
@@ -290,13 +296,21 @@ impl Backend for BackendWindows {
             ));
         }
 
-        let devmode = self.impressora.devmode(ajuste)?;
-        let contexto = ContextoFila::criar(&self.nome_fila, &devmode)?;
-        if !contexto.aceita_bitmap() {
-            return Err(ErroEnvio::SemSuporteABitmap);
+        let (impressora, nome_fila) = (&self.impressora, &self.nome_fila);
+        let ((contexto, dispositivo), recusado) =
+            com_recuo_ao_padrao(&mut self.ajuste_do_driver, |salvo| {
+                let devmode = impressora.devmode(ajuste, salvo)?;
+                let contexto = ContextoFila::criar(nome_fila, &devmode)?;
+                if !contexto.aceita_bitmap() {
+                    return Err(ErroEnvio::SemSuporteABitmap);
+                }
+                let dispositivo = contexto.dispositivo();
+                conferir_papel(&dispositivo, &papel)?;
+                Ok((contexto, dispositivo))
+            })?;
+        if let Some(recusado) = recusado {
+            avisar_recusa(&self.nome_fila, &recusado);
         }
-        let dispositivo = contexto.dispositivo();
-        conferir_papel(&dispositivo, &papel)?;
         let planos = planejar_paginas(&documento, paginas, &self.dimensoes, &dispositivo)?;
 
         let nome = nome_documento(self.lote, passada);

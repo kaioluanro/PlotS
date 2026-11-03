@@ -12,12 +12,17 @@ mod erro;
 mod estado;
 mod papel;
 mod passada;
+mod preferencias;
 mod raster;
 mod texto;
 mod trabalho;
 
 #[cfg(windows)]
 mod backend;
+#[cfg(windows)]
+mod preferencias_driver;
+#[cfg(windows)]
+mod preferencias_janela;
 #[cfg(windows)]
 mod sistema;
 #[cfg(windows)]
@@ -33,6 +38,21 @@ pub use papel::{
 pub use passada::{
     abrir_origem, caminhos_da_biblioteca, escolher_biblioteca, nome_arquivo_saida, nome_documento,
     papel_da_passada, porta_de_fax, porta_pede_arquivo, VARIAVEL_PASTA_BIBLIOTECA,
+};
+#[cfg(not(windows))]
+pub use preferencias::{
+    abrir_janela_do_driver, ajuste_pede_duas_faces, encerrar_janelas_do_driver,
+    fechar_janelas_do_driver, ha_janela_do_driver_aberta, trazer_janela_do_driver_para_frente,
+};
+pub use preferencias::{
+    ligar_fonte_de_ajustes, ErroPreferencias, FonteDeAjustes, RespostaDaJanela,
+};
+#[cfg(windows)]
+pub use preferencias_driver::ajuste_pede_duas_faces;
+#[cfg(windows)]
+pub use preferencias_janela::{
+    abrir_janela_do_driver, encerrar_janelas_do_driver, fechar_janelas_do_driver,
+    ha_janela_do_driver_aberta, trazer_janela_do_driver_para_frente,
 };
 pub use raster::{
     bytes_do_bitmap, conferir_papel, fator_de_unidade, marcar_ponto_discreto, planejar_pagina,

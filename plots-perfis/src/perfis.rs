@@ -25,6 +25,8 @@ pub struct Perfis {
     pub(crate) grupos: BTreeMap<String, Grupo>,
     /// O que estava no arquivo e não vale como grupo: não aparece, e volta igual na próxima gravação.
     pub(crate) grupos_ignorados: BTreeMap<String, GrupoIgnorado>,
+    pub(crate) ajustes_driver: BTreeMap<String, Vec<u8>>,
+    pub(crate) ajustes_ignorados: Vec<String>,
 }
 
 impl Perfis {

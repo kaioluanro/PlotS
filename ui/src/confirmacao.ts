@@ -16,6 +16,7 @@ import {
   type ResumoDoEnvio,
 } from "./cartoes";
 import { linhasComTrecho, type LeituraIntervalo } from "./intervalo";
+import { filasComAjusteAgora, linhaDoAjusteNoEnvio } from "./preferencias";
 import {
   abasEmImpressao,
   type Aba,
@@ -333,7 +334,11 @@ export function conteudoDaDivisao(
   const reais = destinos.filter((destino) => destino.tipo === "fila").length;
   const aviso = traduzir(idioma, "cartao.envio.simuladas");
   // So com simuladas nao existe a fila real a que o aviso se compara.
-  const notasDoEnvio = envio.notas.filter((nota) => reais > 0 || nota !== aviso);
+  const doAjuste = linhaDoAjusteNoEnvio(destinos, filasComAjusteAgora(), idioma);
+  const notasDoEnvio = [
+    ...(doAjuste === null ? [] : [doAjuste]),
+    ...envio.notas.filter((nota) => reais > 0 || nota !== aviso),
+  ];
   const pilha = ordemDaPilha(comLote, resumo.paginas, resumo.papeis, idioma);
   const trecho = leitura === null ? [] : linhasComTrecho(["", ""], leitura, idioma).slice(0, -2);
   const unica = comLote[0];

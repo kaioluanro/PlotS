@@ -1299,3 +1299,27 @@ fn reimprimir_no_aviso_com_cancelamento_recusado_nao_reenvia_a_frente() {
     assert_eq!(cena.enviados(), [Passada::Frente]);
     assert_eq!(cena.cancelados(), 0);
 }
+
+#[test]
+fn recusa_do_ajuste_aparece_no_cartao_e_continua_nos_estados_seguintes() {
+    const FILA: &str = "Fila com ajuste que o driver recusou";
+    let cena = Cena::nova();
+    crate::preferencias::marcar_recusa(FILA);
+    cena.iniciar(FILA, &[Leitura::Estado(EstadoEnvio::EmAndamento)], &[A4; 2]);
+    let aguardando_a_pessoa = cena.esperar(FILA, aguardando);
+    assert!(aguardando_a_pessoa.ajuste_recusado);
+    cena.comandar(FILA, Comando::Cancelar);
+    esperar_fim(&cena, FILA);
+    assert!(!crate::preferencias::tomar_recusa(FILA), "conta uma vez só");
+}
+
+#[test]
+fn sem_recusa_o_cartao_nao_fala_do_ajuste() {
+    const FILA: &str = "Fila cujo driver aceitou o ajuste";
+    let cena = Cena::nova();
+    cena.iniciar(FILA, &[Leitura::Estado(EstadoEnvio::EmAndamento)], &[A4; 2]);
+    let cartao = cena.esperar(FILA, aguardando);
+    assert!(!cartao.ajuste_recusado);
+    cena.comandar(FILA, Comando::Cancelar);
+    esperar_fim(&cena, FILA);
+}

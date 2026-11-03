@@ -9,6 +9,7 @@ mod impressoras;
 mod janela;
 mod leitura_pdf;
 mod lote;
+mod preferencias;
 mod trabalhos;
 
 use abertura::{Andamento, Passagem};
@@ -20,7 +21,7 @@ use std::io::Write;
 use std::process::ExitCode;
 use std::sync::{Mutex, PoisonError};
 use std::time::Instant;
-use tauri::{AppHandle, Manager, Runtime, State, Window, WindowEvent};
+use tauri::{AppHandle, Manager, RunEvent, Runtime, State, Window, WindowEvent};
 
 // Assincrono para que um caminho lento, como um compartilhamento de rede fora do ar, nao congele
 // a janela enquanto o sistema responde.
@@ -119,6 +120,7 @@ fn vigiar_pedido_de_fechamento<R: Runtime>(janela_atual: &Window<R>) {
             match decisao {
                 Some(DecisaoDoPrazo::Esperar(restante)) => std::thread::sleep(restante),
                 Some(DecisaoDoPrazo::Destruir) => {
+                    preferencias::fechar_antes_de_destruir();
                     // Se o sistema recusar, o proximo pedido de fechamento tenta outra vez.
                     let _ = janela_vigiada.destroy();
                     return;
@@ -141,6 +143,7 @@ fn main() -> ExitCode {
             if let Some(principal) = app.get_webview_window("main") {
                 janela::ajustar_minimo(&principal.as_ref().window());
             }
+            preferencias::ligar_ao_envio(app.handle());
             abertura::iniciar(app.handle());
             Ok(())
         })
@@ -149,13 +152,20 @@ fn main() -> ExitCode {
                 janela::ajustar_minimo(janela_atual)
             }
             // A abertura nao tem interface que responda ao pedido, e nao ocupa a vigia.
-            WindowEvent::CloseRequested { .. } if janela_atual.label() != "abertura" => {
-                vigiar_pedido_de_fechamento(janela_atual)
+            WindowEvent::CloseRequested { api, .. } if janela_atual.label() != "abertura" => {
+                if preferencias::adiar_fechamento(janela_atual) {
+                    api.prevent_close();
+                } else {
+                    vigiar_pedido_de_fechamento(janela_atual)
+                }
             }
             _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             abrir_documento,
+            preferencias::abrir_preferencias,
+            preferencias::estado_das_preferencias,
+            preferencias::voltar_ao_padrao_da_fila,
             andamento_da_abertura,
             caminhos_iniciais,
             comandos_trabalho::comandar_trabalho,
@@ -174,10 +184,17 @@ fn main() -> ExitCode {
             comandos_trabalho::resumo_do_envio,
             comandos_trabalho::soltar_trabalhos
         ])
-        .run(tauri::generate_context!());
+        .build(tauri::generate_context!());
 
     match resultado {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(app) => {
+            app.run(|_app, evento| {
+                if matches!(evento, RunEvent::Exit) {
+                    preferencias::ao_encerrar();
+                }
+            });
+            ExitCode::SUCCESS
+        }
         Err(erro) => {
             let _ = writeln!(std::io::stderr(), "falha ao iniciar o PlotS: {erro}");
             ExitCode::FAILURE

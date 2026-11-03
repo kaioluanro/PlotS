@@ -5,6 +5,7 @@ use plots_core::distribuicao::ModoDistribuicao;
 use plots_core::{BordaEntrada, GestoRecolocar, ModeloImpressora, PerfilImpressora, ViradaMaco};
 use serde::{Deserialize, Serialize};
 
+use crate::ajustes;
 use crate::erro::ErroPerfis;
 use crate::grupos::{Grupo, GrupoIgnorado};
 use crate::perfis::{EntradaPerfil, Perfis};
@@ -28,6 +29,9 @@ struct ArquivoPerfis {
     /// solto: um grupo de formato errado é ignorado sem recusar os perfis.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     grupos: Option<toml::Value>,
+    /// Ajuste do driver por fila. Fica como valor solto: um valor ruim não recusa o arquivo.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    ajustes_driver: BTreeMap<String, toml::Value>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -253,6 +257,7 @@ pub(crate) fn decodificar(texto: &str, caminho: &Path) -> Result<Perfis, ErroPer
         perfis.inserir(&fila, entrada.into());
     }
     ler_grupos(&mut perfis, arquivo.grupos);
+    ajustes::ler_do_arquivo(&mut perfis, arquivo.ajustes_driver);
     Ok(perfis)
 }
 
@@ -273,6 +278,7 @@ pub(crate) fn codificar(perfis: &Perfis) -> Result<String, ErroPerfis> {
             .map(|(fila, entrada)| (fila.to_owned(), EntradaArquivo::from(entrada)))
             .collect(),
         grupos: escrever_grupos(perfis)?,
+        ajustes_driver: ajustes::para_o_arquivo(perfis),
     };
     toml::to_string(&arquivo).map_err(|erro| ErroPerfis::Serializacao {
         detalhe: erro.to_string(),

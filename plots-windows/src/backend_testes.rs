@@ -234,6 +234,75 @@ fn frente_vai_para_o_arquivo_na_fila_de_pdf_e_o_trabalho_termina() {
 }
 
 #[test]
+#[ignore = "precisa da pdfium.dll e envia à fila de PDF do Windows"]
+fn envio_a_arquivo_parte_do_ajuste_salvo_e_continua_em_uma_face() {
+    let filas = crate::listar_filas().unwrap();
+    let Some(fila) = filas.iter().find(|fila| fila.nome == FILA_DE_PDF) else {
+        eprintln!("fila de PDF ausente");
+        return;
+    };
+    let pasta = std::env::temp_dir().join(format!("plots-ajuste-envio-{}", std::process::id()));
+    std::fs::create_dir_all(&pasta).unwrap();
+    let pdf = plots_pdf::pdf_calibracao(plots_pdf::PapelCalibracao::A4).unwrap();
+    let origem = crate::abrir_origem(&pdf).unwrap();
+    let dimensoes = origem.dimensoes_paginas().unwrap();
+    let mut backend = BackendWindows::novo(fila, origem, dimensoes, Some(&pasta)).unwrap();
+    let salvo = crate::preferencias_driver::ajuste_padrao_da_fila(FILA_DE_PDF).unwrap();
+    backend.ajuste_do_driver = Some(salvo.clone());
+    backend
+        .enviar(Passada::Frente, &[original(1), original(3)])
+        .unwrap();
+    assert_eq!(backend.ajuste_do_driver, Some(salvo), "o driver aceitou");
+    let mut estado = EstadoEnvio::EmAndamento;
+    for _ in 0..600 {
+        estado = backend.consultar().unwrap();
+        if estado != EstadoEnvio::EmAndamento {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    assert_eq!(estado, EstadoEnvio::Concluido);
+    let arquivo = pasta.join("lote-0001-frente.pdf");
+    let saida = std::fs::read(&arquivo).unwrap();
+    let lido = Document::load_mem(&saida).unwrap();
+    assert_eq!(lido.get_pages().len(), 2);
+    std::fs::remove_dir_all(&pasta).unwrap();
+}
+
+#[test]
+#[ignore = "precisa da pdfium.dll e envia à fila de PDF do Windows"]
+fn envio_a_arquivo_com_ajuste_quebrado_sai_pelo_padrao_da_fila() {
+    let filas = crate::listar_filas().unwrap();
+    let Some(fila) = filas.iter().find(|fila| fila.nome == FILA_DE_PDF) else {
+        eprintln!("fila de PDF ausente");
+        return;
+    };
+    let pasta = std::env::temp_dir().join(format!("plots-ajuste-recuo-{}", std::process::id()));
+    std::fs::create_dir_all(&pasta).unwrap();
+    let pdf = plots_pdf::pdf_calibracao(plots_pdf::PapelCalibracao::A4).unwrap();
+    let origem = crate::abrir_origem(&pdf).unwrap();
+    let dimensoes = origem.dimensoes_paginas().unwrap();
+    let mut backend = BackendWindows::novo(fila, origem, dimensoes, Some(&pasta)).unwrap();
+    backend.ajuste_do_driver = Some(vec![0xFF; 400]);
+    backend.enviar(Passada::Frente, &[original(1)]).unwrap();
+    assert_eq!(
+        backend.ajuste_do_driver, None,
+        "o recuo vale para o trabalho"
+    );
+    let mut estado = EstadoEnvio::EmAndamento;
+    for _ in 0..600 {
+        estado = backend.consultar().unwrap();
+        if estado != EstadoEnvio::EmAndamento {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    assert_eq!(estado, EstadoEnvio::Concluido);
+    assert!(pasta.join("lote-0001-frente.pdf").is_file());
+    std::fs::remove_dir_all(&pasta).unwrap();
+}
+
+#[test]
 #[ignore = "lê a fila de PDF do Windows, sem enviar"]
 fn fila_de_pdf_nao_tem_trabalho_sobrando() {
     let existe = crate::listar_filas()
