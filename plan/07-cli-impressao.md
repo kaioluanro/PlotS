@@ -1,6 +1,6 @@
 # CLI de impressão
 
-**Estado:** Em andamento · OK 2 · PARTIAL 2 · MISSING 1 · BUG 0 · N/A 0
+**Estado:** Em andamento · OK 3 · PARTIAL 2 · MISSING 0 · BUG 0 · N/A 0
 
 ## Objetivo
 

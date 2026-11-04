@@ -1,6 +1,6 @@
 # Múltiplas impressoras
 
-**Estado:** Em andamento · OK 3 · PARTIAL 4 · MISSING 0 · BUG 0 · N/A 1
+**Estado:** Em andamento · OK 4 · PARTIAL 3 · MISSING 0 · BUG 0 · N/A 1
 
 ## Objetivo
 

@@ -1,6 +1,6 @@
 # Modo simulação
 
-**Estado:** Em andamento · OK 7 · PARTIAL 3 · MISSING 0 · BUG 0 · N/A 1
+**Estado:** Em andamento · OK 9 · PARTIAL 1 · MISSING 0 · BUG 0 · N/A 1
 
 ## Objetivo
 

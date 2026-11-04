@@ -1,6 +1,6 @@
 # Impressão no Windows
 
-**Estado:** Em andamento · OK 1 · PARTIAL 6 · MISSING 1 · BUG 0 · N/A 0
+**Estado:** Em andamento · OK 1 · PARTIAL 7 · MISSING 0 · BUG 0 · N/A 0
 
 ## Objetivo
 

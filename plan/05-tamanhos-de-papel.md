@@ -1,6 +1,6 @@
 # Tamanhos de papel
 
-**Estado:** Em andamento · OK 6 · PARTIAL 1 · MISSING 1 · BUG 0 · N/A 0
+**Estado:** Em andamento · OK 7 · PARTIAL 1 · MISSING 0 · BUG 0 · N/A 0
 
 ## Objetivo
 

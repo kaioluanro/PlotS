@@ -1,6 +1,6 @@
 # Perfis salvos
 
-**Estado:** Em andamento · OK 0 · PARTIAL 2 · MISSING 0 · BUG 0 · N/A 0
+**Estado:** Em andamento · OK 1 · PARTIAL 1 · MISSING 0 · BUG 0 · N/A 0
 
 ## Objetivo
 

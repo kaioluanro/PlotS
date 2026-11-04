@@ -1,6 +1,6 @@
 # Acabamento e instalador
 
-**Estado:** Em andamento · OK 1 · PARTIAL 1 · MISSING 1 · BUG 0 · N/A 0
+**Estado:** Em andamento · OK 2 · PARTIAL 1 · MISSING 0 · BUG 0 · N/A 0
 
 ## Objetivo
 

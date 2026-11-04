@@ -1,6 +1,6 @@
 # Barra lateral de impressoras
 
-**Estado:** Concluído · OK 3 · PARTIAL 0 · MISSING 0 · BUG 0 · N/A 0
+**Estado:** Concluído · OK 2 · PARTIAL 0 · MISSING 0 · BUG 0 · N/A 1
 
 ## Objetivo
 

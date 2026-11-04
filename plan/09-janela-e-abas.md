@@ -1,6 +1,6 @@
 # Janela, barra superior e abas
 
-**Estado:** Em andamento · OK 1 · PARTIAL 3 · MISSING 0 · BUG 0 · N/A 0
+**Estado:** Em andamento · OK 4 · PARTIAL 0 · MISSING 0 · BUG 0 · N/A 0
 
 ## Objetivo
 

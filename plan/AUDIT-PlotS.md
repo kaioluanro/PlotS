@@ -2,7 +2,14 @@
 
 Data: 2026-11-02. A especificação foi dividida depois em `plan/`, então as linhas de `AGENTS.md` citadas abaixo são da versão anterior. Escopo: especificação em `AGENTS.md` (seções de Fases, Modo simulação, Perfis, Papel, Múltiplas impressoras, Windows e Interface). Nenhum código de produto foi alterado. Nenhum commit. `Cargo.toml`, `Cargo.lock`, `AGENTS.md`, `CLAUDE.md` e `estilo-ui-ux.md` mantêm os mesmos hashes (md5 conferido antes e depois). **Atenção:** o `.gitignore` foi reescrito às 13:56:41, durante a auditoria, por outro processo ou usuário (este agente não o editou). O conteúdo novo acrescenta `/.claude/`, `/.codex/`, `/estilo-ui-ux.md`, `/plan/`, `/AUDIT-*.md` e `/STATUS-MANUAIS.md`, e por isso o `git status` mostra só `AGENTS.md` e `CLAUDE.md`. Não foi revertido; decisão do usuário.
 
-Contagem: **OK 38 · PARTIAL 33 · MISSING 20 · BUG 0 · N/A 2** (93 requisitos)
+Contagem: **OK 62 · PARTIAL 25 · MISSING 2 · BUG 0 · N/A 4** (93 requisitos)
+
+Reauditoria de 2026-11-04, sobre o `master` `b0c7302`. Catorze linhas mudaram de status e seis tiveram a evidência atualizada. As contagens foram recalculadas a partir da tabela: o total anterior (38/33/20/2) não batia com as linhas, que já somavam 52/32/6/3. Não rodei o app nem fiz teste em papel nesta reauditoria; as mudanças vêm de código, testes e commits. Mudanças de status:
+- PS-A014: OK para N/A (lote saiu da janela, `plan/24`).
+- PS-A017, PS-A060: MISSING para OK (`1ad3307`).
+- PS-A022, PS-A023, PS-A026, PS-A030, PS-A034, PS-A045, PS-A062, PS-A077, PS-A079: PARTIAL para OK.
+- PS-A051: MISSING para PARTIAL (a opção é marcada pela pessoa, sem detecção no driver).
+- PS-A078: MISSING para PARTIAL (exige impressora real e papel, pela regra da auditoria).
 
 Verificação executada:
 - `cargo test --workspace --locked`: 51 testes passam (9 de integração do CLI, 19 em plots-core, 12 em plots-pdf, 11 em plots-print). Tempo de 30 s.
@@ -38,27 +45,27 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A011 | Algoritmo | Mostrar o gesto de recolocação e esperar "Imprimir verso" antes da passada 2 | OK (`256e8ce`) | Cartão mostra o gesto e espera "Imprimir verso"; conferido no app com as duas simuladas. |
 | PS-A012 | Gesto único | Cartão com a frase fixa e a figura do gesto | OK (`ca10be1`) | Cartão com a frase física e a figura; substitui a frase fixa da especificação. |
 | PS-A013 | Fluxo | Abrir PDF (arrastar, "Abrir com") e escolher o intervalo de páginas | OK (`ccb1ebc`) | Trecho contínuo por aba até o plano, com os números originais; soltar um PDF abre a aba. O gesto nativo de arrastar não foi feito no teste. |
-| PS-A014 | Fluxo | Marcar impressoras e tamanho do lote (padrão 10 folhas) | OK (f6e3433) | Caixas por aba e campo de lote com padrão 10, de 1 a 50. |
+| PS-A014 | Fluxo | Marcar impressoras e tamanho do lote (padrão 10 folhas) | N/A | Campo de lote saiu da janela por decisão do usuário (`plan/24-impressao-sem-lote.md`, `18bb5cc`). Marcar impressoras segue OK em PS-A024 e PS-A061. Lote continua no CLI e no núcleo. |
 | PS-A015 | Fluxo | "Imprimir frente" envia para cada impressora a ordem do seu perfil | PARTIAL (`256e8ce`) | Envio pela janela conferido nas simuladas e na fila de PDF; sem impressora real. |
 | PS-A016 | Fluxo | Botão do verso libera só depois que o spooler confirma a frente | OK (`256e8ce`) | Verso só libera com a confirmação do `Job`; o texto avisa que isso não garante que o papel saiu. |
-| PS-A017 | Fluxo | Folha de controle opcional no canto do verso | MISSING | Sem ocorrência no código. |
+| PS-A017 | Fluxo | Folha de controle opcional no canto do verso | OK (1ad3307) | Opção por aba "Folha de controle" (`ui/src/components/BlocoAjuste.tsx:71-92`); marca no canto do papel escolhido em `plots-pdf/src/opcoes.rs`, teste `a_marca_sai_no_canto_do_papel_escolhido_e_nao_dentro_da_escala` (opcoes.rs:588). Fica de fora do frente e verso automático (`controle.semMarca`). |
 | PS-A018 | Fluxo | "Reimprimir lote" refaz só aquele lote | OK (`256e8ce`) | "Reimprimir lote" no cartão, com confirmação em fila real; falha ao cancelar não reenvia. |
 | PS-A019 | Interface | Janela sem menus; barra superior única (ícone, botão da lateral, abas, "+", controles) | OK (353f54d) | Barra sem menus, medidas conferidas no app. |
 | PS-A020 | Interface | Splash 480×300, carregamento até 10 s, depois a janela principal | OK (`d4f3325`) | Imagem definitiva do usuário, janela, tempos e avisos no app real. |
 | PS-A021 | Interface | Barra lateral de impressoras com caixa de seleção e seletor de modo (Traseira, Gaveta, "Calibrar…") | OK (826b726) | Lista real com caixa, estado e seletor de modelo: Jato de tinta, Laser e Calibrar. |
-| PS-A022 | Interface | Abas por documento com estado próprio; confirmação ao fechar com impressão em andamento | PARTIAL (353f54d) | A aba guarda só a impressão em andamento; faltam impressoras, intervalo e lote. |
-| PS-A023 | Interface | Atalhos Ctrl+O, Ctrl+T, Ctrl+W, Ctrl+Tab, Ctrl+B; arrastar PDF abre aba | PARTIAL (353f54d) | Ctrl+W, Ctrl+Tab e Ctrl+B testados no app; seletor e arrasto nativos sem teste real. |
+| PS-A022 | Interface | Abas por documento com estado próprio; confirmação ao fechar com impressão em andamento | OK (353f54d, ccb1ebc, f6e3433) | A aba guarda impressoras marcadas, intervalo, cópias, ajuste de papel e folha de controle (`ui/src/tabs.ts:52-73`). Fechar com impressão em andamento pede confirmação (`tabs.ts:55, 80, 116`, `aguardandoConfirmacao`). Lote saiu da aba por decisão (plan 24). |
+| PS-A023 | Interface | Atalhos Ctrl+O, Ctrl+T, Ctrl+W, Ctrl+Tab, Ctrl+B; arrastar PDF abre aba | OK (353f54d, ccb1ebc) | Atalhos em `ui/src/atalhos.ts:11-30`, com `ui/src/atalhos.test.ts`. Arrastar PDF: evento `drop` em `ui/src/App.tsx:313-330`. Ctrl+W, Ctrl+Tab e Ctrl+B foram testados no app; o gesto nativo de arrastar não teve teste real. |
 | PS-A024 | Interface | Seleção de impressoras por documento (decidido no AGENTS) | OK (f6e3433) | Cada aba guarda as próprias impressoras; aba nova começa sem marcas. |
 | PS-A025 | Interface | Visualizador pdf.js com miniaturas, página e zoom | OK (`b29796e`) | Páginas, miniaturas, página e zoom conferidos no app real com PDFs de teste. |
-| PS-A026 | Interface | Tokens da norma de estilo, tema escuro, foco visível, ESC fecha diálogos, sem emoji, `aria-live` para o estado | PARTIAL (f6e3433) | Estado com ponto e texto e `aria-live` na lateral; falta o cartão de impressão. |
+| PS-A026 | Interface | Tokens da norma de estilo, tema escuro, foco visível, ESC fecha diálogos, sem emoji, `aria-live` para o estado | OK (f6e3433, 256e8ce) | Tokens em `ui/src/theme.css`; tema por `data-theme` (`ui/src/theme.ts`); foco visível nos CSS Modules; `aria-live` em Sidebar, CartaoImpressao e CalibracaoDialog; sem emoji em `ui/src` (busca fora de testes sem resultado). ESC nos diálogos Radix é padrão da biblioteca; não foi testado no app. |
 | PS-A027 | Interface | Textos em pt-BR e en via `t()` | OK (353f54d) | `t()` em pt-BR e en nesta tela. |
 | PS-A028 | Modo simulação | Rodar o fluxo inteiro sem impressora (`simular`) | OK | `plots-cli/src/lib.rs:51-223`. Testes `plots-cli/tests/cli.rs:8-43` e `94-149`. Execução verificada. |
-| PS-A029 | Modo simulação | Chave "Simular impressão" por documento; botão vira "Simular frente"; selo SIMULAÇÃO | PARTIAL (`256e8ce`) | Botão "Simular frente" e selo SIMULAÇÃO valem por impressora simulada. Não há chave por documento. |
-| PS-A030 | Modo simulação | Duas impressoras virtuais "Simulada — Traseira" e "Simulada — Gaveta", com outras combinações possíveis | PARTIAL | Nomes e perfis em `plots-cli/src/lib.rs:27-47`, só acessíveis via `--impressora`. Não aparecem como filas e não há como criar outra combinação. |
+| PS-A029 | Modo simulação | Chave "Simular impressão" por documento; botão vira "Simular frente"; selo SIMULAÇÃO | PARTIAL (`256e8ce`) | Botões "Simular frente"/"Simular versos" e selo SIMULAÇÃO existem (`ui/src/i18n.ts:182-209`). O rótulo "Simular impressão" troca sozinho conforme as impressoras marcadas (`ui/src/cartoes.ts:328, 939`). Não há chave por documento. |
+| PS-A030 | Modo simulação | Duas impressoras virtuais "Simulada — Traseira" e "Simulada — Gaveta", com outras combinações possíveis | OK (166adee, 3085baf) | A janela lista as duas sempre (`src-tauri/src/impressoras.rs:23-24, 326-336`), mais "Simulada — Automática" (0a8f451). A CLI reconhece os nomes (`plots-cli/src/lib.rs:89-118`). Outras combinações: o PlotSim cria filas reais com qualquer modelo (`PlotSim/plotsim-core/src/filas.rs:144`, `criar(curto, modo)`). Dentro do PlotS, as simuladas têm modelo fixo. |
 | PS-A031 | Modo simulação | `SimBackend` implementa o mesmo trait dos backends reais | OK | Trait `Backend` em `plots-print/src/job.rs:19-25`; impl em `job.rs:180-208`. |
 | PS-A032 | Modo simulação | Modelo físico: folha `{frente, verso, girada}`, pilha de saída, gesto como operação | OK | `plots-print/src/lib.rs:8-24` (`Folha`), `66-72` (`Recolocacao`), `190-215` (`recolocar`). |
 | PS-A033 | Modo simulação | "Simular erro": recolocar sem virar, girado, ou com uma folha a menos | OK (cf22592) | O núcleo suporta (`Recolocacao`, `retirar_folhas`, `inverter_ordem`, `girar_180`, teste `falta_de_folha_permite_cancelar_e_reimprimir_lote`, lib.rs:593). O CLI sempre usa `virar_maco: true` (`plots-cli/src/lib.rs:187-190`) e não expõe a opção. |
-| PS-A034 | Modo simulação | Vista por lote com passada 1, pilha, passada 2 e folhas finais marcadas certo/errado ("3 de 3 folhas corretas") | PARTIAL | CLI com certa/errada por folha e "N de M folhas corretas" (cf22592); falta a vista na interface. O CLI imprime as listas (`plots-cli/src/lib.rs:155-220`). Não há marcação certo/errado nem contagem. |
+| PS-A034 | Modo simulação | Vista por lote com passada 1, pilha, passada 2 e folhas finais marcadas certo/errado ("3 de 3 folhas corretas") | OK (7c47c9e) | PlotSim marca cada folha como certa ou errada (`PlotSim/app/ui/src/components/Folha.tsx`, `folha.certa`/`folha.errada`) e mostra o resumo "N de M folhas corretas" (`PlotSim/app/ui/src/i18n.ts:87-90`). A pilha de saída aparece na janela (`i18n.ts:36`). No PlotS, o cartão mostra "N de M folhas corretas (na simulação)" (`ui/src/i18n.ts:257-258`). |
 | PS-A035 | Modo simulação | Cartão EM ANDAMENTO com "Simular verso" | OK (`256e8ce`) | Cartão EM ANDAMENTO com "Simular verso" e resultado da simulação. |
 | PS-A036 | Modo simulação | Exportar `passada1.pdf` e `passada2.pdf` para abrir no Firefox | PARTIAL | `gerar-pdf` gera os PDFs (`plots-cli/src/lib.rs:225-310`). Nomes diferentes. Abertura no Firefox não verificada. |
 | PS-A037 | Modo simulação | Exportar PDF de folhas finais (frente e verso lado a lado) | OK (6baa24a) | `gerar-pdf --folhas-finais`, conferido com PyMuPDF; sem conferência no Firefox. |
@@ -69,13 +76,13 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A042 | Arquitetura | pdfium-render para rasterizar (impressoras que não aceitam PDF) | PARTIAL (126ac26) | `pdfium-render` rasteriza na resolução da fila (sem impressora real; conferido só na fila de PDF do Windows). |
 | PS-A043 | Arquitetura | Linux e macOS com IPP/CUPS ou `lp` | MISSING | Fase futura. AGENTS decide que o CUPS fica para depois do backend Windows. |
 | PS-A044 | Arquitetura | tokio, um job por impressora em paralelo | N/A (`62d51a4`) | Cada trabalho roda na própria thread; o paralelismo vale pelo comportamento, sem tokio. |
-| PS-A045 | Arquitetura | Config com serde, toml e directories; perfis em `%APPDATA%/plots/perfis.toml` | PARTIAL | Biblioteca `plots-perfis` (72030fb); falta usar no CLI e na interface. |
-| PS-A046 | Arquitetura | Erros com thiserror e logs com tracing | PARTIAL | Erros escritos à mão (`plots-core/src/lib.rs:107-128`, `plots-pdf/src/lib.rs:8-33`). Sem thiserror nem tracing. |
+| PS-A045 | Arquitetura | Config com serde, toml e directories; perfis em `%APPDATA%/plots/perfis.toml` | OK (72030fb, 1ad3307) | `plots-perfis/Cargo.toml:8-12` (serde, toml, directories, thiserror). Caminho em `plots-perfis/src/armazenamento.rs:27-30` (`config_dir()/plots/perfis.toml`, que no Windows é %APPDATA%). Usado pelo CLI (`plots-cli/src/filas.rs`, `calibrar.rs`) e pela janela (`src-tauri/src/impressoras.rs`). |
+| PS-A046 | Arquitetura | Erros com thiserror e logs com tracing | PARTIAL | `thiserror` só em `plots-perfis` (erro.rs, grupos.rs, historico.rs). Nos demais crates, erros escritos à mão (`plots-core/src/lib.rs:107-128`). Nenhum uso de `tracing` no código. |
 | PS-A047 | Arquitetura | Frontend React + TypeScript, CSS Modules, lucide-react, Radix | OK (353f54d) | React, TypeScript, CSS Modules, lucide e Radix. |
 | PS-A048 | Windows | Impressão só pelo PlotS, sem diálogo, envio direto ao spooler | PARTIAL (126ac26) | Envio direto, sem diálogo (sem impressora real; conferido só na fila de PDF do Windows). |
 | PS-A049 | Windows | Rasterizar na resolução da impressora (GetDeviceCaps); DEVMODE com simplex, sem agrupar, bandeja manual e tamanho | PARTIAL (126ac26) | Resolução por `GetDeviceCaps`; `DEVMODE` forçado e conferido; bandeja fica a do driver (sem impressora real; conferido só na fila de PDF do Windows). |
 | PS-A050 | Windows | Acompanhar o trabalho no spooler (GetJob ou notificação) | PARTIAL (126ac26) | `GetJobW` com avisos; nenhum estado real observado (sem impressora real; conferido só na fila de PDF do Windows). |
-| PS-A051 | Windows | Detectar a opção "inverter ordem" do driver e pedir para desligar | MISSING | Fase 3 (calibração). |
+| PS-A051 | Windows | Detectar a opção "inverter ordem" do driver e pedir para desligar | PARTIAL (1ad3307) | Não detecta: a opção é marcada pela pessoa na linha da impressora (`src-tauri/src/inversao.rs:1-5, 43-80`), com aviso que manda desligar no driver (`ui/src/i18n.ts:446`). Falta ler a configuração do driver. |
 | PS-A052 | Windows | Fila virtual "PlotS" que recebe o PDF de qualquer programa | MISSING | Fase 5. |
 | PS-A053 | Papel | Ler o tamanho de cada página do PDF | OK | `plots-pdf/src/lib.rs:71-108` (`dimensoes_paginas`). Verificado com `rotacionada.pdf`. |
 | PS-A054 | Papel | Reconhecer A4, A5, Carta, Ofício, Legal, com tolerância de 2 mm | OK | `plots-core/src/lib.rs:297-328`. Testes `reconhece_formatos_orientacao_e_personalizado_com_tolerancia` (lib.rs:624) e `valida_par_frente_verso...` (lib.rs:655). Verificado: `tolerancia-par.pdf` (598×844) aceito. |
@@ -84,28 +91,28 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A057 | Papel | Cartão avisa a troca de papel | OK (`256e8ce`) | Cartão e CLI avisam a troca de papel. |
 | PS-A058 | Papel | Frente e verso de tamanhos diferentes são recusados antes de imprimir | OK | `plots-core/src/lib.rs:385-397`. Verificado: `personalizado-par.pdf` (595×842 + 200×300) sai com "as páginas 1 e 2 têm tamanhos incompatíveis para a mesma folha", exit 2. Teste `rejeita_paginas_de_tamanhos_incompativeis_na_mesma_folha` (`plots-cli/tests/cli.rs:260-281`). |
 | PS-A059 | Papel | Frente e verso da mesma folha com mesma orientação (retrato e paisagem) | OK (882ba68) | Ver BUG-1. Orientação diferente é aceita sem aviso. Decisão do usuário: bloquear ou só avisar. |
-| PS-A060 | Papel | Opção "Ajustar ao papel" (imprimir Carta em A4) | MISSING | Não existe no código. |
+| PS-A060 | Papel | Opção "Ajustar ao papel" (imprimir Carta em A4) | OK (1ad3307) | Opção "Ajustar ao papel" por aba (`ui/src/components/BlocoAjuste.tsx:27-54`); escala proporcional e centralizada em `plots-pdf/src/opcoes.rs` (teste `carta_em_a4_fica_centralizada_na_caixa_do_a4`, opcoes.rs:498). |
 | PS-A061 | Múltiplas | Marcar várias impressoras e enviar a mesma origem, cada uma com o perfil próprio | OK (`62d51a4`) | Várias impressoras, cada uma com o próprio perfil; conferido nas simuladas, fila real só até a confirmação. |
-| PS-A062 | Múltiplas | Descoberta das filas do sistema (EnumPrintersW) | PARTIAL (a9f9185) | `plots filas` lista as filas e o estado com `EnumPrintersW`; falta usar na interface. |
-| PS-A063 | Múltiplas | Perfil por fila: chave com o nome da fila e apelido amigável | PARTIAL | Chave pelo nome exato da fila e apelido em `plots-perfis` (72030fb); falta a tela de apelido. |
-| PS-A064 | Múltiplas | Máquina de estados por job: Ocioso, FrenteEnviada, AguardandoRecolocacao, VersoEnviado, Concluído, Erro | PARTIAL | `plots-print/src/job.rs:28-35` usa `Pronto` no lugar de `Ocioso`. Demais estados existem. |
+| PS-A062 | Múltiplas | Descoberta das filas do sistema (EnumPrintersW) | OK (a9f9185, 826b726) | `plots-windows/src/sistema.rs:1, 76` (EnumPrintersW). A janela lista as filas por `listar_filas()` (`src-tauri/src/impressoras.rs:206`). |
+| PS-A063 | Múltiplas | Perfil por fila: chave com o nome da fila e apelido amigável | PARTIAL | Chave pelo nome exato da fila e campo `apelido` em `plots-perfis/src/perfis.rs:12`, gravado e listado (`src-tauri/src/impressoras.rs:893-909`). Falta a tela de apelido: `ui/src` não tem nenhuma edição de apelido. |
+| PS-A064 | Múltiplas | Máquina de estados por job: Ocioso, FrenteEnviada, AguardandoRecolocacao, VersoEnviado, Concluído, Erro | PARTIAL | `plots-print/src/job.rs:45-53`: `EstadoJob` tem `Pronto` (no lugar de Ocioso), `FrenteEnviada`, `AguardandoRecolocacao`, `VersoEnviado`, `DuasFacesEnviadas` (extra), `Concluido` e `Erro`. Nomes divergem. |
 | PS-A065 | Múltiplas | Modos espelho e divisão | OK (`62d51a4`) | Espelho e divisão na janela, com o intervalo aplicado antes da divisão. |
 | PS-A066 | Múltiplas | Consulta periódica do spooler; avisa papel acabado ou atolado | PARTIAL (`ca10be1`) | Consulta distingue papel acabado, atolado e sem resposta; só com backend falso, sem driver real. |
 | PS-A067 | Múltiplas | Grupos salvos de impressoras ("Todas do escritório") | OK (`62d51a4`) | Grupos salvos no arquivo de perfis, com grupo inválido ignorado e preservado. |
 | PS-A068 | Fase 1 | Testes unitários: lotes pares, ímpares, 1 folha e as 8 combinações de perfil | OK | `plots-core/src/lib.rs:512-586`. `cargo test` passa. |
 | PS-A069 | Fase 1 | Crate `plots-core` com lógica pura, sem E/S | OK | `plots-core/src/` (sem dependências externas em `plots-core/Cargo.toml`). |
 | PS-A070 | Fase 2 | PDF de teste de calibração com números grandes e setas | OK (cf22592) | Não há geração de texto em `src/`. `.qa-pdf/make.py` é um script de QA com PyMuPDF, fora do repositório, sem integração. |
-| PS-A071 | Fase 2 | Calibração: 2 folhas com páginas 1 a 4, duas perguntas e ajuste do perfil | PARTIAL | `ajustar_perfil_por_calibracao` (`plots-core/src/lib.rs:78-86`, teste 469-493). Falta o PDF, as perguntas e o comando. |
+| PS-A071 | Fase 2 | Calibração: 2 folhas com páginas 1 a 4, duas perguntas e ajuste do perfil | PARTIAL | Já existem: PDF de calibração (`plots-pdf/src/calibracao.rs`), perguntas e ajuste na janela (`ui/src/components/CalibracaoDialog.tsx`, `src-tauri/src/calibracao.rs`, `c410c8c`) e no CLI (`plots calibrar`); ajuste em `plots-core/src/ajuste.rs` (`1ad3307`). Falta a conferência em 2 folhas de papel. |
 | PS-A072 | Fase 2 | Os PDFs gerados abrem no Firefox com ordem e rotação certas | OK | O usuário abriu no Firefox as passadas e as folhas finais de um documento de 4 páginas: ordem e rotação certas (2026-11-02). |
 | PS-A073 | Fase 2 | Backend Simulado com impressoras virtuais | OK | `SimBackend` (`plots-print/src/job.rs:159`) e `plots simular`. |
 | PS-A074 | Fase 3 | `plots imprimir doc.pdf --impressora X --lote 10` | PARTIAL (126ac26) | `plots imprimir` envia com confirmação (sem impressora real; conferido só na fila de PDF do Windows). |
 | PS-A075 | Fase 3 | `plots calibrar X` | PARTIAL | `plots calibrar` faz as perguntas e grava o perfil (92772e5); falta enviar e confirmar em impressora real. |
 | PS-A076 | Fase 3 | Backend CUPS ou Windows | PARTIAL (126ac26) | Backend Windows pronto (sem impressora real; conferido só na fila de PDF do Windows). |
-| PS-A077 | Fase 3 | Critério: simulação correta nas duas impressoras virtuais | PARTIAL | `plots simular` está correto (PS-A028). O critério completo depende de `imprimir` e `calibrar`. |
-| PS-A078 | Fase 3 | Critério: 3 lotes seguidos sem erro numa impressora real | MISSING | Não verificável nesta máquina: não há impressora real e nada foi enviado a impressoras. Depende de decisão do usuário. |
-| PS-A079 | Fase 4 | Interface Tauri + pdf.js: visualizador, painel de impressoras, cartões com figura, fluxo sem terminal | PARTIAL (353f54d) | Só a janela; faltam visualizador, impressoras e cartões. |
+| PS-A077 | Fase 3 | Critério: simulação correta nas duas impressoras virtuais | OK (108bede, a34a54e) | Suíte rápida do PlotSim: 42 de 44, 0 falhas, com a matriz das duas impressoras (`plan/23-plotsim.md`, "Resultado da suíte rápida"; registro em `STATUS-MANUAIS.md`, lote `plotsim-suite`). Ressalva: o Ofício 216 × 330 mm não tem conferência de ponta a ponta. |
+| PS-A078 | Fase 3 | Critério: 3 lotes seguidos sem erro numa impressora real | PARTIAL | Falta a prova em papel: o fluxo de lotes existe (`plots-cli/src/enviar.rs`; janela com envio por trecho, `18bb5cc`), mas não há impressora real nem papel nesta máquina. Depende de decisão do usuário e de teste em papel. |
+| PS-A079 | Fase 4 | Interface Tauri + pdf.js: visualizador, painel de impressoras, cartões com figura, fluxo sem terminal | OK (b29796e, 826b726, ca10be1) | Visualizador pdf.js (b29796e); painel de impressoras (`ui/src/components/Sidebar.tsx`, 826b726); cartões com a figura do gesto (`ui/src/components/FiguraGesto.tsx`, ca10be1); fluxo na janela sem terminal (`ui/src/App.tsx`). |
 | PS-A080 | Fase 5 | Várias impressoras, jobs paralelos, espelho e divisão, status do spooler, fila virtual "PlotS" | PARTIAL (`62d51a4`) | Falta a fila virtual; envio paralelo, modos e status já existem. |
-| PS-A081 | Fase 6 | Instalador (tauri bundle), reimprimir lote, folha de controle, histórico | PARTIAL (`1a1f6d7`) | Instalador NSIS por usuário gerado, não executado. Faltam folha de controle e histórico. |
+| PS-A081 | Fase 6 | Instalador (tauri bundle), reimprimir lote, folha de controle, histórico | PARTIAL (1a1f6d7, 1ad3307) | Folha de controle (1ad3307) e histórico local (`plots-perfis/src/historico.rs`, `src-tauri/src/historico.rs`) existem. Falta executar o instalador NSIS em máquina ou conta de teste (depende do usuário). |
 | PS-A082 | Estrutura | Workspace Cargo com plots-core, plots-print, plots-cli, src-tauri e ui | OK (353f54d) | Workspace com `src-tauri` e `ui`. |
 | PS-A083 | Limpeza do disco | Um único `target/` (até 2 GB); artefatos de verificação removidos após o registro | PARTIAL | `target/` tem 444 MB. `.qa-pdf/` mantém `entrada.pdf`, `saida.pdf`, `saida-1..3.png` da sessão anterior, já registrados. Os arquivos da auditoria foram apagados no fim. |
 | PS-A084 | Segurança dos dados | Não sobrescrever arquivos existentes; em falha, remover só o que foi criado | OK | `plots-cli/src/lib.rs:286-302` (`create_new` e rollback). Verificado: segunda execução na mesma pasta falha e mantém os PDFs; pasta com `lote-0001-passada-2.pdf` pré-existente mantém o conteúdo "ORIGINAL". |
@@ -123,6 +130,8 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 
 ### BUG-1 (PS-A059): frente retrato com verso paisagem é aceita sem aviso
 
+- Estado em 2026-11-04: **corrigido** (`882ba68`). `pares_com_orientacao_mista` (`plots-core/src/lib.rs:508`) acusa a folha com retrato e paisagem, com teste (`lib.rs:1765`). O texto abaixo é o registro de 2026-11-02.
+
 - Causa: `plots-core/src/lib.rs:386-387` compara só `formato` (que ignora orientação). `lib.rs:389-390` compara as dimensões já normalizadas para retrato, então A4 retrato e A4 paisagem parecem iguais. A checagem de papel por lote (`lib.rs:402-412`) compara a orientação só com a primeira folha do lote, nunca com o verso.
 - Repro: criar um PDF de 2 páginas, página 1 com 595×842 e página 2 com 842×595.
 - Comando: `cargo run -q -p plots-cli --locked -- gerar-pdf <arquivo> --lote 10 --impressora gaveta --saida <pasta_vazia>`
@@ -131,6 +140,8 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 
 ### BUG-2 (PS-A090): mensagem enganosa para comandos que não existem
 
+- Estado em 2026-11-04: **corrigido**. A frase "PDF não é aceito" saiu do caminho de `imprimir`; cada comando tem o próprio uso (`plots-cli/src/lib.rs:26-44`, `USO_*`). O texto abaixo é o registro de 2026-11-02.
+
 - Repro: `cargo run -q -p plots-cli --locked -- imprimir doc.pdf --impressora "Microsoft Print to PDF" --lote 10`
 - Resultado: "Erro: PDF não é aceito: esta versão do CLI só executa simulações numéricas." (exit 2). O CLI aceita PDF em `gerar-pdf`, e `imprimir` ainda não existe.
 - Esperado: dizer que `imprimir` ainda não existe e indicar `gerar-pdf` ou `simular`.
@@ -138,6 +149,8 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 - Também: `plots calibrar X` responde "comando ausente ou desconhecido", sem dizer que o comando é previsto.
 
 ### BUG-3 (PS-A091): texto de uso incompleto e sempre o mesmo
+
+- Estado em 2026-11-04: **corrigido**. O texto de uso sai por comando (`plots-cli/src/lib.rs:26-44`, `USO_*`) e não é mais o de `simular` em todo erro. O texto abaixo é o registro de 2026-11-02.
 
 - Repro 1: `cargo run -q -p plots-cli --locked --` (sem argumentos) mostra "Uso: plots simular ..." sem mencionar `gerar-pdf`.
 - Repro 2: `cargo run -q -p plots-cli --locked -- gerar-pdf` mostra "Erro: informe o arquivo PDF" e depois "Uso: plots simular --paginas N ...", que é o uso de outro comando.
@@ -160,42 +173,42 @@ Em `CLAUDE.md` (fora do escopo, mas afeta a mesma pergunta): "O comando e o resu
 
 Em `.claude/team.json`: `ci_command` usa sintaxe PowerShell e roda `cargo test --workspace` sem `--locked`. Não altera o resultado, mas permite que o CI altere o `Cargo.lock`.
 
-## Lotes propostos (ordem de prioridade)
+## Lotes propostos (ordem de prioridade, reauditoria de 2026-11-04)
 
-### Lote 1: bugs e textos (sem perda de dados encontrada)
-- Corrigir BUG-1: checar orientação na mesma folha, com teste em `plots-core` e teste de integração no CLI. Decisão do usuário: bloquear ou apenas avisar.
-- Corrigir BUG-2 e BUG-3: texto de uso único (`main.rs`), mensagem de comando inexistente, uso por tipo de erro, comentários sem caracteres corrompidos, doc-comment em `job.rs`.
-- Adicionar testes que faltam: `--help` com `gerar-pdf`, opção repetida, PDF criptografado pelo CLI, orientação mista.
-- Atualizar as frases de `AGENTS.md` listadas acima. Decisão do usuário: quem edita a especificação.
+Não há BUG aberto. Nenhuma perda de dados foi encontrada nos registros. Os itens marcados como **decisão do usuário** dependem dele.
 
-### Lote 2: conclusão da Fase 2
-- Fechar a integração de `gerar-pdf` e registrar a validação (PS-A072): abrir as passadas em Firefox ou pdf.js e registrar a ordem.
-- Gerar o PDF de calibração com números grandes e setas (PS-A070). Decisão do usuário: layout, fonte e tamanho do papel de teste.
-- Exportar PDF de folhas finais lado a lado (PS-A037). Decisão do usuário: layout.
-- Expor `passada1.pdf` e `passada2.pdf` com os nomes da especificação, ou aceitar `lote-NNNN-...`. Decisão do usuário.
-- Opção `--ordem` no CLI (PS-A007) e `--simular-erro` (PS-A033). Decisão do usuário: se a opção entra agora.
-- Cobrir as 8 combinações com `proptest` (PS-A038). Exige aprovação para adicionar dependência, porque `Cargo.toml` não pode ser alterado sem pedido.
-- Vista de simulação com certo/errado (PS-A034).
+### Lote 1: bugs e perda de dados
+- Nenhum aberto. BUG-1, BUG-2 e BUG-3 estão corrigidos (seção Bugs).
 
-### Lote 3: Fase 3 (CLI de impressão e calibração)
-- `plots calibrar X` usando `ajustar_perfil_por_calibracao` e o PDF de calibração (PS-A074 a PS-A075).
-- `plots imprimir` com o backend Simulado primeiro, depois Windows (PS-A048 a PS-A050). Decisão do usuário: o backend Windows exige testes com a fila "Microsoft Print to PDF" ou com impressora real.
-- Detecção da opção "inverter ordem" do driver (PS-A051). Depende de impressora real.
-- Perfis em `%APPDATA%/plots/perfis.toml` com serde, toml e directories (PS-A045). Exige aprovação para adicionar dependências.
-- Ajustar ao papel e mapeamento DMPAPER (PS-A055, PS-A060). Decisão do usuário: quais formatos entram.
-- Validação de 3 lotes em impressora real (PS-A078). Decisão do usuário e depende de impressora real.
+### Lote 2: fidelidade (sem papel)
+- PS-A005: a traseira ainda pré-define `passada2_inversa = true` (`plots-cli/src/lib.rs:30`), e o requisito pede "a calibrar". **Decisão do usuário:** manter o modelo como ponto de partida ou exigir calibração antes do uso.
+- PS-A010 e PS-A036: os PDFs se chamam `lote-NNNN-passada-N.pdf` (`plots-cli/src/geracao.rs:105`), e a especificação diz `passada1.pdf` e `passada2.pdf`. **Decisão do usuário:** aceitar o nome atual ou renomear.
+- PS-A009: `plano_lote` não existe; a função equivalente é `plano_documento` (`plots-core/src/lib.rs:223`). **Decisão do usuário:** aceitar o nome ou atualizar a especificação.
+- PS-A029: a chave "Simular impressão" por documento não existe; o rótulo muda sozinho conforme as impressoras marcadas. **Decisão do usuário:** manter ou criar a chave.
+- PS-A064: os estados divergem (`Pronto` no lugar de Ocioso, `DuasFacesEnviadas` extra). **Decisão do usuário:** ajustar o código ou a especificação.
+- PS-A063: falta a tela de apelido; o campo já existe e aparece na lista. **Decisão do usuário:** entra na primeira versão?
+- PS-A046: `tracing` não é usado; `thiserror` só existe em `plots-perfis`. Adotar `tracing` exige dependência nova, o que precisa de aprovação.
+- PS-A051: a detecção automática da opção do driver não existe; hoje a pessoa marca a opção, com aviso. Validar exige impressora real. **Decisão do usuário:** aceitar a marcação manual para a primeira versão.
+- PS-A065: a divisão saiu da janela (`plan/24`), e a linha segue OK por causa do espelho. **Decisão do usuário:** marcar a divisão como N/A na janela ou manter.
+- PS-A083: `.qa-pdf/` ainda guarda arquivos da sessão anterior. **Decisão do usuário:** apagar ou manter.
+- `AGENTS.md`: as frases da seção "Frases possivelmente desatualizadas" não foram revisadas nesta reauditoria. **Decisão do usuário:** quem edita a especificação.
 
-### Lote 4: Fases 4 a 6 e interface (ainda não existem)
-- Scaffold Tauri 2 com `src-tauri/` e `ui/`, pdf.js, tokens da norma de estilo e pt-BR/en (PS-A019 a PS-A027, PS-A039, PS-A047). Decisão do usuário: prioridade e ordem das telas.
-- Multi-impressora, jobs paralelos, espelho e divisão na interface, fila virtual "PlotS" (PS-A061 a PS-A067, PS-A052, PS-A080). Decisão do usuário.
-- Instalador, folha de controle, histórico e reimprimir lote (PS-A017, PS-A081). Decisão do usuário.
+### Lote 3: depende de papel ou impressora real (decisão do usuário)
+- PS-A001, PS-A015, PS-A042, PS-A048, PS-A049, PS-A050, PS-A055, PS-A074, PS-A075, PS-A076 e PS-A078: envio e papel. Falta uma rodada em impressora real, ou nas filas virtuais do PlotSim (`plots imprimir --teste`), com confirmação em papel.
+- PS-A071 e PS-A075: calibração em 2 folhas de papel.
+- PS-A081: executar o instalador em máquina ou conta de teste.
+- PS-A077, ressalva: o Ofício 216 × 330 mm não tem conferência de ponta a ponta na suíte do PlotSim.
+
+### Lote 4: fora da primeira versão
+- PS-A052 (fila virtual "PlotS", plano 16, não iniciado) e PS-A080, que depende dela. Pelo plano 00, a impressora virtual vem depois da primeira versão. **Decisão do usuário:** confirmar.
+- PS-A043 (Linux e macOS, plano 18). Fora da primeira versão, como já registrado em `STATUS-MANUAIS.md`.
 
 ## Não verificado
 
 - Abertura e ordem visual das passadas no Firefox ou no pdf.js. Foi verificado só com pypdf (texto e caixas de página).
 - Efeito real da página em branco com ponto no driver (PS-A087).
 - Qualquer envio a impressora, física ou virtual. Não foi feito, conforme a instrução. A fila "Microsoft Print to PDF" não foi usada.
-- Interface gráfica, capturas de tela e teclas. Não existe app gráfico.
+- Nesta reauditoria, o app não foi rodado e não houve capturas de tela. O estado da janela vem de código, testes e registros de commit.
 - Comportamento com PDFs reais grandes (o teste usou um PDF de 300 páginas gerado para o caso, em 1,5 s).
 - `plots-cli` lendo PDFs com formulários e anotações do mundo real: o código tem tratamento e testes, mas não foi exercitado com PDFs externos.
 - Compatibilidade do `.claude/team.json` com `cargo test --workspace` pelo PowerShell (rodado só via bash, com `--locked`).
