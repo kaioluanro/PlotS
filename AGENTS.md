@@ -6,6 +6,9 @@ O **PlotS** faz qualquer impressora entregar o mesmo resultado físico no frente
 
 Em tarefas de desenvolvimento, planejamento, auditoria, depuração e revisão deste projeto, use a skill local `.claude/skills/craft-team/SKILL.md` e consulte `.claude/team.json` no início da sessão. Siga o fluxo e use os agentes instalados em `.claude/agents/` quando o ambiente e as instruções de prioridade superior permitirem. Se alguma etapa não estiver disponível, informe a limitação e execute as verificações possíveis; não afirme que uma etapa foi realizada sem evidência.
 
+- **Nenhum agente roda sem a craft-team.** Todo subagente recebe, no próprio prompt, a ordem de ler `.claude/skills/craft-team/SKILL.md` e o arquivo do seu papel em `.claude/agents/` antes de agir. Quando o ambiente não registra os agentes instalados como tipo de subagente, o coordenador usa o tipo genérico disponível e entrega o papel e o protocolo no prompt; isso é uma limitação do ambiente, não uma dispensa do fluxo.
+- **Modelo:** todos os papéis usam `openrouter/deepseek/deepseek-v4.1-flash-1017` (DeepSeek V4.1 Flash 1017), como está em `.claude/team.json`. Nenhum agente abre em outro modelo sem autorização do usuário.
+
 O comando de CI e a linha de sucesso estão em `.claude/team.json`.
 
 ## Planos de implementação
