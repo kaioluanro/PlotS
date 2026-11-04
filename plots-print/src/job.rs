@@ -9,6 +9,16 @@ pub enum Passada {
     /// Um trabalho só, em que a impressora imprime as duas faces de cada folha sozinha.
     DuasFaces,
 }
+/// O que um trabalho imprime dos lotes que pedem o gesto. O lote em duas faces sai inteiro na primeira
+/// etapa, e um trabalho só de versos passa por cima dele.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum Alcance {
+    #[default]
+    FrenteEVerso,
+    SoFrentes,
+    /// O maço já saiu antes, talvez em outro dia: quem garante que é o certo é a pessoa.
+    SoVersos,
+}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EstadoEnvio {
     EmAndamento,
@@ -24,6 +34,11 @@ pub trait Backend {
     fn consultar(&mut self) -> Result<EstadoEnvio, Self::Erro>;
     /// Retorna apenas quando o envio anterior não pode continuar imprimindo.
     fn cancelar(&mut self) -> Result<(), Self::Erro>;
+    /// Um verso vai sair sem a frente neste trabalho: o maço do lote `indice`, que vem de fora, tem
+    /// estas frentes.
+    fn maco_de_fora(&mut self, _indice: usize, _frentes: &[Pagina]) -> Result<(), Self::Erro> {
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -52,6 +67,8 @@ pub struct Job<B: Backend> {
     lotes: Vec<Lote>,
     atual: usize,
     estado: EstadoJob,
+    alcance: Alcance,
+    terminado: Option<usize>,
 }
 impl<B: Backend> Job<B> {
     pub fn novo(backend: B, lotes: Vec<Lote>) -> Result<Self, ErroJob<B::Erro>> {
@@ -63,7 +80,52 @@ impl<B: Backend> Job<B> {
             lotes,
             atual: 0,
             estado: EstadoJob::Pronto,
+            alcance: Alcance::default(),
+            terminado: None,
         })
+    }
+    /// Vale antes do primeiro envio. Só de versos, o trabalho já começa esperando o maço do primeiro
+    /// lote que pede o gesto; sem nenhum, não há o que imprimir.
+    pub fn com_alcance(mut self, alcance: Alcance) -> Self {
+        self.alcance = alcance;
+        if alcance == Alcance::SoVersos {
+            self.ir_ao_proximo_verso(0);
+        }
+        self
+    }
+    pub fn alcance(&self) -> Alcance {
+        self.alcance
+    }
+    /// Índice do último lote que terminou neste trabalho.
+    pub fn lote_terminado(&self) -> Option<usize> {
+        self.terminado
+    }
+    fn ir_ao_proximo_verso(&mut self, desde: usize) {
+        let proximo = self
+            .lotes
+            .iter()
+            .enumerate()
+            .skip(desde)
+            .find(|(_, lote)| !lote.duas_faces)
+            .map(|(indice, _)| indice);
+        match proximo {
+            Some(indice) => {
+                self.atual = indice;
+                self.estado = EstadoJob::AguardandoRecolocacao;
+            }
+            None => {
+                self.atual = self.lotes.len();
+                self.estado = EstadoJob::Concluido;
+            }
+        }
+    }
+    /// De onde o mesmo lote recomeça: só de versos, a frente não é deste trabalho.
+    fn inicio_do_lote(&self) -> EstadoJob {
+        if self.alcance == Alcance::SoVersos {
+            EstadoJob::AguardandoRecolocacao
+        } else {
+            EstadoJob::Pronto
+        }
     }
     pub fn estado(&self) -> EstadoJob {
         self.estado
@@ -82,7 +144,7 @@ impl<B: Backend> Job<B> {
             return Err(ErroJob::EstadoInvalido(self.estado));
         }
         self.backend.cancelar().map_err(ErroJob::Backend)?;
-        self.estado = EstadoJob::Pronto;
+        self.estado = self.inicio_do_lote();
         Ok(())
     }
     /// Cancela o envio em andamento, ou o que falhou, e volta ao início do mesmo lote. Quem
@@ -98,7 +160,7 @@ impl<B: Backend> Job<B> {
             return Err(ErroJob::EstadoInvalido(self.estado));
         }
         self.backend.cancelar().map_err(ErroJob::Backend)?;
-        self.estado = EstadoJob::Pronto;
+        self.estado = self.inicio_do_lote();
         Ok(())
     }
     /// Envia a primeira etapa do lote atual. Um lote em duas faces só tem esta etapa: o lote
@@ -129,6 +191,12 @@ impl<B: Backend> Job<B> {
         let Some(lote) = self.lotes.get(self.atual) else {
             return Err(ErroJob::EstadoInvalido(self.estado));
         };
+        if self.alcance == Alcance::SoVersos {
+            if let Err(e) = self.backend.maco_de_fora(self.atual, &lote.passada1) {
+                self.estado = EstadoJob::Erro;
+                return Err(ErroJob::Backend(e));
+            }
+        }
         if let Err(e) = self.backend.enviar(Passada::Verso, &lote.passada2) {
             self.estado = EstadoJob::Erro;
             return Err(ErroJob::Backend(e));
@@ -152,10 +220,18 @@ impl<B: Backend> Job<B> {
                 self.estado = EstadoJob::Erro;
                 return Err(ErroJob::EnvioFalhou);
             }
-            EstadoEnvio::Concluido if self.estado == EstadoJob::FrenteEnviada => {
+            EstadoEnvio::Concluido
+                if self.estado == EstadoJob::FrenteEnviada
+                    && self.alcance != Alcance::SoFrentes =>
+            {
                 self.estado = EstadoJob::AguardandoRecolocacao
             }
+            EstadoEnvio::Concluido if self.alcance == Alcance::SoVersos => {
+                self.terminado = Some(self.atual);
+                self.ir_ao_proximo_verso(self.atual.saturating_add(1));
+            }
             EstadoEnvio::Concluido => {
+                self.terminado = Some(self.atual);
                 self.atual += 1;
                 self.estado = if self.atual == self.lotes.len() {
                     EstadoJob::Concluido
@@ -260,6 +336,92 @@ mod tests {
             }
         })
         .collect()
+    }
+
+    /// Registra as passadas e o que veio de fora, sem nenhuma fila.
+    #[derive(Default)]
+    struct Registro {
+        passadas: Vec<Passada>,
+        de_fora: Vec<usize>,
+        cancelados: usize,
+    }
+    impl Backend for Registro {
+        type Erro = ();
+        fn enviar(&mut self, passada: Passada, _: &[Pagina]) -> Result<(), ()> {
+            self.passadas.push(passada);
+            Ok(())
+        }
+        fn consultar(&mut self) -> Result<EstadoEnvio, ()> {
+            Ok(EstadoEnvio::Concluido)
+        }
+        fn cancelar(&mut self) -> Result<(), ()> {
+            self.cancelados += 1;
+            Ok(())
+        }
+        fn maco_de_fora(&mut self, indice: usize, _: &[Pagina]) -> Result<(), ()> {
+            self.de_fora.push(indice);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn so_frentes_passa_pelos_lotes_sem_liberar_verso_e_acaba_na_ultima_frente() {
+        let mut job = Job::novo(Registro::default(), lotes())
+            .unwrap()
+            .com_alcance(Alcance::SoFrentes);
+        job.enviar_frente().unwrap();
+        assert!(job.enviar_verso().is_err());
+        assert_eq!(job.atualizar().unwrap(), EstadoJob::Pronto);
+        assert_eq!(job.lote_terminado(), Some(0));
+        assert!(job.enviar_verso().is_err());
+        job.enviar_frente().unwrap();
+        assert_eq!(job.atualizar().unwrap(), EstadoJob::Concluido);
+        assert_eq!(job.backend().passadas, [Passada::Frente, Passada::Frente]);
+    }
+
+    #[test]
+    fn so_versos_comeca_esperando_o_maco_e_nunca_envia_frente() {
+        let mut job = Job::novo(Registro::default(), lotes())
+            .unwrap()
+            .com_alcance(Alcance::SoVersos);
+        assert_eq!(job.estado(), EstadoJob::AguardandoRecolocacao);
+        assert!(job.enviar_frente().is_err());
+        job.enviar_verso().unwrap();
+        assert_eq!(job.atualizar().unwrap(), EstadoJob::AguardandoRecolocacao);
+        assert_eq!(job.lote_atual(), 1);
+        assert_eq!(job.lote_terminado(), Some(0));
+        job.enviar_verso().unwrap();
+        assert_eq!(job.atualizar().unwrap(), EstadoJob::Concluido);
+        assert_eq!(job.backend().passadas, [Passada::Verso, Passada::Verso]);
+        assert_eq!(job.backend().de_fora, [0, 1]);
+    }
+
+    #[test]
+    fn so_versos_passa_por_cima_do_lote_em_duas_faces() {
+        let mut misto = lotes();
+        misto[0].duas_faces = true;
+        let job = Job::novo(Registro::default(), misto)
+            .unwrap()
+            .com_alcance(Alcance::SoVersos);
+        assert_eq!(job.lote_atual(), 1);
+        let job = Job::novo(Registro::default(), lotes_em_duas_faces(4, 1))
+            .unwrap()
+            .com_alcance(Alcance::SoVersos);
+        assert_eq!(job.estado(), EstadoJob::Concluido);
+    }
+
+    #[test]
+    fn refazer_so_versos_volta_ao_verso_do_mesmo_lote_e_nao_a_frente() {
+        let mut job = Job::novo(Registro::default(), lotes())
+            .unwrap()
+            .com_alcance(Alcance::SoVersos);
+        job.enviar_verso().unwrap();
+        job.cancelar_envio().unwrap();
+        assert_eq!(job.estado(), EstadoJob::AguardandoRecolocacao);
+        assert_eq!(job.lote_atual(), 0);
+        job.enviar_verso().unwrap();
+        assert_eq!(job.backend().cancelados, 1);
+        assert_eq!(job.backend().passadas, [Passada::Verso, Passada::Verso]);
     }
 
     #[test]

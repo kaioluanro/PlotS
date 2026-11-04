@@ -779,14 +779,6 @@
   line-height: 14px;
 }
 
-/* Fica logo abaixo do campo, na mesma margem dele. */
-.notaDoLote {
-  margin: 0;
-  color: var(--fg-muted);
-  font-size: 10px;
-  line-height: 14px;
-}
-
 .rodape {
   display: flex;
   flex: 0 1 auto;
@@ -827,7 +819,6 @@
   flex-shrink: 0;
 }
 
-.lote,
 .grupoEnvio {
   display: flex;
   flex-direction: column;
@@ -915,6 +906,11 @@
 
 .campoLote:hover:not(:disabled) {
   border-color: var(--border-control-hover);
+}
+
+.campoLote:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .campoLote:disabled {
@@ -1102,7 +1098,7 @@
   .campoInvalido:hover:not(:disabled) {
     border-color: Highlight;
     box-shadow: inset 0 0 0 1px Highlight;
-    outline: 1px solid Highlight;
+    outline: 2px solid Highlight;
     outline-offset: -2px;
   }
 
@@ -1114,12 +1110,11 @@
   }
 }
 
-/* Em altura curta, o botao nunca cede, e os campos rolam acima dele. Cedem, nesta ordem: a dica do Modo, que
-   continua sendo lida pelo aria-describedby; lote e resumo com o nome de grupo aberto; e, com cartao
-   na tela, lote, resumo e grupos, para o cartao ganhar o espaco. */
+/* Em altura curta, o botao nunca cede, e os campos rolam acima dele. Cedem, nesta ordem: a dica da face, que
+   continua sendo lida pelo aria-describedby; o resumo com o nome de grupo aberto; e, com cartao
+   na tela, resumo e grupos, para o cartao ganhar o espaco. */
 @media (max-height: 560px) {
-  .lateral [data-dica-modo],
-  .notaDoLote {
+  .lateral [data-dica-modo] {
     display: none;
   }
 
@@ -1133,20 +1128,19 @@
     max-height: none;
   }
 
-  .lateral:has([data-nome-aberto]) .lote,
   .lateral:has([data-nome-aberto]) .resumo,
   .lateral:has([data-nome-aberto]) [data-opcoes-do-envio] {
     display: none;
   }
 
-  .lateral[data-com-cartao] .lote,
-  .lateral[data-com-cartao] [data-bloco-grupos],
+  /* Os grupos saem em altura curta com ou sem cartao: a lista de impressoras precisa de espaco. */
+  .lateral [data-bloco-grupos],
   .lateral[data-com-cartao] [data-opcoes-do-envio],
   .lateral[data-com-cartao] .resumo {
     display: none;
   }
 
-  /* Divisao em curso, ou toda marcada com cartao em andamento: o rodape nao resolve nada, e o cartao fica com o espaco. */
+  /* Toda marcada com cartao em andamento: o rodape nao resolve nada, e o cartao fica com o espaco. */
   .lateral[data-sem-destino] .rodape {
     display: none;
   }

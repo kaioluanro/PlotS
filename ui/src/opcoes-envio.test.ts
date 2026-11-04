@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { linhasDoEnvio, sequenciaDoCartao, type Cartao, type ResumoDoEnvio } from "./cartoes";
-import { conteudoDaDivisao } from "./confirmacao";
 import {
   conteudoDoApagarHistorico,
   linhasDasImpressoras,
@@ -74,7 +73,7 @@ describe("opcoes por aba", () => {
 });
 
 describe("frases da confirmacao", () => {
-  const base = { papel: null, modo: "espelho" as const, destinos: [TRASEIRA, GAVETA] };
+  const base = { papel: null, destinos: [TRASEIRA, GAVETA] };
 
   it("o papel ajustado vem com a escala, nos dois idiomas", () => {
     expect(textoDoPapelAjustado("a4", [0.94, 0.94], "pt-BR")).toBe("A4, escala 94%");
@@ -142,26 +141,8 @@ describe("frases da confirmacao", () => {
 
   it("com tres ou mais impressoras, a velocidade nao fala em duas", () => {
     const espelho = { ...base, destinos: TRES, comparacao };
-    const divisao = { ...espelho, modo: "divisao" as const };
     expect(notasDasOpcoes(espelho, "pt-BR")[0]).toMatch(/termina antes\. Cada uma imprime o documento inteiro\.$/);
     expect(notasDasOpcoes(espelho, "en")[0]).toMatch(/finishes first\. Each prints the whole document\.$/);
-    expect(notasDasOpcoes(divisao, "pt-BR")[0]).toMatch(/termina antes\. Os lotes seguem em rodízio\.$/);
-    expect(notasDasOpcoes(divisao, "en")[0]).toMatch(/finishes first\. Batches are shared in turn\.$/);
-  });
-
-  it("na divisao de tres com uma sem lote, recebem duas e a frase volta a falar em duas", () => {
-    const partes = TRES.slice(0, 2).map((destino) => ({ impressora: destino.id, faixas: [] }));
-    const notas = notasDasOpcoes({ ...base, modo: "divisao", destinos: TRES, comparacao, partes }, "pt-BR");
-    expect(notas[0]).toMatch(/As duas recebem lotes em rodízio\.$/);
-  });
-
-  it("na divisao, diz que as duas recebem lotes em rodizio e nao pede mais papel", () => {
-    expect(notasDasOpcoes({ ...base, modo: "divisao", comparacao }, "pt-BR")).toEqual([
-      "Pelo histórico deste PC, Simulada — Traseira imprime cerca de 2x mais rápido que Simulada — Gaveta e termina antes. As duas recebem lotes em rodízio.",
-    ]);
-    expect(notasDasOpcoes({ ...base, modo: "divisao", comparacao }, "en")[0]).toMatch(
-      /^Going by this PC's history, .+ prints about 2x faster than .+ and finishes first\. Both get batches in turn\.$/,
-    );
   });
 
   it("no espelho, usa o mesmo comeco e nao fala de rodizio nem de papel", () => {
@@ -175,7 +156,7 @@ describe("frases da confirmacao", () => {
 
   it("a ordem das notas e fixa: folha de controle, driver, velocidade", () => {
     const notas = notasDasOpcoes(
-      { controle: true, comparacao, modo: "divisao", destinos: [FILA, TRASEIRA, GAVETA] },
+      { controle: true, comparacao, destinos: [FILA, TRASEIRA, GAVETA] },
       "pt-BR",
     );
     expect(notas.map((nota) => nota.slice(0, 8))).toEqual(["Com folh", "Se o dri", "Pelo his"]);
@@ -210,14 +191,6 @@ describe("frases da confirmacao", () => {
       expect(notas).toEqual([]);
     });
 
-    it("na divisao, vale o que cada uma recebe", () => {
-      const fluxos = [FLUXO_AUTO, FLUXO_MANUAL];
-      const so = (inicio: number, fim: number) => [{ impressora: AUTOMATICA.id, faixas: [{ inicio, fim }] }];
-      const divisao = { modo: "divisao" as const, destinos: [AUTOMATICA], fluxos };
-      expect(notaDe({ ...divisao, partes: so(1, 4) })).toBeUndefined();
-      expect(notaDe({ ...divisao, partes: so(5, 6) })).toBe(TUDO);
-      expect(notaDe({ ...divisao, partes: so(3, 6) })).toBe(SO_MANUAIS);
-    });
   });
 
   describe("aviso da lateral quando nao sai marca", () => {
@@ -255,18 +228,6 @@ describe("frases da confirmacao", () => {
     expect(
       notasDasOpcoes({ ...base, destinos: [{ ...AUTOMATICA, driverInverte: true }], fluxos }, "pt-BR"),
     ).toEqual(["Ordem compensada: este driver inverte."]);
-  });
-
-  it("na divisao, vale so o que cada automatica recebe, e quem fica sem lote nao entra", () => {
-    const fluxos = [FLUXO_AUTO, FLUXO_MANUAL];
-    const so_do_automatico = [{ impressora: "fila:Auto", faixas: [{ inicio: 1, fim: 4 }] }];
-    expect(
-      notasDasOpcoes({ ...base, modo: "divisao", destinos: [AUTOMATICA, FILA], fluxos, partes: so_do_automatico }, "pt-BR"),
-    ).toEqual([]);
-    const com_manual = [{ impressora: "fila:Auto", faixas: [{ inicio: 3, fim: 6 }] }];
-    expect(
-      notasDasOpcoes({ ...base, modo: "divisao", destinos: [AUTOMATICA], fluxos, partes: com_manual }, "pt-BR"),
-    ).toEqual([AVISO_PT]);
   });
 
   it("a opcao do driver so aparece na automatica com papel da rota manual", () => {
@@ -358,34 +319,12 @@ describe("papel, escala e rota na confirmacao", () => {
     expect(linhasDoEnvio([AUTO, OUTRA], dados, "pt-BR", SEM_AJUSTE).notasDaRota).toEqual([]);
   });
 
-  it("na divisao, a escala fica na linha do papel e a ordem das notas se mantem", () => {
-    const destinos = [COPA, impressora("fila:Hall", "Hall", { modo: "jato" })];
-    const conteudo = conteudoDaDivisao(
-      destinos,
-      {
-        ...resumo({ lotes: 2, fluxos: [] }),
-        paginasDoDocumento: 4,
-        faixas: [],
-        divisao: [
-          { impressora: "fila:Copa", lotes: [1], viraParaLer: false },
-          { impressora: "fila:Hall", lotes: [2], viraParaLer: false },
-        ],
-      } as unknown as Parameters<typeof conteudoDaDivisao>[1],
-      null,
-      "pt-BR",
-      { papel: "A4, escala 94%", notasDoMeio: ["MEIO"] },
-    );
-    expect(conteudo.linhas).toContain("Papel: A4, escala 94%");
-    const notas = conteudo.notas ?? [];
-    expect(notas[0]).toBe("MEIO");
-    expect(conteudo.pilha?.resumo).not.toContain("A4");
-  });
 });
 
 describe("textos das opcoes", () => {
   it("a dica da folha de controle e uma frase, e o aviso do canto fica a parte", () => {
-    expect(traduzir("pt-BR", "controle.titulo")).toBe("Escreve o lote e a folha no canto do verso, em letra pequena.");
-    expect(traduzir("en", "controle.titulo")).toBe("Writes the batch and sheet in the corner of the back, in small print.");
+    expect(traduzir("pt-BR", "controle.titulo")).toBe("Escreve o número da folha no canto do verso, em letra pequena.");
+    expect(traduzir("en", "controle.titulo")).toBe("Writes the sheet number in the corner of the back, in small print.");
     expect(traduzir("pt-BR", "controle.canto")).toBe("Pode ficar sobre o que houver nesse canto.");
     expect(traduzir("en", "controle.canto")).toBe("It may overlap whatever is in that corner.");
   });
@@ -408,6 +347,7 @@ describe("textos das opcoes", () => {
 describe("folha de controle no cartao", () => {
   const cartao = (marcas?: string[]) =>
     ({
+      estado: { tipo: "aguardando" },
       sequencia: {
         frente: [{ numero: 2, girada: false }],
         verso: [{ numero: 1, girada: false }],
@@ -416,24 +356,22 @@ describe("folha de controle no cartao", () => {
     }) as unknown as Cartao;
 
   it("o resultado da simulada registra a marca", () => {
-    expect(sequenciaDoCartao(cartao(["Lote 1 · folha 1"]), "pt-BR")).toEqual([
+    expect(sequenciaDoCartao(cartao(["Folha 1"]), "pt-BR")).toEqual([
       "Frente: 2",
       "Verso: 1",
-      "Marcas: Lote 1: folha 1",
+      "Marcas: folha 1",
     ]);
   });
 
-  it("as marcas do lote viram uma linha so, na ordem em que saem", () => {
-    const marcas = ["Lote 1 · folha 4", "Lote 1 · folha 3", "Lote 1 · folha 2", "Lote 1 · folha 1"];
-    expect(sequenciaDoCartao(cartao(marcas), "pt-BR")[2]).toBe("Marcas: Lote 1: folhas 4, 3, 2, 1");
-    expect(sequenciaDoCartao(cartao(["Batch 2 · sheet 2", "Batch 2 · sheet 1"]), "en")[2]).toBe(
-      "Marks: Batch 2: sheets 2, 1",
-    );
+  it("as marcas viram uma linha so, na ordem em que saem", () => {
+    const marcas = ["Folha 4", "Folha 3", "Folha 2", "Folha 1"];
+    expect(sequenciaDoCartao(cartao(marcas), "pt-BR")[2]).toBe("Marcas: folhas 4, 3, 2, 1");
+    expect(sequenciaDoCartao(cartao(["Sheet 2", "Sheet 1"]), "en")[2]).toBe("Marks: sheets 2, 1");
   });
 
   it("marca fora do formato fica como veio, sem perder as outras", () => {
-    expect(sequenciaDoCartao(cartao(["Lote 1 · folha 2", "<b>x</b>", "Lote 3 · folha 1"]), "pt-BR")[2]).toBe(
-      "Marcas: Lote 1: folha 2; <b>x</b>; Lote 3: folha 1",
+    expect(sequenciaDoCartao(cartao(["Folha 2", "<b>x</b>", "Folha 5"]), "pt-BR")[2]).toBe(
+      "Marcas: folhas 2, 5; <b>x</b>",
     );
   });
 
@@ -457,17 +395,17 @@ describe("historico", () => {
   it("o resultado sempre vem em palavras, com os lotes que faltam", () => {
     expect(textoDoResultado(REGISTRO, "pt-BR")).toBe("Concluído");
     expect(textoDoResultado({ ...REGISTRO, resultado: "cancelado", lotes_faltando: 1 }, "pt-BR")).toBe(
-      "Cancelado · falta 1 lote",
+      "Cancelado · falta 1 trecho",
     );
     expect(textoDoResultado({ ...REGISTRO, resultado: "com_erro", lotes_faltando: 3 }, "en")).toBe(
-      "With error · 3 batches missing",
+      "With error · 3 sections missing",
     );
   });
 
   it("diz paginas, trecho e lotes", () => {
-    expect(textoDoTamanho(REGISTRO, "pt-BR")).toBe("6 páginas · 2 lotes");
+    expect(textoDoTamanho(REGISTRO, "pt-BR")).toBe("6 páginas · 2 trechos");
     expect(textoDoTamanho({ ...REGISTRO, paginas: 1, lotes: 1, intervalo: [3, 3] }, "en")).toBe(
-      "1 page · pp. 3–3 · 1 batch",
+      "1 page · pp. 3–3",
     );
   });
 

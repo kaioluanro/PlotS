@@ -58,7 +58,7 @@ fn com_calibracao_o_envio_segue_o_que_as_respostas_disseram() {
 #[test]
 fn ajustar_papel_planeja_documento_misto_em_um_formato() {
     let dimensoes = [A4, A5, A4, A5];
-    let pedido = Pedido::novo("documento.pdf".into(), 10, None).unwrap();
+    let pedido = Pedido::novo("documento.pdf".into(), None);
     assert!(planejar_pedido(&dimensoes, &pedido, PerfilImpressora::default(), false).is_err());
     let pedido = pedido.com_papel_de_ajuste(plots_core::ajuste::PapelDeAjuste::de_codigo("a4"));
     let lotes = planejar_pedido(&dimensoes, &pedido, PerfilImpressora::default(), false).unwrap();
@@ -665,23 +665,6 @@ fn simulacao_pela_thread_entrega_a_sequencia_do_modelo_e_o_resultado() {
 }
 
 #[test]
-fn lote_vindo_de_fora_fica_dentro_do_limite() {
-    assert!(Pedido::novo("a.pdf".into(), 0, None).is_err());
-    assert_eq!(
-        Pedido::novo("a.pdf".into(), 9_999, None)
-            .unwrap()
-            .folhas_por_lote,
-        50
-    );
-    assert_eq!(
-        Pedido::novo("a.pdf".into(), 7, None)
-            .unwrap()
-            .folhas_por_lote,
-        7
-    );
-}
-
-#[test]
 fn perfil_sem_modelo_nao_afirma_lado_nem_virada() {
     let recolocar = recolocar_do_perfil(None, Some("Vire pela lateral.".into()));
     assert_eq!(recolocar.lado, None);
@@ -1073,18 +1056,18 @@ fn resumo_do_envio_conta_so_as_paginas_lotes_e_papeis_do_trecho() {
     caixas.extend([CAIXA_A4; 4]);
     let pdf = PdfDeTeste::novo("resumo", &caixas);
 
-    let inteiro = resumo_do_envio(&pdf.caminho, 10, None).unwrap();
+    let inteiro = resumo_do_envio(&pdf.caminho, None).unwrap();
     assert_eq!((inteiro.paginas, inteiro.lotes), (12, 3));
 
-    let misto = resumo_do_envio(&pdf.caminho, 10, trecho(3, 8)).unwrap();
+    let misto = resumo_do_envio(&pdf.caminho, trecho(3, 8)).unwrap();
     assert_eq!((misto.paginas, misto.lotes, misto.papeis.len()), (6, 2, 2));
 
-    let so_a5 = resumo_do_envio(&pdf.caminho, 10, trecho(5, 8)).unwrap();
+    let so_a5 = resumo_do_envio(&pdf.caminho, trecho(5, 8)).unwrap();
     assert_eq!((so_a5.paginas, so_a5.lotes, so_a5.papeis.len()), (4, 1, 1));
     assert_eq!(so_a5.papeis[0].formato, "a5");
 
     assert_eq!(
-        resumo_do_envio(&pdf.caminho, 10, trecho(1, 12)).unwrap(),
+        resumo_do_envio(&pdf.caminho, trecho(1, 12)).unwrap(),
         inteiro
     );
 }
@@ -1093,7 +1076,7 @@ fn resumo_do_envio_conta_so_as_paginas_lotes_e_papeis_do_trecho() {
 fn resumo_com_papel_ajustado_informa_escala_e_unifica_os_lotes() {
     let pdf = PdfDeTeste::novo("resumo-ajustado", &[CAIXA_A4, CAIXA_A4, CAIXA_A5, CAIXA_A5]);
     let papel = plots_core::ajuste::PapelDeAjuste::de_codigo("a4").unwrap();
-    let resumo = resumo_do_envio_com_papel(&pdf.caminho, 10, None, Some(papel)).unwrap();
+    let resumo = resumo_do_envio_com_papel(&pdf.caminho, None, Some(papel)).unwrap();
     assert_eq!((resumo.lotes, resumo.papeis.len()), (1, 1));
     assert_eq!(resumo.papeis[0].formato, "a4");
     let (menor, maior) = resumo.escalas.unwrap();
@@ -1115,12 +1098,12 @@ fn resumo_do_envio_cita_a_orientacao_mista_com_o_numero_original() {
         ],
     );
     assert_eq!(
-        resumo_do_envio(&pdf.caminho, 10, trecho(3, 4))
+        resumo_do_envio(&pdf.caminho, trecho(3, 4))
             .unwrap()
             .pares_mistos,
         [(3, 4)]
     );
-    assert!(resumo_do_envio(&pdf.caminho, 10, trecho(5, 6))
+    assert!(resumo_do_envio(&pdf.caminho, trecho(5, 6))
         .unwrap()
         .pares_mistos
         .is_empty());
@@ -1137,7 +1120,7 @@ fn resumo_do_envio_recusa_trecho_fora_do_documento() {
         (1, usize::MAX),
     ] {
         assert!(
-            resumo_do_envio(&pdf.caminho, 10, trecho(inicio, fim)).is_err(),
+            resumo_do_envio(&pdf.caminho, trecho(inicio, fim)).is_err(),
             "{inicio}..{fim}"
         );
     }
@@ -1146,10 +1129,10 @@ fn resumo_do_envio_recusa_trecho_fora_do_documento() {
 #[test]
 fn pedido_guarda_o_trecho_e_a_preparacao_recusa_o_que_nao_cabe() {
     let pdf = PdfDeTeste::novo("preparar-recusa", &[CAIXA_A4; 12]);
-    let pedido = Pedido::novo(pdf.caminho.clone(), 10, trecho(3, 8)).unwrap();
+    let pedido = Pedido::novo(pdf.caminho.clone(), trecho(3, 8));
     assert_eq!(pedido.intervalo, trecho(3, 8));
     for (inicio, fim) in [(8, 3), (0, 3), (3, 13), (usize::MAX, usize::MAX)] {
-        let pedido = Pedido::novo(pdf.caminho.clone(), 10, trecho(inicio, fim)).unwrap();
+        let pedido = Pedido::novo(pdf.caminho.clone(), trecho(inicio, fim));
         let Err(motivo) = preparar_simulada(ModeloImpressora::Laser, &pedido) else {
             panic!("o trecho {inicio}..{fim} devia ser recusado");
         };
@@ -1177,7 +1160,7 @@ fn simulada_envia_o_trecho_com_os_numeros_do_documento_nos_dois_modelos() {
         (ModeloImpressora::Laser, [Some(3), Some(5), Some(7)]),
     ];
     for (modelo, verso) in casos {
-        let pedido = Pedido::novo(pdf.caminho.clone(), 10, trecho(3, 8)).unwrap();
+        let pedido = Pedido::novo(pdf.caminho.clone(), trecho(3, 8));
         let (cena, espera) = simular_trecho(modelo, pedido);
         let sequencia = espera.sequencia.clone().unwrap();
         assert_eq!(
@@ -1202,7 +1185,7 @@ fn simulada_envia_o_trecho_com_os_numeros_do_documento_nos_dois_modelos() {
 fn simulada_de_trecho_impar_leva_o_verso_em_branco_e_confere_todas_as_folhas() {
     let pdf = PdfDeTeste::novo("simular-impar", &[CAIXA_A4; 12]);
     for modelo in [ModeloImpressora::JatoDeTinta, ModeloImpressora::Laser] {
-        let pedido = Pedido::novo(pdf.caminho.clone(), 10, trecho(3, 7)).unwrap();
+        let pedido = Pedido::novo(pdf.caminho.clone(), trecho(3, 7));
         let (cena, espera) = simular_trecho(modelo, pedido);
         let sequencia = espera.sequencia.clone().unwrap();
         assert_eq!(numeros_da_face(&sequencia.frente), [None, Some(6), Some(4)]);
@@ -1403,7 +1386,7 @@ impl Cena {
         paginas: &[DimensoesPagina],
     ) {
         let backend = self.backend(leituras, false, false);
-        let pedido = Pedido::novo("x.pdf".to_owned(), 1, None).unwrap();
+        let pedido = Pedido::novo("x.pdf".to_owned(), None);
         let perfil = ModeloImpressora::JatoDeTinta.perfil();
         let lotes = planejar_pedido(paginas, &pedido, perfil, true).unwrap();
         self.gerente
@@ -1446,7 +1429,7 @@ fn proximo_lote(estado: &EstadoCartao) -> bool {
 #[test]
 fn simulada_automatica_termina_o_a4_sem_nenhum_comando_e_confere_as_folhas() {
     let pdf = PdfDeTeste::novo("automatica-a4", &[CAIXA_A4; 5]);
-    let cena = simular_automatica(Pedido::novo(pdf.caminho.clone(), 1, None).unwrap());
+    let cena = simular_automatica(Pedido::novo(pdf.caminho.clone(), None));
     let fim = cena.esperar("auto", concluido);
     assert_eq!(
         fim.resultado,
@@ -1470,7 +1453,7 @@ fn documento_misto_alterna_os_fluxos_e_so_o_papel_manual_pede_gesto() {
     caixas.extend([CAIXA_A5; 2]);
     caixas.extend([CAIXA_A4; 2]);
     let pdf = PdfDeTeste::novo("auto-misto", &caixas);
-    let cena = simular_automatica(Pedido::novo(pdf.caminho.clone(), 10, None).unwrap());
+    let cena = simular_automatica(Pedido::novo(pdf.caminho.clone(), None));
 
     let antes_do_a5 = cena.esperar("auto", proximo_lote);
     assert!(antes_do_a5.anterior_automatico);
@@ -1511,7 +1494,7 @@ fn pagina_deitada_sai_no_mesmo_trabalho_e_a_simulada_nao_recusa() {
         "auto-deitada",
         &[CAIXA_A4, CAIXA_A4, CAIXA_DEITADA, CAIXA_DEITADA],
     );
-    let cena = simular_automatica(Pedido::novo(pdf.caminho.clone(), 10, None).unwrap());
+    let cena = simular_automatica(Pedido::novo(pdf.caminho.clone(), None));
     let fim = cena.esperar("auto", concluido);
     assert_eq!(fim.total, 1);
     assert_eq!(
@@ -1524,40 +1507,12 @@ fn pagina_deitada_sai_no_mesmo_trabalho_e_a_simulada_nao_recusa() {
 }
 
 #[test]
-fn na_divisao_os_lotes_da_automatica_saem_um_depois_do_outro_sem_clique() {
-    let pdf = PdfDeTeste::novo("auto-divisao", &[CAIXA_A4; 18]);
-    let parte = ParteDoEnvio {
-        indice: 0,
-        impressoras: 2,
-        lotes: 5,
-        paginas: 18,
-    };
-    let pedido = Pedido::novo(pdf.caminho.clone(), 2, None)
-        .unwrap()
-        .com_parte(Some(parte));
-    let cena = simular_automatica(pedido);
-    let fim = cena.esperar("auto", concluido);
-    assert_eq!(fim.total, 3);
-    assert_eq!(
-        fim.resultado,
-        Some(Resultado {
-            corretas: 5,
-            folhas: 5
-        })
-    );
-    assert!(cena
-        .cartoes_de("auto")
-        .iter()
-        .all(|cartao| !proximo_lote(&cartao.estado) && !aguardando(&cartao.estado)));
-}
-
-#[test]
 fn recusa_das_duas_faces_nao_envia_nada_e_libera_a_impressora() {
     let cena = Cena::nova();
     let mut id = identidade("recusa");
     id.simulada = true;
     let plano = {
-        let pedido = Pedido::novo("x.pdf".to_owned(), 1, None).unwrap();
+        let pedido = Pedido::novo("x.pdf".to_owned(), None);
         planejar_pedido(
             &[A4; 2],
             &pedido,
@@ -1600,7 +1555,7 @@ fn recusa_depois_de_um_lote_ja_enviado_diz_em_que_lote_parou() {
     let mut id = identidade("meio");
     id.simulada = true;
     let plano = {
-        let pedido = Pedido::novo("x.pdf".to_owned(), 1, None).unwrap();
+        let pedido = Pedido::novo("x.pdf".to_owned(), None);
         planejar_pedido(
             &[A4, A4, A5, A5, A4, A4],
             &pedido,
@@ -1695,8 +1650,7 @@ fn papel_a5_na_automatica_continua_em_uma_face_por_passada() {
 const CARTA: DimensoesPagina = DimensoesPagina::new(215.9, 279.4);
 
 fn com_papel(codigo: &str) -> Pedido {
-    Pedido::novo("documento.pdf".into(), 10, None)
-        .unwrap()
+    Pedido::novo("documento.pdf".into(), None)
         .com_papel_de_ajuste(plots_core::ajuste::PapelDeAjuste::de_codigo(codigo))
 }
 
@@ -1721,10 +1675,10 @@ fn ajustar_ao_papel_decide_a_rota_pelo_papel_de_destino() {
 #[test]
 fn o_resumo_diz_a_rota_do_papel_de_destino_e_nao_a_do_original() {
     let pdf = PdfDeTeste::novo("rota-do-ajuste", &[CAIXA_A5; 4]);
-    let sem_ajuste = resumo_do_envio(&pdf.caminho, 10, None).unwrap();
+    let sem_ajuste = resumo_do_envio(&pdf.caminho, None).unwrap();
     assert!(sem_ajuste.fluxos.iter().all(|fluxo| !fluxo.automatico));
     let a4 = plots_core::ajuste::PapelDeAjuste::de_codigo("a4");
-    let ajustado = resumo_do_envio_com_papel(&pdf.caminho, 10, None, a4).unwrap();
+    let ajustado = resumo_do_envio_com_papel(&pdf.caminho, None, a4).unwrap();
     assert_eq!(
         ajustado.fluxos,
         [TrechoDoFluxo {
@@ -1739,8 +1693,7 @@ fn o_resumo_diz_a_rota_do_papel_de_destino_e_nao_a_do_original() {
 #[test]
 fn simulada_automatica_aceita_a5_ajustado_a_a4_sem_nenhum_comando() {
     let pdf = PdfDeTeste::novo("automatica-a5-em-a4", &[CAIXA_A5; 4]);
-    let pedido = Pedido::novo(pdf.caminho.clone(), 10, None)
-        .unwrap()
+    let pedido = Pedido::novo(pdf.caminho.clone(), None)
         .com_papel_de_ajuste(plots_core::ajuste::PapelDeAjuste::de_codigo("a4"));
     let cena = simular_automatica(pedido);
     let fim = cena.esperar("auto", concluido);
@@ -1756,9 +1709,8 @@ fn simulada_automatica_aceita_a5_ajustado_a_a4_sem_nenhum_comando() {
 #[test]
 fn folha_de_controle_nao_toca_no_lote_de_duas_faces_e_marca_o_manual_da_mesma_fila() {
     let perfil = ModeloImpressora::JatoDeTinta.perfil();
-    let pedido = Pedido::novo("documento.pdf".into(), 10, None)
-        .unwrap()
-        .com_controle(Some(IdiomaDaMarca::Portugues));
+    let pedido =
+        Pedido::novo("documento.pdf".into(), None).com_controle(Some(IdiomaDaMarca::Portugues));
     let lotes = planejar_pedido(&[A4, A4, A5, A5], &pedido, perfil, true).unwrap();
     assert_eq!(lotes.len(), 2);
     assert!(lotes[0].lote.duas_faces);
@@ -1770,4 +1722,503 @@ fn folha_de_controle_nao_toca_no_lote_de_duas_faces_e_marca_o_manual_da_mesma_fi
         .all(|face| face.numero.is_some()));
     assert!(!lotes[1].lote.duas_faces);
     assert!(!lotes[1].marcas.is_empty());
+}
+
+fn sem_parar(alcance: Alcance) -> Pedido {
+    Pedido::novo("documento.pdf".into(), None).com_alcance(alcance)
+}
+
+#[test]
+fn o_plano_da_janela_e_um_lote_por_papel_sem_limite_de_folhas() {
+    let perfil = ModeloImpressora::Laser.perfil();
+    let so_a4 = planejar_pedido(&[A4; 24], &sem_parar(Alcance::SoFrentes), perfil, false).unwrap();
+    assert_eq!(so_a4.len(), 1);
+    assert_eq!(so_a4[0].lote.passada1.len(), 12);
+    assert_eq!(so_a4[0].lote.passada2.len(), 12);
+    let muitas = vec![A4; 500];
+    let longo = planejar_pedido(&muitas, &sem_parar(Alcance::SoVersos), perfil, false).unwrap();
+    assert_eq!(longo.len(), 1);
+    assert_eq!(longo[0].lote.passada2.len(), 250);
+    let misto = [[A4; 4].as_slice(), &[A5; 4], &[A4; 2]].concat();
+    let lotes = planejar_pedido(&misto, &sem_parar(Alcance::SoFrentes), perfil, false).unwrap();
+    let papeis: Vec<_> = lotes.iter().map(|item| item.papel.formato).collect();
+    assert_eq!(
+        papeis,
+        [FormatoPapel::A4, FormatoPapel::A5, FormatoPapel::A4]
+    );
+}
+
+#[test]
+fn na_automatica_o_papel_aceito_e_o_feito_a_mao_saem_em_um_trabalho_por_trecho() {
+    let perfil = PerfilImpressora::default();
+    let pedido = sem_parar(Alcance::SoFrentes);
+    let lotes = planejar_pedido(&[A5; 24], &pedido, perfil, true).unwrap();
+    assert_eq!(lotes.len(), 1);
+    assert!(!lotes[0].lote.duas_faces);
+    let misto = [[A4; 4].as_slice(), &[A5; 4]].concat();
+    let lotes = planejar_pedido(&misto, &pedido, perfil, true).unwrap();
+    assert_eq!(lotes.len(), 2);
+    assert!(lotes[0].lote.duas_faces);
+    assert!(!lotes[1].lote.duas_faces);
+}
+
+#[test]
+fn a_escolha_da_face_vale_com_trecho_ajuste_e_folha_de_controle() {
+    let perfil = ModeloImpressora::JatoDeTinta.perfil();
+    let pedido = Pedido::novo("documento.pdf".into(), trecho(3, 12))
+        .com_alcance(Alcance::SoFrentes)
+        .com_controle(Some(IdiomaDaMarca::Portugues))
+        .com_papel_de_ajuste(plots_core::ajuste::PapelDeAjuste::de_codigo("a4"));
+    let misto = [[A4; 6].as_slice(), &[A5; 8]].concat();
+    let lotes = planejar_pedido(&misto, &pedido, perfil, false).unwrap();
+    assert_eq!(lotes.len(), 1);
+    let numeros: Vec<_> = lotes[0].lote.paginas.iter().map(|p| p.numero).collect();
+    let esperado: Vec<_> = (3..=12).map(Some).collect();
+    assert_eq!(numeros, esperado);
+    assert_eq!(lotes[0].marcas.len(), 5);
+    assert_eq!(lotes[0].marcas[&(0, Some(4))], "Folha 1");
+    assert_eq!(lotes[0].marcas[&(0, Some(12))], "Folha 5");
+}
+
+/// Roda a simulada ate a thread acabar e devolve o ultimo cartao.
+fn simular_face(cena: &Cena, modelo: ModeloImpressora, pedido: Pedido) -> Cartao {
+    let mut id = identidade("sim");
+    id.simulada = true;
+    assert!(cena.gerente.iniciar(id, cena.emissor(), move || {
+        preparar_simulada(modelo, &pedido)
+    }));
+    esperar_fim(cena, "sim");
+    cena.cartoes_de("sim").pop().unwrap()
+}
+
+#[test]
+fn frentes_num_trabalho_e_versos_em_outro_formam_o_maco_certo_nos_dois_modelos() {
+    let pdf = PdfDeTeste::novo("so-faces", &[CAIXA_A4; 24]);
+    for modelo in [ModeloImpressora::JatoDeTinta, ModeloImpressora::Laser] {
+        for inverte in [false, true] {
+            let cena = Cena::nova();
+            let driver = DriverDaSimulada {
+                inverte,
+                compensa: inverte,
+            };
+            let pedido = |alcance| {
+                Pedido::novo(pdf.caminho.clone(), None)
+                    .com_alcance(alcance)
+                    .com_driver_da_simulada(driver)
+            };
+            let frentes = simular_face(&cena, modelo, pedido(Alcance::SoFrentes));
+            assert_eq!(frentes.estado, EstadoCartao::FrentesProntas);
+            assert_eq!(frentes.alcance, "so_frentes");
+            assert_eq!((frentes.lote, frentes.total), (1, 1));
+            assert_eq!(frentes.folhas_do_lote, 12);
+            assert_eq!(
+                frentes.resultado, None,
+                "so a frente nao fecha nenhuma folha"
+            );
+            assert!(!ativo(&cena, "sim"), "a impressora fica livre na espera");
+            // Sem nada guardado desta sessao: e o que acontece ao voltar no dia seguinte.
+            let versos = simular_face(&Cena::nova(), modelo, pedido(Alcance::SoVersos));
+            assert_eq!(versos.estado, EstadoCartao::Concluido);
+            assert_eq!(versos.alcance, "so_versos");
+            assert_eq!(
+                versos.resultado,
+                Some(Resultado {
+                    corretas: 12,
+                    folhas: 12
+                }),
+                "{modelo:?}, driver que inverte: {inverte}",
+            );
+        }
+    }
+}
+
+/// Inicia um trabalho falso com o plano da janela.
+fn iniciar_face(
+    cena: &Cena,
+    leituras: &[Leitura],
+    dimensoes: &[DimensoesPagina],
+    alcance: Alcance,
+) {
+    let backend = cena.backend(leituras, false, false);
+    let lotes = planejar_pedido(
+        dimensoes,
+        &sem_parar(alcance),
+        PerfilImpressora::default(),
+        false,
+    )
+    .unwrap();
+    assert!(cena
+        .gerente
+        .iniciar(identidade("a"), cena.emissor(), move || {
+            Ok(Preparo {
+                condutor: Condutor::novo(
+                    backend,
+                    lotes,
+                    Espera {
+                        intervalo: Duration::from_millis(2),
+                        consultas: 1_000,
+                    },
+                )
+                .map_err(|erro| motivo_do_job(&erro))?
+                .com_alcance(alcance),
+                recolocar: recolocar_do_perfil(Some(ModeloImpressora::Laser), None),
+                vira_para_ler: true,
+            })
+        }));
+}
+
+const CONCLUIDO: Leitura = Leitura::Estado(EstadoEnvio::Concluido);
+
+#[test]
+fn so_frentes_envia_um_trabalho_sem_clique_e_a_thread_acaba_sem_verso() {
+    let cena = Cena::nova();
+    iniciar_face(
+        &cena,
+        &[Leitura::Estado(EstadoEnvio::EmAndamento), CONCLUIDO],
+        &[A4; 24],
+        Alcance::SoFrentes,
+    );
+    esperar_fim(&cena, "a");
+    assert_eq!(cena.enviados(), [Passada::Frente]);
+    let fim = cena.cartoes_de("a").pop().unwrap();
+    assert_eq!(fim.estado, EstadoCartao::FrentesProntas);
+    assert_eq!(cena.cancelados(), 0);
+}
+
+#[test]
+fn so_frentes_para_na_troca_de_papel_e_diz_o_papel_antes() {
+    let cena = Cena::nova();
+    iniciar_face(
+        &cena,
+        &[CONCLUIDO; 2],
+        &[[A4; 4].as_slice(), &[A5; 4]].concat(),
+        Alcance::SoFrentes,
+    );
+    let troca = cena.esperar("a", |estado| matches!(estado, EstadoCartao::ProximoLote));
+    assert_eq!(troca.troca_de_papel.map(|papel| papel.formato), Some("a5"));
+    assert_eq!(troca.folhas_do_lote, 2);
+    assert_eq!(
+        troca.faixa_do_lote,
+        Some(FaixaDoLote {
+            lote: 2,
+            inicio: 5,
+            fim: 8
+        })
+    );
+    std::thread::sleep(Duration::from_millis(20));
+    assert_eq!(cena.enviados(), [Passada::Frente]);
+    cena.comandar("a", Comando::EnviarFrente);
+    esperar_fim(&cena, "a");
+    assert_eq!(cena.enviados(), [Passada::Frente, Passada::Frente]);
+}
+
+#[test]
+fn so_versos_comeca_sem_clique_e_para_na_troca_de_papel_dizendo_o_maco() {
+    let cena = Cena::nova();
+    iniciar_face(
+        &cena,
+        &[CONCLUIDO; 2],
+        &[[A4; 4].as_slice(), &[A5; 4]].concat(),
+        Alcance::SoVersos,
+    );
+    let espera = cena.esperar("a", aguardando);
+    assert_eq!(cena.enviados(), [Passada::Verso]);
+    assert_eq!(espera.troca_de_papel.map(|papel| papel.formato), Some("a5"));
+    assert_eq!(espera.lote, 2);
+    std::thread::sleep(Duration::from_millis(20));
+    assert_eq!(cena.enviados(), [Passada::Verso]);
+    cena.comandar("a", Comando::EnviarVerso);
+    cena.esperar("a", |estado| matches!(estado, EstadoCartao::Concluido));
+    assert_eq!(cena.enviados(), [Passada::Verso, Passada::Verso]);
+}
+
+#[test]
+fn reimprimir_refaz_so_a_face_escolhida_e_tira_antes_o_trabalho_da_fila() {
+    for (alcance, passada) in [
+        (Alcance::SoFrentes, Passada::Frente),
+        (Alcance::SoVersos, Passada::Verso),
+    ] {
+        let cena = Cena::nova();
+        iniciar_face(
+            &cena,
+            &[Leitura::Aviso("sem papel"); 5_000],
+            &[A4; 24],
+            alcance,
+        );
+        let aviso = cena.esperar("a", |estado| matches!(estado, EstadoCartao::Aviso { .. }));
+        assert_eq!(aviso.folhas_do_lote, 12);
+        cena.comandar("a", Comando::Reimprimir);
+        cena.esperar_envios(2);
+        assert_eq!(cena.enviados(), [passada, passada]);
+        assert_eq!(cena.cancelados(), 1);
+        cena.comandar("a", Comando::Cancelar);
+        esperar_fim(&cena, "a");
+    }
+}
+
+#[test]
+fn com_trabalho_so_de_frentes_ou_so_de_versos_nenhum_comando_envia_a_outra_face() {
+    let cena = Cena::nova();
+    iniciar_face(
+        &cena,
+        &[Leitura::Estado(EstadoEnvio::EmAndamento); 5],
+        &[A4; 4],
+        Alcance::SoFrentes,
+    );
+    cena.esperar_envios(1);
+    cena.comandar("a", Comando::EnviarVerso);
+    std::thread::sleep(Duration::from_millis(20));
+    assert_eq!(cena.enviados(), [Passada::Frente]);
+    cena.comandar("a", Comando::Cancelar);
+    esperar_fim(&cena, "a");
+
+    let cena = Cena::nova();
+    iniciar_face(
+        &cena,
+        &[CONCLUIDO; 2],
+        &[[A4; 4].as_slice(), &[A5; 4]].concat(),
+        Alcance::SoVersos,
+    );
+    cena.esperar("a", aguardando);
+    cena.comandar("a", Comando::EnviarFrente);
+    std::thread::sleep(Duration::from_millis(20));
+    assert_eq!(cena.enviados(), [Passada::Verso]);
+    cena.comandar("a", Comando::Cancelar);
+    esperar_fim(&cena, "a");
+}
+
+#[test]
+fn so_versos_sem_lote_manual_acaba_sem_enviar_nada() {
+    let pdf = PdfDeTeste::novo("so-versos-auto", &[CAIXA_A4; 6]);
+    let cena = Cena::nova();
+    let pedido = Pedido::novo(pdf.caminho.clone(), None).com_alcance(Alcance::SoVersos);
+    let mut id = identidade("auto");
+    id.simulada = true;
+    assert!(cena.gerente.iniciar(id, cena.emissor(), move || {
+        preparar_simulada_automatica(ModeloImpressora::JatoDeTinta, &pedido)
+    }));
+    esperar_fim(&cena, "auto");
+    let fim = cena.cartoes_de("auto").pop().unwrap();
+    assert_eq!(fim.estado, EstadoCartao::Concluido);
+    assert_eq!(fim.resultado, None);
+}
+
+#[test]
+fn resumo_conta_as_folhas_e_o_maior_maco_por_papel() {
+    let misto = [[CAIXA_A4; 70].as_slice(), &[CAIXA_A5; 7]].concat();
+    let pdf = PdfDeTeste::novo("resumo-folhas", &misto);
+    let resumo = resumo_do_envio(&pdf.caminho, None).unwrap();
+    assert_eq!(resumo.lotes, 2);
+    assert_eq!(resumo.folhas, 39);
+    assert_eq!(resumo.maior_maco, 35);
+}
+
+#[test]
+fn resumo_com_copias_conta_as_folhas_de_cada_copia() {
+    let pdf = PdfDeTeste::novo("resumo-copias", &[CAIXA_A4; 3]);
+    let uma = resumo_do_envio_com_copias(&pdf.caminho, None, None, 1).unwrap();
+    assert_eq!((uma.folhas, uma.lotes), (2, 1));
+    let duas = resumo_do_envio_com_copias(&pdf.caminho, None, None, 2).unwrap();
+    assert_eq!((duas.folhas, duas.maior_maco, duas.lotes), (4, 4, 1));
+}
+
+#[test]
+fn copias_do_pedido_formam_um_lote_so_e_o_numero_fora_do_limite_e_recusado() {
+    let dimensoes = [A4; 3];
+    let perfil = PerfilImpressora::default();
+    let duas = Pedido::novo("x.pdf".to_owned(), None).com_copias(2);
+    let lotes = planejar_pedido(&dimensoes, &duas, perfil, false).unwrap();
+    assert_eq!(lotes.len(), 1);
+    assert_eq!(lotes[0].lote.paginas.len(), 8);
+    for numero in [0, 1000] {
+        let pedido = Pedido::novo("x.pdf".to_owned(), None).com_copias(numero);
+        assert!(
+            planejar_pedido(&dimensoes, &pedido, perfil, false).is_err(),
+            "{numero}"
+        );
+    }
+}
+
+#[test]
+fn automatico_com_copias_sai_em_um_trabalho_por_copia_e_o_resumo_conta_todos() {
+    let pedido = Pedido::novo("x.pdf".to_owned(), None).com_copias(3);
+    let lotes = planejar_pedido(&[A4; 3], &pedido, PerfilImpressora::default(), true).unwrap();
+    assert_eq!(lotes.len(), 3);
+    assert!(lotes.iter().all(|item| item.lote.duas_faces));
+    let pdf = PdfDeTeste::novo("automatico-copias", &[CAIXA_A4; 3]);
+    let resumo = resumo_do_envio_com_copias(&pdf.caminho, None, None, 3).unwrap();
+    assert_eq!((resumo.lotes_automaticos, resumo.folhas), (3, 6));
+}
+
+#[test]
+fn troca_do_pdf_entre_frente_e_verso_recusa_o_verso_antes_de_enviar() {
+    let pdf = PdfDeTeste::novo("documento-mudou-troca", &[CAIXA_A4; 2]);
+    let antes = impressao_do_arquivo(&pdf.caminho).unwrap();
+    let outro = PdfDeTeste::novo("documento-mudou-troca-b", &[CAIXA_A4; 3]);
+    std::fs::copy(&outro.caminho, &pdf.caminho).unwrap();
+    let pedido = Pedido::novo(pdf.caminho.clone(), None).com_impressao_esperada(Some(antes));
+    let erro = preparar_simulada(ModeloImpressora::Laser, &pedido)
+        .err()
+        .expect("o verso e recusado");
+    assert_eq!(erro.codigo, "documento_mudou");
+}
+
+#[test]
+fn mudar_so_a_medida_de_uma_pagina_recusa_o_verso() {
+    let pdf = PdfDeTeste::novo("documento-mudou-medida", &[CAIXA_A4; 2]);
+    let antes = impressao_do_arquivo(&pdf.caminho).unwrap();
+    let outro = PdfDeTeste::novo("documento-mudou-medida-b", &[CAIXA_A4, CAIXA_A5]);
+    std::fs::copy(&outro.caminho, &pdf.caminho).unwrap();
+    let pedido = Pedido::novo(pdf.caminho.clone(), None).com_impressao_esperada(Some(antes));
+    let erro = preparar_simulada(ModeloImpressora::Laser, &pedido)
+        .err()
+        .expect("o verso e recusado");
+    assert_eq!(erro.codigo, "documento_mudou");
+}
+
+#[test]
+fn arquivo_igual_depois_das_frentes_segue_para_o_verso() {
+    let pdf = PdfDeTeste::novo("documento-igual", &[CAIXA_A4; 2]);
+    let antes = impressao_do_arquivo(&pdf.caminho).unwrap();
+    let pedido = Pedido::novo(pdf.caminho.clone(), None).com_impressao_esperada(Some(antes));
+    assert!(preparar_simulada(ModeloImpressora::Laser, &pedido).is_ok());
+}
+
+#[test]
+fn aba_que_nao_imprimiu_frente_segue_livre_mesmo_com_o_arquivo_trocado() {
+    let pdf = PdfDeTeste::novo("documento-livre", &[CAIXA_A4; 2]);
+    let outro = PdfDeTeste::novo("documento-livre-b", &[CAIXA_A4; 3]);
+    std::fs::copy(&outro.caminho, &pdf.caminho).unwrap();
+    let pedido = Pedido::novo(pdf.caminho.clone(), None);
+    assert!(preparar_simulada(ModeloImpressora::Laser, &pedido).is_ok());
+}
+
+#[test]
+fn simulada_automatica_com_gesto_de_laser_nao_pede_virar_o_maco() {
+    let pdf = PdfDeTeste::novo("automatica-sem-virar", &[CAIXA_A4; 4]);
+    let pedido = Pedido::novo(pdf.caminho.clone(), None);
+    let preparo = preparar_simulada_automatica(ModeloImpressora::Laser, &pedido)
+        .ok()
+        .expect("a simulada automatica prepara");
+    assert!(!preparo.vira_para_ler);
+}
+
+#[test]
+fn ultima_frente_aceita_prevalece_na_impressao_guardada() {
+    let aba = 910_002;
+    let a = PdfDeTeste::novo("frente-aceita", &[CAIXA_A4; 2]);
+    let pedido_a = Pedido::novo(a.caminho.clone(), None)
+        .com_alcance(Alcance::SoFrentes)
+        .com_aba(aba);
+    assert!(preparar_simulada(ModeloImpressora::Laser, &pedido_a).is_ok());
+    let impressao_a = impressao_do_arquivo(&a.caminho).unwrap();
+    assert_eq!(impressao_guardada(aba), Some(impressao_a));
+    let outro = PdfDeTeste::novo("frente-aceita-b", &[CAIXA_A4; 3]);
+    std::fs::copy(&outro.caminho, &a.caminho).unwrap();
+    assert!(preparar_simulada(ModeloImpressora::Laser, &pedido_a).is_ok());
+    let impressao_b = impressao_do_arquivo(&a.caminho).unwrap();
+    assert_eq!(impressao_guardada(aba), Some(impressao_b));
+    esquecer_impressao(aba);
+}
+
+#[test]
+fn frente_guarda_o_que_leu_mesmo_com_o_arquivo_trocado_depois_do_pedido() {
+    let aba = 920_001;
+    let pdf = PdfDeTeste::novo("frente-le-depois", &[CAIXA_A4; 2]);
+    let pedido = Pedido::novo(pdf.caminho.clone(), None)
+        .com_alcance(Alcance::SoFrentes)
+        .com_aba(aba);
+    let outro = PdfDeTeste::novo("frente-le-depois-b", &[CAIXA_A4; 3]);
+    std::fs::copy(&outro.caminho, &pdf.caminho).unwrap();
+    let lido_pela_frente = impressao_do_arquivo(&pdf.caminho).unwrap();
+    assert!(preparar_simulada(ModeloImpressora::Laser, &pedido).is_ok());
+    assert_eq!(impressao_guardada(aba), Some(lido_pela_frente.clone()));
+    let verso = Pedido::novo(pdf.caminho.clone(), None)
+        .com_alcance(Alcance::SoVersos)
+        .com_impressao_esperada(impressao_guardada(aba));
+    assert!(preparar_simulada(ModeloImpressora::Laser, &verso).is_ok());
+    esquecer_impressao(aba);
+}
+
+#[test]
+fn frente_cujo_preparo_falha_nao_guarda_impressao_nenhuma() {
+    let aba = 920_002;
+    let pdf = PdfDeTeste::novo("frente-falha-preparo", &[CAIXA_A4; 2]);
+    let pedido = Pedido::novo(pdf.caminho.clone(), None)
+        .com_alcance(Alcance::SoFrentes)
+        .com_aba(aba)
+        .com_copias(0);
+    assert!(preparar_simulada(ModeloImpressora::Laser, &pedido).is_err());
+    assert_eq!(impressao_guardada(aba), None);
+    let sumido = Pedido::novo(format!("{}-nao-existe.pdf", pdf.caminho), None)
+        .com_alcance(Alcance::SoFrentes)
+        .com_aba(aba);
+    assert!(preparar_simulada(ModeloImpressora::Laser, &sumido).is_err());
+    assert_eq!(impressao_guardada(aba), None);
+}
+
+#[test]
+fn fechar_a_aba_esquece_a_impressao_da_frente() {
+    let aba = 910_003;
+    guardar_impressao_da_frente(aba, "0000000000000000:0".to_owned());
+    esquecer_impressao(aba);
+    assert_eq!(impressao_guardada(aba), None);
+}
+
+#[test]
+fn impressao_do_pdf_lido_e_a_mesma_do_arquivo_em_disco() {
+    let pdf = PdfDeTeste::novo("impressao-lida", &[CAIXA_A4, CAIXA_A5]);
+    let lido = leitura_pdf::ler_pdf(&pdf.caminho).unwrap();
+    assert_eq!(lido.impressao, impressao_do_arquivo(&pdf.caminho).unwrap());
+}
+
+#[test]
+fn verso_recusa_quando_o_pdf_lido_nao_bate_com_a_frente() {
+    let pdf = PdfDeTeste::novo("verso-confere-bytes", &[CAIXA_A4; 2]);
+    let outro = PdfDeTeste::novo("verso-confere-bytes-b", &[CAIXA_A4; 3]);
+    let lido_outro = leitura_pdf::ler_pdf(&outro.caminho).unwrap();
+    let pedido = Pedido::novo(pdf.caminho.clone(), None)
+        .com_impressao_esperada(Some(lido_outro.impressao.clone()));
+    let erro = preparar_simulada(ModeloImpressora::Laser, &pedido)
+        .err()
+        .expect("o verso e recusado");
+    assert_eq!(erro.codigo, "documento_mudou");
+}
+
+#[test]
+fn copias_com_inversao_e_giro_do_perfil_valem_para_o_maco_inteiro() {
+    let dimensoes = [A4; 3];
+    let ajustado = PerfilImpressora {
+        passada1_inversa: true,
+        passada2_inversa: true,
+        verso_girar_180: true,
+        ..PerfilImpressora::default()
+    };
+    let neutro = PerfilImpressora {
+        passada1_inversa: false,
+        passada2_inversa: false,
+        verso_girar_180: false,
+        ..PerfilImpressora::default()
+    };
+    for copias in [2usize, 3] {
+        let pedido = Pedido::novo("x.pdf".to_owned(), None).com_copias(copias);
+        let com = planejar_pedido(&dimensoes, &pedido, ajustado, false).unwrap();
+        let sem = planejar_pedido(&dimensoes, &pedido, neutro, false).unwrap();
+        assert_eq!(
+            com.len(),
+            1,
+            "{copias} cópias formam um trabalho de frentes"
+        );
+        let numeros = |passada: &[plots_core::Pagina]| -> Vec<Option<usize>> {
+            passada.iter().map(|pagina| pagina.numero).collect()
+        };
+        let mut esperada1 = numeros(&sem[0].lote.passada1);
+        esperada1.reverse();
+        let mut esperada2 = numeros(&sem[0].lote.passada2);
+        esperada2.reverse();
+        assert_eq!(numeros(&com[0].lote.passada1), esperada1, "{copias} cópias");
+        assert_eq!(numeros(&com[0].lote.passada2), esperada2, "{copias} cópias");
+        assert!(com[0].lote.passada2.iter().all(|pagina| pagina.girar_180));
+        assert!(sem[0].lote.passada2.iter().all(|pagina| !pagina.girar_180));
+    }
 }

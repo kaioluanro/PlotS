@@ -4,8 +4,8 @@ import {
   acoesDoCartao,
   alinhamentoDoCartao,
   cartaoPedeAcao,
+  linhaDaCopia,
   linhaDoLote,
-  linhasDoLote,
   linhasDoCartao,
   nomeDoCartao,
   nomeDoPapel,
@@ -13,15 +13,16 @@ import {
   rotuloDaFrente,
   rotuloDoVerso,
   sequenciaDoCartao,
+  textoDasFolhas,
   textoDoEstadoDoCartao,
   tomDoCartao,
+  trechosPorCopia,
   type Cartao,
   type Comando,
   type PapelDaLinha,
 } from "../cartoes";
 import { desenhoDoCartao, posicaoDoCartao, rolarAteOCartao } from "../cartoes-gesto";
 import { t } from "../i18n";
-import modo from "./BlocoModo.module.css";
 import botoes from "./Botao.module.css";
 import styles from "./CartaoImpressao.module.css";
 import { FiguraGesto } from "./FiguraGesto";
@@ -61,11 +62,21 @@ const CLASSE_DO_PAPEL = {
 interface Props {
   cartao: Cartao;
   aoComandar: (cartao: Cartao, comando: Comando) => void;
+  aoPedirVerso: (cartao: Cartao) => void;
   aoPedirCancelar: (cartao: Cartao) => void;
   aoDispensar: (cartao: Cartao) => void;
+  /** Por que o botao de versos deste cartao nao envia agora: ele fica desabilitado, com o motivo no titulo. */
+  motivoDoVerso?: string | null;
 }
 
-export function CartaoImpressao({ cartao, aoComandar, aoPedirCancelar, aoDispensar }: Props) {
+export function CartaoImpressao({
+  cartao,
+  aoComandar,
+  aoPedirVerso,
+  aoPedirCancelar,
+  aoDispensar,
+  motivoDoVerso = null,
+}: Props) {
   const nome = nomeDoCartao(cartao);
   const acoes = acoesDoCartao(cartao);
   const resultado = resultadoDoCartao(cartao);
@@ -74,8 +85,17 @@ export function CartaoImpressao({ cartao, aoComandar, aoPedirCancelar, aoDispens
   const raiz = useRef<HTMLElement>(null);
   const topo = useRef<HTMLDivElement>(null);
   const linhaDoEstado = useRef<HTMLParagraphElement>(null);
+  const botaoVerso = useRef<HTMLButtonElement>(null);
   const pedeAcao = cartaoPedeAcao(cartao);
   const desenho = desenhoDoCartao(cartao);
+  // Com as frentes prontas, o botao de versos do primeiro cartao fica a vista na lista. Os outros cartoes
+  // nao puxam a lista: senao o ultimo a mudar de estado levaria a rolagem para longe do primeiro.
+  useEffect(() => {
+    const elemento = raiz.current;
+    if (cartao.estado.tipo !== "frentes_prontas" || !elemento) return;
+    if (elemento.previousElementSibling?.tagName !== "H3") return;
+    botaoVerso.current?.scrollIntoView({ block: "nearest" });
+  }, [cartao.estado.tipo]);
   // Quando o cartao passa a pedir algo, a lista desce ate ele; o foco de quem usa o teclado fica onde esta.
   useEffect(() => {
     const elemento = raiz.current;
@@ -124,14 +144,84 @@ export function CartaoImpressao({ cartao, aoComandar, aoPedirCancelar, aoDispens
     return () => observador.disconnect();
   }, []);
   const classeDoBotao = `${botoes.botao} ${botoes.secundario} ${styles.botaoDoCartao}`;
-  const lote = linhasDoLote(cartao);
-  const dados = [
-    lote ? lote.detalhe : linhaDoLote(cartao),
-    cartao.papel ? nomeDoPapel(cartao.papel) : null,
-  ].filter((parte) => parte !== null);
+  // Lote automatico de uma copia, em trabalho com varias: a linha diz a copia, o trecho e as folhas.
+  const linhaCopia = linhaDaCopia(cartao);
+  // Concluido, com varias copias e mais de um trecho por copia: as folhas do ultimo trecho nao sao as do trabalho, e nao aparecem.
+  const concluidoEmTrechos =
+    cartao.estado.tipo === "concluido" &&
+    cartao.temAutomatico === true &&
+    (cartao.copias ?? 1) > 1 &&
+    trechosPorCopia(cartao) > 1;
+  const dados =
+    linhaCopia !== null
+      ? [linhaCopia]
+      : concluidoEmTrechos
+        ? []
+        : [
+          linhaDoLote(cartao),
+          cartao.folhasDoLote ? textoDasFolhas(cartao.folhasDoLote) : null,
+          cartao.papel ? nomeDoPapel(cartao.papel) : null,
+        ].filter((parte) => parte !== null);
   const problema = cartao.estado.tipo === "erro" || cartao.estado.tipo === "aviso";
+  // Frases que saem depois do botao da acao, como a de espera das frentes prontas.
+  const linhasAntes = linhas.filter((linha) => linha.depoisDaAcao !== true);
+  const linhasDepois = linhas.filter((linha) => linha.depoisDaAcao === true);
   // A figura fica logo antes da frase que ela ilustra.
-  const inicioDoGesto = desenho === null ? -1 : linhas.findIndex((linha) => linha.papel === "gesto");
+  const inicioDoGesto = desenho === null ? -1 : linhasAntes.findIndex((linha) => linha.papel === "gesto");
+  // Nas frentes prontas, a fileira de acoes vem logo abaixo do estado, antes do gesto: a confirmacao do verso repete o gesto.
+  const acoesNoTopo = cartao.estado.tipo === "frentes_prontas";
+  const blocoDeAcoes = (
+    <div className={styles.acoes}>
+      {acoes.frente && (
+        <button type="button" className={classeDoBotao} onClick={() => aoComandar(cartao, "enviar_frente")}>
+          {rotuloDaFrente(cartao)}
+        </button>
+      )}
+      {acoes.pedirVerso && (
+        <button
+          ref={botaoVerso}
+          type="button"
+          className={classeDoBotao}
+          disabled={motivoDoVerso !== null}
+          title={motivoDoVerso ?? undefined}
+          onClick={() => aoPedirVerso(cartao)}
+        >
+          {rotuloDoVerso(cartao)}
+        </button>
+      )}
+      {acoes.verso.visivel && (
+        // Fica visivel e desabilitado durante a passada de verso: o clique duplo nao cai em outra acao.
+        <button
+          type="button"
+          className={classeDoBotao}
+          disabled={!acoes.verso.liberado}
+          onClick={() => aoComandar(cartao, "enviar_verso")}
+        >
+          {rotuloDoVerso(cartao)}
+        </button>
+      )}
+      {acoes.continuar && (
+        <button type="button" className={classeDoBotao} onClick={() => aoComandar(cartao, "continuar_esperando")}>
+          {t("cartao.continuar")}
+        </button>
+      )}
+      {acoes.reimprimir && (
+        <button type="button" className={classeDoBotao} onClick={() => aoComandar(cartao, "reimprimir")}>
+          {t("cartao.reimprimir")}
+        </button>
+      )}
+      {acoes.cancelar && (
+        <button type="button" className={classeDoBotao} onClick={() => aoPedirCancelar(cartao)}>
+          {t("cartao.cancelar")}
+        </button>
+      )}
+      {acoes.dispensar && (
+        <button type="button" className={classeDoBotao} onClick={() => aoDispensar(cartao)}>
+          {t("cartao.dispensar")}
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <article ref={raiz} className={styles.cartao} aria-label={nome} tabIndex={-1}>
@@ -145,11 +235,8 @@ export function CartaoImpressao({ cartao, aoComandar, aoPedirCancelar, aoDispens
         <span className={`${styles.ponto} ${CLASSE_DO_TOM[tomDoCartao(cartao)]}`} aria-hidden="true" />
         <span>{textoDoEstadoDoCartao(cartao)}</span>
       </p>
-      {lote?.titulo != null && <p className={modo.loteTitulo}>{lote.titulo}</p>}
-      {dados.length > 0 && (
-        <p className={lote ? modo.loteDetalhe : styles.dados}>{dados.join(" · ")}</p>
-      )}
-      {lote?.semImprimir != null && <p className={modo.loteTitulo}>{lote.semImprimir}</p>}
+      {acoesNoTopo && blocoDeAcoes}
+      {dados.length > 0 && <p className={styles.dados}>{dados.join(" · ")}</p>}
       {cartao.ajusteRecusado === true && (
         <p className={styles.ajusteRecusado}>
           <CircleAlert size={12} className={styles.iconeAjusteRecusado} aria-hidden="true" />
@@ -166,7 +253,7 @@ export function CartaoImpressao({ cartao, aoComandar, aoPedirCancelar, aoDispens
         </div>
       )}
       <div className={styles.frases} aria-live="polite">
-        {linhas.map((linha, indice) => (
+        {linhasAntes.map((linha, indice) => (
           <Fragment key={`${indice}-${linha.texto}`}>
             {desenho !== null && indice === inicioDoGesto && <FiguraGesto desenho={desenho} />}
             <p
@@ -184,56 +271,16 @@ export function CartaoImpressao({ cartao, aoComandar, aoPedirCancelar, aoDispens
         ))}
       </div>
       {resultado !== null && <p className={styles.resultado}>{resultado}</p>}
-      <div className={styles.acoes}>
-        {acoes.frente && (
-          <button
-            type="button"
-            className={classeDoBotao}
-            onClick={() => aoComandar(cartao, "enviar_frente")}
-          >
-            {rotuloDaFrente(cartao)}
-          </button>
-        )}
-        {acoes.verso.visivel && (
-          // Fica visivel e desabilitado durante a passada de verso: o clique duplo nao cai em outra acao.
-          <button
-            type="button"
-            className={classeDoBotao}
-            disabled={!acoes.verso.liberado}
-            onClick={() => aoComandar(cartao, "enviar_verso")}
-          >
-            {rotuloDoVerso(cartao)}
-          </button>
-        )}
-        {acoes.continuar && (
-          <button
-            type="button"
-            className={classeDoBotao}
-            onClick={() => aoComandar(cartao, "continuar_esperando")}
-          >
-            {t("cartao.continuar")}
-          </button>
-        )}
-        {acoes.reimprimir && (
-          <button
-            type="button"
-            className={classeDoBotao}
-            onClick={() => aoComandar(cartao, "reimprimir")}
-          >
-            {t("cartao.reimprimir")}
-          </button>
-        )}
-        {acoes.cancelar && (
-          <button type="button" className={classeDoBotao} onClick={() => aoPedirCancelar(cartao)}>
-            {t("cartao.cancelar")}
-          </button>
-        )}
-        {acoes.dispensar && (
-          <button type="button" className={classeDoBotao} onClick={() => aoDispensar(cartao)}>
-            {t("cartao.dispensar")}
-          </button>
-        )}
-      </div>
+      {!acoesNoTopo && blocoDeAcoes}
+      {linhasDepois.length > 0 && (
+        <div className={styles.frases}>
+          {linhasDepois.map((linha, indice) => (
+            <p key={`${indice}-${linha.texto}`} className={CLASSE_DO_PAPEL[linha.papel]}>
+              {linha.texto}
+            </p>
+          ))}
+        </div>
+      )}
     </article>
   );
 }

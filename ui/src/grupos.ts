@@ -1,18 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { traduzir, idiomaAtual, type Chave, type Idioma } from "./i18n";
-import type { ModoDistribuicao } from "./tabs";
 
-/** Uma selecao de impressoras e um modo, com um nome; fica no arquivo de perfis. */
+/** Uma selecao de impressoras, com um nome; fica no arquivo de perfis. */
 export interface GrupoSalvo {
   nome: string;
   impressoras: string[];
-  modo: ModoDistribuicao;
 }
 
 /** O grupo pronto para marcar: quem ainda existe, e os nomes de quem sumiu. */
 export interface GrupoAplicado {
   impressoras: string[];
-  modo: ModoDistribuicao;
   ausentes: string[];
 }
 
@@ -31,9 +28,8 @@ export function listarGrupos(): Promise<ListaDeGrupos> {
 export function salvarGrupo(
   nome: string,
   impressoras: readonly string[],
-  modo: ModoDistribuicao,
 ): Promise<GrupoSalvo[]> {
-  return invoke<GrupoSalvo[]>("salvar_grupo", { nome, impressoras, modo });
+  return invoke<GrupoSalvo[]>("salvar_grupo", { nome, impressoras });
 }
 
 export function apagarGrupo(nome: string): Promise<GrupoSalvo[]> {
@@ -99,12 +95,10 @@ export function notaValeNaSelecao(
 
 /** O grupo so continua escolhido na lista enquanto a selecao for a dele. */
 export function selecaoCoincide(
-  aplicado: { impressoras: readonly string[]; modo: ModoDistribuicao },
+  aplicado: { impressoras: readonly string[] },
   marcadas: readonly string[],
-  modo: ModoDistribuicao,
 ): boolean {
   return (
-    aplicado.modo === modo &&
     aplicado.impressoras.length === marcadas.length &&
     aplicado.impressoras.every((impressora) => marcadas.includes(impressora))
   );

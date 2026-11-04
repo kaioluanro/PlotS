@@ -38,7 +38,9 @@ export function desenhoDoGesto(recolocar: Recolocar | null): DesenhoDoGesto | nu
 
 /** A figura so existe enquanto o cartao espera a recolocacao. */
 export function desenhoDoCartao(cartao: Cartao): DesenhoDoGesto | null {
-  return cartao.estado.tipo === "aguardando" ? desenhoDoGesto(cartao.recolocar) : null;
+  return cartao.estado.tipo === "aguardando" || cartao.estado.tipo === "frentes_prontas"
+    ? desenhoDoGesto(cartao.recolocar)
+    : null;
 }
 
 /** O minimo que `rolarAteOCartao` usa da lista: um elemento real da pagina serve. */

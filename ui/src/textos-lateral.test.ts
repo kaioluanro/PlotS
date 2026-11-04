@@ -45,6 +45,9 @@ describe("vocabulario da interface", () => {
     "aviso.filasCodigo",
     "confirmar.consequencia",
     "confirmar.consequenciaVarios",
+    // Dizem o que a fila do Windows fez com as frentes, e a fila é o assunto dessas frases.
+    "face.estado.frentesProntas",
+    "face.envio.jaSaiu",
   ]);
 
   // O cartao diz o que a fila confirmou, porque o PlotS nao sabe mais do que isso sobre o papel.

@@ -1,14 +1,5 @@
-import {
-  cartaoEmAndamento,
-  comCartao,
-  ehRecusaDeOcupada,
-  lotesSemImprimir,
-  type Cartao,
-  type FaixaDoLote,
-  type PapelDoCartao,
-} from "./cartoes";
-import { limitarAoIntervaloDoLote, LOTE_PADRAO } from "./impressoras";
-import { normalizarRascunho, type RascunhoIntervalo } from "./intervalo";
+import { cartaoSeguraAAba, comCartao, ehRecusaDeOcupada, cartaoEmAndamento, type Cartao } from "./cartoes";
+import { normalizarRascunho, type RascunhoIntervalo, type TrechoDoEnvio } from "./intervalo";
 
 export interface Documento {
   caminho: string;
@@ -21,32 +12,41 @@ export type PaginasDaAba =
   | { estado: "conhecido"; total: number }
   | { estado: "recusado"; motivo: string };
 
-/** Espelho: cada impressora imprime tudo. Divisao: os lotes sao repartidos entre elas. */
-export type ModoDistribuicao = "espelho" | "divisao";
 export type PapelDeAjuste = "a4" | "a5" | "carta" | "oficio" | "legal";
 
-/** So quem recebe de fato conta: com menos de duas, o modo nao altera o envio. */
-export function modoDoEnvio(modo: ModoDistribuicao, destinos: number): ModoDistribuicao {
-  return destinos >= 2 ? modo : "espelho";
+/** O que o proximo envio imprime, em todas as marcadas. So a pessoa muda. */
+export type FaceDoEnvio = "frente" | "verso";
+
+/** Com o que saiu a ultima frente desta aba: o verso tem de usar o mesmo trecho e o mesmo papel. */
+export interface FrenteEnviada {
+  trecho: TrechoDoEnvio | null;
+  papel: PapelDeAjuste | null;
 }
 
-/** O que cabe a uma impressora na divisao, com os lotes numerados como no documento. */
-export interface ParteDaDivisao {
-  impressora: string;
-  nome: string;
-  lotes: readonly number[];
-  /** As paginas de cada lote, como o backend as planejou. */
-  faixas?: readonly FaixaDoLote[];
-  /** Sem valor, o perfil nao afirma como o maco sai. */
-  viraParaLer: boolean | null;
-  /** O que faltava quando o cartao foi dispensado: a junção continua sabendo depois. */
-  semImprimirAoDispensar?: readonly number[];
+/** Cópias do documento por face. Trocar a face não muda nenhum dos dois números. */
+export interface CopiasDaAba {
+  frente: number;
+  verso: number;
 }
 
-export interface DivisaoDoEnvio {
-  partes: readonly ParteDaDivisao[];
-  /** Os papeis do envio, para a linha que resume o que saiu. */
-  papeis?: readonly PapelDoCartao[];
+/** Maior número de cópias que a janela aceita. */
+export const COPIAS_MAXIMAS = 999;
+
+export function ehQuantidadeDeCopias(valor: number): boolean {
+  return Number.isInteger(valor) && valor >= 1 && valor <= COPIAS_MAXIMAS;
+}
+
+/** Le o texto digitado no campo: so digitos, com espacos em volta; qualquer outra coisa nao e numero. */
+export function lerQuantidadeDeCopias(texto: string): number | null {
+  const limpo = texto.trim();
+  if (!/^\d{1,4}$/.test(limpo)) return null;
+  const numero = Number(limpo);
+  return ehQuantidadeDeCopias(numero) ? numero : null;
+}
+
+/** Abas sem o campo (antes da quantidade) valem uma cópia. */
+export function copiasDaFace(aba: Pick<Aba, "copias">, face: FaceDoEnvio): number {
+  return aba.copias?.[face] ?? 1;
 }
 
 export interface Aba {
@@ -55,16 +55,18 @@ export interface Aba {
   impressaoEmAndamento: boolean;
   /** Identificadores das impressoras marcadas neste documento. */
   impressorasMarcadas: readonly string[];
-  /** Folhas por lote, sempre dentro do intervalo aceito. */
-  tamanhoLote: number;
   /** De qual a qual pagina, como foi escrito; `null` e o documento inteiro. */
   intervalo: RascunhoIntervalo | null;
-  modo: ModoDistribuicao;
+  face: FaceDoEnvio;
   papelDeAjuste?: PapelDeAjuste | null;
   /** Escreve o lote e a folha no verso de cada folha. */
   controle?: boolean;
-  /** O ultimo envio em divisao; sem valor, o ultimo foi em espelho. */
-  divisao: DivisaoDoEnvio | null;
+  /** A ultima frente enviada desta aba. */
+  frenteEnviada: FrenteEnviada | null;
+  /** Quem ja entregou as frentes desta aba: mandar de novo gasta papel, e a confirmacao avisa. */
+  frentesProntas: readonly string[];
+  /** Quantas cópias sai de cada face. O Verso começa com o número da Frente. */
+  copias?: CopiasDaAba;
   paginas: PaginasDaAba;
   /** Um cartao por impressora; trocar de aba troca a lista, e os trabalhos seguem. */
   cartoes: readonly Cartao[];
@@ -90,13 +92,13 @@ export type AcaoAbas =
   | { tipo: "cancelar_fechamento" }
   | { tipo: "marcar_impressao"; id: number; emAndamento: boolean }
   | { tipo: "alternar_impressora"; id: number; impressora: string }
-  | { tipo: "definir_lote"; id: number; tamanho: number }
   | { tipo: "definir_intervalo"; id: number; intervalo: RascunhoIntervalo | null }
-  | { tipo: "definir_modo"; id: number; modo: ModoDistribuicao }
+  | { tipo: "definir_face"; id: number; face: FaceDoEnvio }
+  | { tipo: "definir_copias"; id: number; face: FaceDoEnvio; valor: number }
   | { tipo: "definir_papel_ajuste"; id: number; papel: PapelDeAjuste | null }
   | { tipo: "definir_controle"; id: number; ligado: boolean }
-  | { tipo: "aplicar_grupo"; id: number; impressoras: readonly string[]; modo: ModoDistribuicao }
-  | { tipo: "divisao_enviada"; id: number; divisao: DivisaoDoEnvio | null }
+  | { tipo: "aplicar_grupo"; id: number; impressoras: readonly string[] }
+  | { tipo: "frente_enviada"; id: number; frente: FrenteEnviada }
   | { tipo: "paginas_contadas"; id: number; total: number }
   | { tipo: "paginas_recusadas"; id: number; motivo: string }
   | { tipo: "cartao"; cartao: Cartao }
@@ -170,43 +172,6 @@ function mudarAba(estado: EstadoAbas, id: number, mudar: (aba: Aba) => Aba): Est
   return { ...estado, abas: estado.abas.map((aba) => (aba.id === id ? mudar(aba) : aba)) };
 }
 
-/**
- * O backend conta os lotes por impressora; a interface guarda o numero deles no documento. Um
- * trabalho anterior que ainda corre fica com os numeros que ja tinha, mesmo depois de outro envio.
- */
-function comLotesDoDocumento(aba: Aba, novo: Cartao): Cartao {
-  const parte = aba.divisao?.partes.find((item) => item.impressora === novo.impressora);
-  if (parte) {
-    return {
-      ...novo,
-      lotesNoDocumento: parte.lotes,
-      ...(parte.faixas ? { faixasNoDocumento: parte.faixas } : {}),
-    };
-  }
-  if (novo.estado.tipo === "preparando") return novo;
-  const anterior = aba.cartoes.find((cartao) => cartao.impressora === novo.impressora);
-  return anterior?.lotesNoDocumento
-    ? {
-        ...novo,
-        lotesNoDocumento: anterior.lotesNoDocumento,
-        ...(anterior.faixasNoDocumento ? { faixasNoDocumento: anterior.faixasNoDocumento } : {}),
-      }
-    : novo;
-}
-
-function divisaoAoDispensar(aba: Aba, impressora: string): DivisaoDoEnvio | null {
-  const cartao = aba.cartoes.find((item) => item.impressora === impressora);
-  if (!aba.divisao || !cartao) return aba.divisao;
-  return {
-    ...aba.divisao,
-    partes: aba.divisao.partes.map((parte) =>
-      parte.impressora === impressora
-        ? { ...parte, semImprimirAoDispensar: lotesSemImprimir(cartao) }
-        : parte,
-    ),
-  };
-}
-
 export function reduzirAbas(estado: EstadoAbas, acao: AcaoAbas): EstadoAbas {
   switch (acao.tipo) {
     case "abrir": {
@@ -216,12 +181,13 @@ export function reduzirAbas(estado: EstadoAbas, acao: AcaoAbas): EstadoAbas {
         documento: acao.documento,
         impressaoEmAndamento: false,
         impressorasMarcadas: [],
-        tamanhoLote: LOTE_PADRAO,
         intervalo: null,
-        modo: "espelho",
+        face: "frente",
         papelDeAjuste: null,
         controle: false,
-        divisao: null,
+        frenteEnviada: null,
+        frentesProntas: [],
+        copias: { frente: 1, verso: 1 },
         paginas: { estado: "contando" },
         cartoes: [],
       };
@@ -261,36 +227,35 @@ export function reduzirAbas(estado: EstadoAbas, acao: AcaoAbas): EstadoAbas {
           ? aba.impressorasMarcadas.filter((impressora) => impressora !== acao.impressora)
           : [...aba.impressorasMarcadas, acao.impressora],
       }));
-    case "definir_lote": {
-      if (!Number.isInteger(acao.tamanho)) return estado;
-      const tamanhoLote = limitarAoIntervaloDoLote(acao.tamanho);
-      return mudarAba(estado, acao.id, (aba) => ({ ...aba, tamanhoLote }));
-    }
     case "definir_intervalo":
       return mudarAba(estado, acao.id, (aba) =>
         aba.paginas.estado === "conhecido"
           ? { ...aba, intervalo: normalizarRascunho(acao.intervalo, aba.paginas) }
           : aba,
       );
-    case "definir_modo":
-      return mudarAba(estado, acao.id, (aba) => ({ ...aba, modo: acao.modo }));
+    case "definir_face":
+      return mudarAba(estado, acao.id, (aba) => ({ ...aba, face: acao.face }));
+    case "definir_copias":
+      return mudarAba(estado, acao.id, (aba) => {
+        if (!ehQuantidadeDeCopias(acao.valor)) return aba;
+        const atuais = aba.copias ?? { frente: 1, verso: 1 };
+        // A Frente leva o numero ao Verso; o Verso muda so o seu.
+        return {
+          ...aba,
+          copias:
+            acao.face === "frente"
+              ? { frente: acao.valor, verso: acao.valor }
+              : { ...atuais, verso: acao.valor },
+        };
+      });
     case "definir_papel_ajuste":
       return mudarAba(estado, acao.id, (aba) => ({ ...aba, papelDeAjuste: acao.papel }));
     case "definir_controle":
       return mudarAba(estado, acao.id, (aba) => ({ ...aba, controle: acao.ligado }));
     case "aplicar_grupo":
-      return mudarAba(estado, acao.id, (aba) => ({
-        ...aba,
-        impressorasMarcadas: acao.impressoras,
-        modo: acao.modo,
-      }));
-    case "divisao_enviada":
-      // Os numeros e a juncao dependem da divisao em curso: nenhum envio a apaga enquanto ela corre.
-      return mudarAba(estado, acao.id, (aba) =>
-        aba.divisao !== null && aba.cartoes.some(cartaoEmAndamento)
-          ? aba
-          : { ...aba, divisao: acao.divisao },
-      );
+      return mudarAba(estado, acao.id, (aba) => ({ ...aba, impressorasMarcadas: acao.impressoras }));
+    case "frente_enviada":
+      return mudarAba(estado, acao.id, (aba) => ({ ...aba, frenteEnviada: acao.frente }));
     case "paginas_contadas":
       return mudarAba(estado, acao.id, (aba) => ({
         ...aba,
@@ -312,20 +277,23 @@ export function reduzirAbas(estado: EstadoAbas, acao: AcaoAbas): EstadoAbas {
       if (vivo && ehRecusaDeOcupada(acao.cartao)) return estado;
       const depois = mudarAba(estado, id, (aba) => ({
         ...aba,
-        cartoes: comCartao(aba.cartoes, comLotesDoDocumento(aba, acao.cartao)),
+        cartoes: comCartao(aba.cartoes, acao.cartao),
+        frentesProntas:
+          acao.cartao.estado.tipo === "frentes_prontas" && !aba.frentesProntas.includes(acao.cartao.impressora)
+            ? [...aba.frentesProntas, acao.cartao.impressora]
+            : aba.frentesProntas,
       }));
       const aba = depois.abas.find((candidata) => candidata.id === id);
-      // O estado real dos trabalhos decide se ha impressao em andamento nesta aba.
-      return aba ? marcarImpressao(depois, id, aba.cartoes.some(cartaoEmAndamento)) : depois;
+      // O estado real dos trabalhos decide se ha o que perder ao fechar esta aba.
+      return aba ? marcarImpressao(depois, id, aba.cartoes.some(cartaoSeguraAAba)) : depois;
     }
     case "dispensar_cartao": {
       const depois = mudarAba(estado, acao.id, (aba) => ({
         ...aba,
-        divisao: divisaoAoDispensar(aba, acao.impressora),
         cartoes: aba.cartoes.filter((cartao) => cartao.impressora !== acao.impressora),
       }));
       const aba = depois.abas.find((candidata) => candidata.id === acao.id);
-      return aba ? marcarImpressao(depois, acao.id, aba.cartoes.some(cartaoEmAndamento)) : depois;
+      return aba ? marcarImpressao(depois, acao.id, aba.cartoes.some(cartaoSeguraAAba)) : depois;
     }
   }
 }

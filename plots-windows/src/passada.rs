@@ -120,6 +120,7 @@ mod testes {
         Pagina {
             numero,
             girar_180: false,
+            copia: 0,
         }
     }
 

@@ -156,11 +156,11 @@ pub async fn listar_grupos() -> Result<ListaDeGrupos, FalhaDoGrupo> {
 pub async fn salvar_grupo(
     nome: String,
     impressoras: Vec<String>,
-    modo: ModoDoEnvio,
 ) -> Result<Vec<GrupoSalvo>, FalhaDoGrupo> {
     em_thread(FalhaDoGrupo::Gravacao, move || {
         alterar_em(&caminho_dos_perfis()?, |perfis| {
-            perfis.salvar_grupo(&nome, &impressoras, modo.into())
+            // Todas as marcadas imprimem a mesma coisa. O campo fica no arquivo, que aceita os antigos.
+            perfis.salvar_grupo(&nome, &impressoras, ModoDoEnvio::Espelho.into())
         })
     })
     .await

@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { linhasDoEnvio, type Cartao } from "./cartoes";
 import { CartaoImpressao } from "./components/CartaoImpressao";
 import { AjusteDaLinha, AvisoDoAjuste, LinhaImpressora } from "./components/Sidebar";
-import { conteudoDaDivisao } from "./confirmacao";
 import { traducoes, traduzir } from "./i18n";
 import type { Impressora } from "./impressoras";
 import {
@@ -355,7 +354,7 @@ describe("confirmacao do envio real", () => {
     const { linhas } = linhasDoEnvio([FILA], RESUMO, "pt-BR", new Set(["Sala"]));
     expect(linhas).toEqual([
       "Sala",
-      "2 páginas em 1 lote",
+      "2 pág",
       "Papel: A4",
       "Driver: ajuste só no PlotS. Papel e faces seguem o PlotS.",
     ]);
@@ -363,35 +362,13 @@ describe("confirmacao do envio real", () => {
 
   it("sem ajuste, o dialogo fica como era", () => {
     const { linhas } = linhasDoEnvio([FILA], RESUMO, "en", new Set(["Outra"]));
-    expect(linhas).toEqual(["Sala", "2 pages in 1 batch", "Paper: A4"]);
+    expect(linhas).toEqual(["Sala", "2 pages", "Paper: A4"]);
   });
 
   it("simulada nao tem driver, mesmo com o mesmo nome de uma fila com ajuste", () => {
     expect(linhaDoAjusteNoEnvio([SIMULADA], new Set([SIMULADA.nome]), "pt-BR")).toBeNull();
   });
 
-  it("na divisao, a mesma frase vai para as observacoes", () => {
-    registrarFilasComAjuste(new Set(["Sala"]));
-    const conteudo = conteudoDaDivisao(
-      [FILA, { ...FILA, id: "fila:Outra", nome: "Outra" }],
-      {
-        ...RESUMO,
-        lotes: 2,
-        divisao: [
-          { impressora: "fila:Sala", lotes: [1], viraParaLer: true },
-          { impressora: "fila:Outra", lotes: [2], viraParaLer: true },
-        ],
-        paginasDoDocumento: 4,
-        faixas: [
-          { lote: 1, inicio: 1, fim: 2 },
-          { lote: 2, inicio: 3, fim: 4 },
-        ],
-      },
-      null,
-      "pt-BR",
-    );
-    expect(conteudo.notas).toContain("Ajuste do driver só no PlotS: Sala. Papel e faces seguem o PlotS.");
-  });
 });
 
 describe("recusa no cartao", () => {
@@ -416,6 +393,7 @@ describe("recusa no cartao", () => {
       createElement(CartaoImpressao, {
         cartao: cartao(ajusteRecusado),
         aoComandar: sem,
+        aoPedirVerso: sem,
         aoPedirCancelar: sem,
         aoDispensar: sem,
       }),

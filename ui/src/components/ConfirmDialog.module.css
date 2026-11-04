@@ -14,6 +14,22 @@
   border-radius: var(--radius-md);
 }
 
+/* O aviso fica logo abaixo do texto, na mesma cor e tamanho dele, com o icone de aviso ao lado. */
+.aviso {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  color: var(--fg);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.aviso svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
 .nota {
   margin: 0;
   color: var(--fg-muted);
@@ -179,5 +195,31 @@
 
   .rodape {
     border-top-color: CanvasText;
+  }
+}
+
+/* Cada impressora com o seu gesto: e a ultima coisa que a pessoa le antes de pedir os versos. */
+.gesto {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.nomeDoGesto {
+  margin: 0;
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Com a janela baixa, a frase do gesto vem antes da figura: e a frase que a pessoa precisa ler sem rolar. */
+@media (max-height: 560px) {
+  .gesto > .nomeDoGesto {
+    order: -2;
+  }
+
+  .gesto > p:not(.nomeDoGesto) {
+    order: -1;
   }
 }

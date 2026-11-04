@@ -1,11 +1,12 @@
 import * as Dialog from "@radix-ui/react-dialog";
+import { CircleAlert } from "lucide-react";
 import { useRef } from "react";
 import type { ConteudoConfirmacao } from "../confirmacao";
 import { rolarPeloTeclado } from "../dialogo";
 import { t } from "../i18n";
 import botoes from "./Botao.module.css";
 import styles from "./ConfirmDialog.module.css";
-import { OrdemDaPilha } from "./OrdemDaPilha";
+import { FiguraGesto } from "./FiguraGesto";
 import { focarAbaAtiva } from "./TitleBar";
 
 interface Props {
@@ -58,6 +59,12 @@ export function ConfirmDialog({ conteudo, aoCancelar, aoConfirmar }: Props) {
               <Dialog.Description asChild>
                 <div ref={corpo} className={styles.corpo}>
                   <p className={styles.texto}>{t(visivel.texto, visivel.parametros)}</p>
+                  {visivel.aviso !== undefined && (
+                    <p className={styles.aviso}>
+                      <CircleAlert size={14} aria-hidden="true" />
+                      <span>{visivel.aviso}</span>
+                    </p>
+                  )}
                   {visivel.linhas && visivel.linhas.length > 0 && (
                     <ul className={styles.linhas}>
                       {visivel.linhas.map((linha, indice) => (
@@ -65,11 +72,17 @@ export function ConfirmDialog({ conteudo, aoCancelar, aoConfirmar }: Props) {
                       ))}
                     </ul>
                   )}
-                  {visivel.pilha && (
-                    <div className={styles.linhas}>
-                      <OrdemDaPilha ordem={visivel.pilha} />
+                  {visivel.gestos?.map((gesto) => (
+                    <div key={gesto.nome} className={styles.gesto}>
+                      <p className={styles.nomeDoGesto}>{gesto.nome}</p>
+                      {gesto.desenho !== null && <FiguraGesto desenho={gesto.desenho} />}
+                      {gesto.frases.map((frase) => (
+                        <p key={frase} className={styles.texto}>
+                          {frase}
+                        </p>
+                      ))}
                     </div>
-                  )}
+                  ))}
                   {visivel.consequencia !== null && (
                     <p className={styles.texto}>{t(visivel.consequencia)}</p>
                   )}

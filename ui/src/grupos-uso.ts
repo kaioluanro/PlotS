@@ -12,7 +12,7 @@ import {
   type NotaDaSelecao,
 } from "./grupos";
 import { t } from "./i18n";
-import type { AcaoAbas, ModoDistribuicao } from "./tabs";
+import type { AcaoAbas } from "./tabs";
 
 export interface UsoDosGrupos {
   grupos: readonly GrupoSalvo[];
@@ -27,7 +27,7 @@ export interface UsoDosGrupos {
   /** Grupo cuja exclusao espera a resposta do usuario. */
   aApagar: string | null;
   /** Devolve se gravou: o campo do nome so fecha quando deu certo. */
-  salvar: (nome: string, impressoras: readonly string[], modo: ModoDistribuicao) => Promise<boolean>;
+  salvar: (nome: string, impressoras: readonly string[]) => Promise<boolean>;
   /** Devolve o que foi aplicado, ou `null` se falhou. */
   aplicar: (aba: number, nome: string) => Promise<GrupoAplicado | null>;
   /** Guarda a selecao de onde se pediu, porque o anuncio fala dela. */
@@ -58,10 +58,10 @@ export function useGrupos(despachar: Dispatch<AcaoAbas>): UsoDosGrupos {
   }, []);
 
   const salvar = useCallback(
-    (nome: string, impressoras: readonly string[], modo: ModoDistribuicao) => {
+    (nome: string, impressoras: readonly string[]) => {
       setAusentes(null);
       setApagado(null);
-      return salvarGrupo(nome, impressoras, modo)
+      return salvarGrupo(nome, impressoras)
         .then((novos) => {
           setGrupos(novos);
           setFalha(null);
@@ -87,8 +87,7 @@ export function useGrupos(despachar: Dispatch<AcaoAbas>): UsoDosGrupos {
           despachar({
             tipo: "aplicar_grupo",
             id: aba,
-            impressoras: aplicado.impressoras,
-            modo: aplicado.modo,
+            impressoras: aplicado.impressoras,
           });
           return aplicado;
         })

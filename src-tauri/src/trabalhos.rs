@@ -8,9 +8,9 @@ use crate::documento;
 use crate::impressoras;
 use crate::leitura_pdf;
 use crate::tempo_de_impressao::{Cronometro, Medida, Relogio};
-use plots_core::distribuicao::{distribuir_lotes, ModoDistribuicao};
+use plots_core::distribuicao::ModoDistribuicao;
 use plots_core::{
-    plano_automatico_do_intervalo, plano_lotes_do_intervalo, DimensoesPagina, FormatoPapel,
+    plano_automatico_copias_do_intervalo, plano_copias_do_intervalo, DimensoesPagina, FormatoPapel,
     IntervaloPaginas, LotePapel, ModeloImpressora, OrdemPassadas, Pagina, Papel, PerfilImpressora,
     RepartoAutomatico,
 };
@@ -19,7 +19,7 @@ use plots_windows::plots_print::fluxo::{
     self, CondicaoDoAviso, Condutor, DescreveFalha, Espera, Instrucao, Lado, LoteDoFluxo, Passo,
     SimGuiado, Virada,
 };
-use plots_windows::plots_print::job::{Backend, ErroJob, EstadoJob};
+use plots_windows::plots_print::job::{Alcance, Backend, ErroJob, EstadoJob};
 use plots_windows::plots_print::opcoes::{
     compensar_driver, marcar_lotes, DriverDeTeste, IdiomaDaMarca,
 };
@@ -32,8 +32,6 @@ use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender, TryRecvError}
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-/// Maior lote que a interface oferece; um valor de fora nunca chega ao plano.
-const LOTE_MAXIMO: usize = 50;
 /// A simulacao nao tem fila: o intervalo so deixa o estado aparecer antes da confirmacao.
 pub(crate) const ESPERA_SIMULADA: Espera = Espera {
     intervalo: Duration::from_millis(400),
@@ -245,6 +243,8 @@ pub enum EstadoCartao {
     },
     /// A fila confirmou a frente: so aqui o verso libera.
     Aguardando,
+    /// Todas as frentes pedidas sairam. O trabalho acabou: o verso e outro pedido, para quando quiser.
+    FrentesProntas,
     /// O verso terminou e ainda ha lotes.
     ProximoLote,
     Aviso {
@@ -295,6 +295,34 @@ pub struct Cartao {
     pub anterior_automatico: bool,
     /// Algum lote deste documento sai sozinho nas duas faces nesta impressora.
     pub tem_automatico: bool,
+    /// Folhas do lote atual: e o que sai de novo ao reimprimir.
+    pub folhas_do_lote: usize,
+    /// As paginas do lote atual: e por elas que a pessoa acha o maco.
+    pub faixa_do_lote: Option<FaixaDoLote>,
+    /// O que este trabalho imprime: `so_frentes`, `so_versos` ou `frente_e_verso`.
+    pub alcance: &'static str,
+    /// A cópia que o lote atual imprime, a partir de 1. `None` quando o lote mistura cópias.
+    pub copia: Option<usize>,
+    /// Quantas cópias o trabalho inteiro imprime.
+    pub copias: usize,
+}
+
+/// A cópia que o lote inteiro imprime, a partir de 1; `None` quando o lote mistura cópias.
+pub fn copia_unica(paginas: &[Pagina]) -> Option<usize> {
+    let primeira = paginas.first()?.copia;
+    paginas
+        .iter()
+        .all(|pagina| pagina.copia == primeira)
+        .then(|| primeira.saturating_add(1))
+}
+
+/// Quantas cópias o trabalho imprime: a maior cópia de todos os lotes, mais uma.
+pub fn copias_do_trabalho(lotes: &[LoteDoFluxo]) -> usize {
+    lotes
+        .iter()
+        .flat_map(|item| item.lote.paginas.iter().map(|pagina| pagina.copia))
+        .max()
+        .map_or(1, |maior| maior.saturating_add(1))
 }
 
 #[derive(Debug, Clone)]
@@ -325,6 +353,11 @@ impl Identidade {
             lote_automatico: false,
             anterior_automatico: false,
             tem_automatico: false,
+            folhas_do_lote: 0,
+            faixa_do_lote: None,
+            alcance: "frente_e_verso",
+            copia: None,
+            copias: 1,
         }
     }
 }
@@ -395,6 +428,28 @@ where
         cartao.lote_automatico = self.condutor.lote_em_duas_faces();
         cartao.anterior_automatico = self.condutor.terminado_em_duas_faces();
         cartao.tem_automatico = self.condutor.tem_lote_em_duas_faces();
+        cartao.folhas_do_lote = self
+            .condutor
+            .lote()
+            .map_or(0, |item| item.lote.paginas.len().div_ceil(2));
+        cartao.faixa_do_lote = self.condutor.lote().and_then(|item| {
+            let numeros = item.lote.paginas.iter().filter_map(|pagina| pagina.numero);
+            Some(FaixaDoLote {
+                lote: self.condutor.numero(),
+                inicio: numeros.clone().min()?,
+                fim: numeros.max()?,
+            })
+        });
+        cartao.alcance = match self.condutor.alcance() {
+            Alcance::FrenteEVerso => "frente_e_verso",
+            Alcance::SoFrentes => "so_frentes",
+            Alcance::SoVersos => "so_versos",
+        };
+        cartao.copia = self
+            .condutor
+            .lote()
+            .and_then(|item| copia_unica(&item.lote.paginas));
+        cartao.copias = copias_do_trabalho(self.condutor.lotes());
         cartao.troca_de_papel = self
             .condutor
             .troca_de_papel()
@@ -408,7 +463,7 @@ where
                     .passada1
                     .iter()
                     .chain(&item.lote.passada2)
-                    .filter_map(|face| item.marcas.get(&face.numero).cloned())
+                    .filter_map(|face| item.marcas.get(&face.identidade()).cloned())
                     .collect(),
             });
         }
@@ -476,7 +531,9 @@ where
 
     /// Como o lote atual sai. O lote em duas faces nao tem frente nem verso separados.
     fn primeira_passada(&self) -> PassadaDoCartao {
-        if self.condutor.lote_em_duas_faces() {
+        if self.condutor.alcance() == Alcance::SoVersos {
+            PassadaDoCartao::Verso
+        } else if self.condutor.lote_em_duas_faces() {
             PassadaDoCartao::DuasFaces
         } else {
             PassadaDoCartao::Frente
@@ -524,6 +581,10 @@ where
         let Some(item) = self.condutor.lote_terminado() else {
             return;
         };
+        // So a frente saiu: ainda nao ha folha pronta para conferir.
+        if self.condutor.alcance() == Alcance::SoFrentes && !item.lote.duas_faces {
+            return;
+        }
         let Some((corretas, folhas)) = self
             .condutor
             .backend()
@@ -561,6 +622,15 @@ where
         Continua::Nao
     }
 
+    /// Depois de tirar o trabalho da fila, refaz so o que este trabalho imprime.
+    fn enviar_a_passada_de_novo(&mut self) -> Result<(), ErroJob<B::Erro>> {
+        if self.condutor.alcance() == Alcance::SoVersos {
+            self.condutor.enviar_verso()
+        } else {
+            self.condutor.enviar_frente()
+        }
+    }
+
     fn atender(&mut self, comando: Comando) -> Continua {
         let estado = self.condutor.estado();
         match comando {
@@ -586,7 +656,7 @@ where
                 self.cronometro.iniciar_passada(self.relogio.agora_ms());
                 if let Err(erro) = self.condutor.cancelar() {
                     self.falhou_ao_cancelar(&erro);
-                } else if let Err(erro) = self.condutor.enviar_frente() {
+                } else if let Err(erro) = self.enviar_a_passada_de_novo() {
                     self.parado = true;
                     return self.falhou_ao_enviar(&erro);
                 }
@@ -655,13 +725,25 @@ where
                 if self.condutor.proximo_segue_sozinho() {
                     return self.enviar(PassadaDoCartao::DuasFaces);
                 }
-                self.publicar(EstadoCartao::ProximoLote);
+                self.publicar(if self.condutor.alcance() == Alcance::SoVersos {
+                    EstadoCartao::Aguardando
+                } else {
+                    EstadoCartao::ProximoLote
+                });
             }
             Passo::DocumentoConcluido => {
                 self.fechar_lote();
                 self.fim = Some(ResultadoDoEnvio::Concluido);
                 self.somar_resultado();
-                self.publicar(EstadoCartao::Concluido);
+                self.publicar(
+                    if self.condutor.alcance() == Alcance::SoFrentes
+                        && self.condutor.tem_lote_manual()
+                    {
+                        EstadoCartao::FrentesProntas
+                    } else {
+                        EstadoCartao::Concluido
+                    },
+                );
                 return Continua::Nao;
             }
             Passo::Falhou { motivo } => {
@@ -770,6 +852,12 @@ where
             Ok(Recado::Comando(_)) => {}
             Err(TryRecvError::Empty) => break,
         }
+    }
+    // So de versos, sem nenhum lote que peca o gesto: nao ha o que imprimir nesta impressora.
+    if andamento.condutor.estado() == EstadoJob::Concluido {
+        andamento.fim = Some(ResultadoDoEnvio::Concluido);
+        andamento.publicar(EstadoCartao::Concluido);
+        return;
     }
     if andamento.enviar(andamento.primeira_passada()) == Continua::Nao {
         return;
@@ -1003,12 +1091,7 @@ impl Gerente {
 
 /// A preparacao falhou: nada foi enviado. O cartao mostra o motivo ate o usuario pedir de novo.
 fn recusado(identidade: &Identidade, recados: &Receiver<Recado>, emitir: &Emissor, motivo: Motivo) {
-    // Nada foi enviado e nada resta a acompanhar: a thread acaba, e a impressora fica livre.
-    let sem_trabalho = motivo.codigo == MOTIVO_DOCUMENTO_MUDOU;
     emitir(identidade.cartao(EstadoCartao::Erro { motivo }));
-    if sem_trabalho {
-        return;
-    }
     loop {
         match recados.recv() {
             Ok(Recado::Comando(Comando::Cancelar)) => {
@@ -1047,53 +1130,22 @@ impl From<ModoDistribuicao> for ModoDoEnvio {
     }
 }
 
-/// O documento nao e mais o que a confirmacao mostrou; nenhuma pagina saiu.
-pub const MOTIVO_DOCUMENTO_MUDOU: &str = "documento_mudou";
-
-fn documento_mudou() -> Motivo {
-    Motivo::novo(
-        MOTIVO_DOCUMENTO_MUDOU,
-        "o documento mudou depois da confirmação. Nada foi enviado: envie de novo.",
-    )
-}
-
-/// Na divisao, a posicao desta impressora no rodizio, e os lotes e as paginas que foram confirmados.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ParteDoEnvio {
-    pub indice: usize,
-    pub impressoras: usize,
-    pub lotes: usize,
-    /// Paginas do documento inteiro, nao so do trecho.
-    pub paginas: usize,
-}
-
-impl ParteDoEnvio {
-    /// Os lotes desta impressora, ja com a ordem do perfil dela. Se o documento mudou depois da
-    /// confirmacao, nada sai: o cartao diria um lote e o maco traria outro.
-    pub fn separar(&self, lotes: Vec<LoteDoFluxo>) -> Result<Vec<LoteDoFluxo>, Motivo> {
-        if lotes.len() != self.lotes {
-            return Err(documento_mudou());
-        }
-        let plano = distribuir_lotes(lotes.len(), self.impressoras, ModoDistribuicao::Divisao)
-            .map_err(|erro| Motivo::novo("sistema", erro.to_string()))?;
-        let atribuicao = plano.get(self.indice).ok_or_else(|| {
-            Motivo::novo("sistema", "a impressora ficou fora da divisão dos lotes")
-        })?;
-        Ok(atribuicao.selecionar(lotes))
-    }
-}
-
-/// O caminho do PDF e o tamanho do lote, ja conferidos. O trecho so e conferido ao ler o PDF,
-/// quando o total de paginas e conhecido; sem trecho, vale o documento inteiro.
+/// O caminho do PDF e o que a pessoa escolheu. O trecho so e conferido ao ler o PDF, quando o total
+/// de paginas e conhecido; sem trecho, vale o documento inteiro.
 #[derive(Debug, Clone)]
 pub struct Pedido {
     pub caminho: String,
-    pub folhas_por_lote: usize,
     pub intervalo: Option<IntervaloPaginas>,
-    pub parte: Option<ParteDoEnvio>,
+    pub alcance: Alcance,
     pub papel_de_ajuste: Option<plots_core::ajuste::PapelDeAjuste>,
     pub controle: Option<IdiomaDaMarca>,
     pub driver_da_simulada: DriverDaSimulada,
+    /// Cópias do documento: cada uma sai inteira, com as suas folhas fechadas.
+    pub copias: usize,
+    /// Impressão do documento guardada pela frente desta aba: o verso só sai se o arquivo ainda for o mesmo.
+    pub impressao_esperada: Option<String>,
+    /// Aba do documento: a frente que prepara com este pedido guarda a impressão que leu para ela.
+    pub aba: Option<u64>,
 }
 
 /// Modo de teste da simulada: imita um driver que inverte, com ou sem a opcao do PlotS ligada.
@@ -1104,29 +1156,37 @@ pub struct DriverDaSimulada {
 }
 
 impl Pedido {
-    /// Numero vindo de fora: zero vira recusa e o que passa do limite vai ao limite.
-    pub fn novo(
-        caminho: String,
-        folhas_por_lote: usize,
-        intervalo: Option<IntervaloPaginas>,
-    ) -> Result<Self, Motivo> {
-        if folhas_por_lote == 0 {
-            return Err(Motivo::novo("pdf", "o lote deve ter ao menos uma folha"));
-        }
-        Ok(Self {
+    pub fn novo(caminho: String, intervalo: Option<IntervaloPaginas>) -> Self {
+        Self {
             caminho,
-            folhas_por_lote: folhas_por_lote.min(LOTE_MAXIMO),
             intervalo,
-            parte: None,
+            alcance: Alcance::default(),
             papel_de_ajuste: None,
             controle: None,
             driver_da_simulada: DriverDaSimulada::default(),
-        })
+            copias: 1,
+            impressao_esperada: None,
+            aba: None,
+        }
     }
 
-    /// O mesmo pedido, restrito aos lotes desta impressora na divisao.
-    pub fn com_parte(mut self, parte: Option<ParteDoEnvio>) -> Self {
-        self.parte = parte;
+    pub fn com_impressao_esperada(mut self, impressao: Option<String>) -> Self {
+        self.impressao_esperada = impressao;
+        self
+    }
+
+    pub fn com_aba(mut self, aba: u64) -> Self {
+        self.aba = Some(aba);
+        self
+    }
+
+    pub fn com_copias(mut self, copias: usize) -> Self {
+        self.copias = copias;
+        self
+    }
+
+    pub fn com_alcance(mut self, alcance: Alcance) -> Self {
+        self.alcance = alcance;
         self
     }
 
@@ -1150,13 +1210,14 @@ fn motivo_do_pdf(erro: &documento::ErroDocumento) -> Motivo {
     Motivo::novo("pdf", format!("não foi possível preparar {}", erro.nome))
 }
 
-fn planejar(
+#[cfg(test)]
+pub(crate) fn planejar(
     dimensoes: &[DimensoesPagina],
     intervalo: Option<IntervaloPaginas>,
     folhas_por_lote: usize,
     perfil: PerfilImpressora,
 ) -> Result<Vec<LoteDoFluxo>, Motivo> {
-    let lotes = plano_lotes_do_intervalo(
+    let lotes = plots_core::plano_lotes_do_intervalo(
         dimensoes,
         intervalo,
         folhas_por_lote,
@@ -1181,82 +1242,110 @@ fn dimensoes_do_envio(
     dimensoes
 }
 
-/// O plano de uma impressora que imprime as duas faces sozinha. `perfil` e o do fluxo manual dela.
-fn planejar_automatico(
-    dimensoes: &[DimensoesPagina],
-    intervalo: Option<IntervaloPaginas>,
-    folhas_por_lote: usize,
-    perfil: PerfilImpressora,
-    reparto: RepartoAutomatico,
-) -> Result<Vec<LoteDoFluxo>, Motivo> {
-    let lotes = plano_automatico_do_intervalo(
-        dimensoes,
-        intervalo,
-        folhas_por_lote,
-        OrdemPassadas::default(),
-        perfil,
-        reparto,
-    )
-    .map_err(|erro| Motivo::novo("pdf", erro.to_string()))?;
-    Ok(fluxo::lotes_do_plano(&lotes))
-}
-
-/// O plano de cada impressora sai do perfil dela; so depois a divisao fica com os lotes que lhe
-/// cabem. Com `automatico`, os papeis aceitos saem nas duas faces: em um trabalho por trecho de
-/// papel, ou um por lote na divisao, em que os lotes sao os mesmos de todas as impressoras.
+/// O plano de cada impressora sai do perfil dela: um lote por trecho do mesmo papel, sem parar no
+/// meio. Com `automatico`, os papeis aceitos saem nas duas faces, em um trabalho por trecho.
 pub(crate) fn planejar_pedido(
     dimensoes: &[DimensoesPagina],
     pedido: &Pedido,
     perfil: PerfilImpressora,
     automatico: bool,
 ) -> Result<Vec<LoteDoFluxo>, Motivo> {
-    if pedido
-        .parte
-        .is_some_and(|parte| parte.paginas != dimensoes.len())
-    {
-        return Err(documento_mudou());
-    }
     let ajustadas = pedido
         .papel_de_ajuste
         .map(|papel| papel.dimensoes_no_papel(dimensoes));
-    let dimensoes_do_plano = ajustadas.as_deref().unwrap_or(dimensoes);
-    let mut lotes = if automatico {
-        let reparto = if pedido.parte.is_some() {
-            RepartoAutomatico::PorLote
-        } else {
-            RepartoAutomatico::PorTrechoDePapel
-        };
-        planejar_automatico(
-            dimensoes_do_plano,
+    let medidas = ajustadas.as_deref().unwrap_or(dimensoes);
+    let ordem = OrdemPassadas::default();
+    let plano = if automatico {
+        plano_automatico_copias_do_intervalo(
+            medidas,
             pedido.intervalo,
-            pedido.folhas_por_lote,
+            pedido.copias,
+            ordem,
             perfil,
-            reparto,
-        )?
+            RepartoAutomatico::PorTrechoDePapel,
+        )
     } else {
-        planejar(
-            dimensoes_do_plano,
-            pedido.intervalo,
-            pedido.folhas_por_lote,
-            perfil,
-        )?
-    };
-    // Antes de repartir: o numero no papel e o do lote no documento.
+        plano_copias_do_intervalo(medidas, pedido.intervalo, pedido.copias, ordem, perfil)
+    }
+    .map_err(|erro| Motivo::novo("pdf", erro.to_string()))?;
+    let mut lotes = fluxo::lotes_do_plano(&plano);
     if let Some(idioma) = pedido.controle {
         marcar_lotes(&mut lotes, idioma);
     }
-    match pedido.parte {
-        Some(parte) => parte.separar(lotes),
-        None => Ok(lotes),
+    Ok(lotes)
+}
+
+/// Impressão do PDF no disco: o conteúdo inteiro, por FNV-1a de 64 bits, com o tamanho. Qualquer
+/// troca do arquivo muda este texto, inclusive a medida de uma página. Produção guarda a impressão
+/// que a frente leu; aqui só serve para conferir o que o disco tinha.
+#[cfg(test)]
+pub fn impressao_do_arquivo(caminho: &str) -> Result<String, Motivo> {
+    use std::io::Read;
+    let falha = || Motivo::novo("pdf", "não foi possível reler o documento");
+    let mut arquivo = std::fs::File::open(caminho).map_err(|_| falha())?;
+    let mut bloco = [0u8; 65536];
+    let mut impressao = leitura_pdf::Impressao::default();
+    loop {
+        let lidos = arquivo.read(&mut bloco).map_err(|_| falha())?;
+        if lidos == 0 {
+            break;
+        }
+        impressao.acrescentar(bloco.get(..lidos).unwrap_or(&[]));
+    }
+    Ok(impressao.texto())
+}
+
+/// Impressões das frentes de cada aba: o verso dela só sai se o arquivo ainda for o mesmo.
+fn impressoes_das_frentes(
+) -> std::sync::MutexGuard<'static, std::collections::BTreeMap<u64, String>> {
+    static IMPRESSOES: Mutex<std::collections::BTreeMap<u64, String>> =
+        Mutex::new(std::collections::BTreeMap::new());
+    IMPRESSOES.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// A impressão que a frente guardou para a aba. É a que o verso da aba precisa conferir; aba que não
+/// teve frente aceita não tem nenhuma.
+pub fn impressao_guardada(aba: u64) -> Option<String> {
+    impressoes_das_frentes().get(&aba).cloned()
+}
+
+/// Guarda a impressão que a frente da aba leu. Só é chamada depois que o preparo da frente foi aceito:
+/// uma frente recusada não troca a impressão que o verso confere. Com várias impressoras, a última
+/// frente aceita prevalece.
+pub fn guardar_impressao_da_frente(aba: u64, impressao: String) {
+    impressoes_das_frentes().insert(aba, impressao);
+}
+
+/// Guarda o que a frente leu do PDF, quando o pedido é de frentes e tem aba. Versos não mudam a guarda.
+fn guardar_frente_lida(pedido: &Pedido, impressao: &str) {
+    if let (true, Some(aba)) = (matches!(pedido.alcance, Alcance::SoFrentes), pedido.aba) {
+        guardar_impressao_da_frente(aba, impressao.to_owned());
     }
 }
 
-/// A impressora simulada le o mesmo PDF e o mesmo plano, mas nada vai a uma fila.
+/// Esquece a impressão da frente de uma aba que foi fechada: o verso dela não confere mais nada.
+pub fn esquecer_impressao(aba: u64) {
+    impressoes_das_frentes().remove(&aba);
+}
+
+/// Antes de planejar o PDF, o verso compara a impressão dos bytes que ele carrega com a da frente: se
+/// mudou, nada é planejado nem enviado.
+fn verificar_impressao(pedido: &Pedido, impressao_lida: &str) -> Result<(), Motivo> {
+    let Some(esperada) = pedido.impressao_esperada.as_deref() else {
+        return Ok(());
+    };
+    if impressao_lida == esperada {
+        return Ok(());
+    }
+    Err(Motivo::novo("documento_mudou", ""))
+}
+
 pub fn preparar_simulada(
     modelo: ModeloImpressora,
     pedido: &Pedido,
 ) -> Result<Preparo<DriverDeTeste<SimGuiado>>, Motivo> {
     let lido = leitura_pdf::ler_pdf(&pedido.caminho).map_err(|erro| motivo_do_pdf(&erro))?;
+    verificar_impressao(pedido, &lido.impressao)?;
     let mut lotes = planejar_pedido(&lido.dimensoes, pedido, modelo.perfil(), false)?;
     let driver = pedido.driver_da_simulada;
     if driver.compensa {
@@ -1266,7 +1355,9 @@ pub fn preparar_simulada(
         SimGuiado::novo(Mecanica::do_modelo(modelo), modelo.gesto().into()),
         driver.inverte,
     );
-    preparo_simulado(modelo, backend, lotes)
+    let preparo = preparo_simulado(modelo, backend, lotes, pedido.alcance)?;
+    guardar_frente_lida(pedido, &lido.impressao);
+    Ok(preparo)
 }
 
 /// A simulada que imita uma impressora de duas faces: confere as folhas, recusa o papel que a
@@ -1276,6 +1367,7 @@ pub fn preparar_simulada_automatica(
     pedido: &Pedido,
 ) -> Result<Preparo<DriverDeTeste<SimGuiado>>, Motivo> {
     let lido = leitura_pdf::ler_pdf(&pedido.caminho).map_err(|erro| motivo_do_pdf(&erro))?;
+    verificar_impressao(pedido, &lido.impressao)?;
     let lotes = planejar_pedido(&lido.dimensoes, pedido, modelo.perfil(), true)?;
     // A referencia julga o papel que de fato vai a impressora, nao o tamanho original da pagina.
     let medidas = match pedido.papel_de_ajuste {
@@ -1286,16 +1378,20 @@ pub fn preparar_simulada_automatica(
         SimGuiado::automatica(Mecanica::do_modelo(modelo), modelo.gesto().into(), medidas),
         false,
     );
-    preparo_simulado(modelo, backend, lotes)
+    let preparo = preparo_simulado(modelo, backend, lotes, pedido.alcance)?;
+    guardar_frente_lida(pedido, &lido.impressao);
+    Ok(preparo)
 }
 
 fn preparo_simulado(
     modelo: ModeloImpressora,
     backend: DriverDeTeste<SimGuiado>,
     lotes: Vec<LoteDoFluxo>,
+    alcance: Alcance,
 ) -> Result<Preparo<DriverDeTeste<SimGuiado>>, Motivo> {
-    let condutor =
-        Condutor::novo(backend, lotes, ESPERA_SIMULADA).map_err(|erro| motivo_do_job(&erro))?;
+    let condutor = Condutor::novo(backend, lotes, ESPERA_SIMULADA)
+        .map_err(|erro| motivo_do_job(&erro))?
+        .com_alcance(alcance);
     let vira_para_ler = fluxo::vira_para_ler(modelo) && condutor.tem_lote_manual();
     Ok(Preparo {
         condutor,
@@ -1320,6 +1416,7 @@ pub fn preparar_fila(
         )
     })?;
     let lido = leitura_pdf::ler_pdf(&pedido.caminho).map_err(|erro| motivo_do_pdf(&erro))?;
+    verificar_impressao(pedido, &lido.impressao)?;
     let mut lotes = planejar_pedido(&lido.dimensoes, pedido, entrada.perfil, entrada.automatico)?;
     // So os lotes da rota manual mudam: quem sai em duas faces nao depende da ordem do driver.
     if entrada.driver_inverte {
@@ -1345,10 +1442,12 @@ pub fn preparar_fila(
             .map_err(|erro| erro.para_motivo())?;
     backend.definir_papel_de_saida(pedido.papel_de_ajuste.map(|papel| papel.medida_mm()));
     backend.definir_marcas(lotes.iter().map(|item| item.marcas.clone()).collect());
-    let condutor =
-        Condutor::novo(backend, lotes, fluxo::ESPERA_REAL).map_err(|erro| motivo_do_job(&erro))?;
+    let condutor = Condutor::novo(backend, lotes, fluxo::ESPERA_REAL)
+        .map_err(|erro| motivo_do_job(&erro))?
+        .com_alcance(pedido.alcance);
     let (recolocar, vira_para_ler) = gesto_e_leitura(entrada, perfis.calibracao(nome));
     let vira_para_ler = vira_para_ler && condutor.tem_lote_manual();
+    guardar_frente_lida(pedido, &lido.impressao);
     Ok(Preparo {
         condutor,
         recolocar,
@@ -1357,8 +1456,7 @@ pub fn preparar_fila(
 }
 
 /// O gesto e se o maco e lido virado. O que a calibracao mediu vale sobre o que o modelo diria.
-#[cfg_attr(not(windows), allow(dead_code))]
-fn gesto_e_leitura(
+pub(crate) fn gesto_e_leitura(
     entrada: &plots_perfis::EntradaPerfil,
     calibracao: Option<plots_perfis::Calibracao>,
 ) -> (Recolocar, bool) {
@@ -1384,8 +1482,10 @@ pub fn fila_indisponivel() -> Motivo {
 }
 
 /// Com modelo, o gesto e o dele; sem modelo, vale o que foi feito na calibracao.
-#[cfg_attr(not(windows), allow(dead_code))]
-fn recolocar_do_perfil(modelo: Option<ModeloImpressora>, texto: Option<String>) -> Recolocar {
+pub(crate) fn recolocar_do_perfil(
+    modelo: Option<ModeloImpressora>,
+    texto: Option<String>,
+) -> Recolocar {
     match modelo {
         Some(modelo) => Recolocar::da_instrucao(Instrucao::do_modelo(modelo)),
         None => Recolocar {
@@ -1426,20 +1526,28 @@ pub struct ResumoDoEnvio {
     pub papeis: Vec<PapelDoCartao>,
     pub pares_mistos: Vec<(usize, usize)>,
     pub assinado: bool,
-    /// Na divisao, o que cabe a cada impressora; no espelho, fica vazio.
-    pub divisao: Vec<ParteDoResumo>,
-    /// Paginas do documento inteiro: o envio confere de novo antes de imprimir.
-    pub paginas_do_documento: usize,
+    /// O gesto de cada impressora, para a confirmacao do verso mostrar antes de enviar.
+    pub gestos: Vec<GestoDaImpressora>,
     /// De qual a qual pagina vai cada lote, com os numeros do documento.
     pub faixas: Vec<FaixaDoLote>,
     /// Em uma impressora de duas faces, quais paginas saem sozinhas e quais pedem o gesto.
     pub fluxos: Vec<TrechoDoFluxo>,
-    /// Quantos trabalhos essa impressora faz fora da divisao, em que nao ha folhas por lote.
+    /// Quantos trabalhos essa impressora faz fora da divisao.
     pub lotes_automaticos: usize,
+    /// Folhas do envio inteiro: no espelho, de cada impressora.
+    pub folhas: usize,
+    /// O maior maco que alguem vai ter de recolocar de uma vez.
+    pub maior_maco: usize,
     /// Intervalo das escalas aplicadas às páginas, quando há papel de destino.
     pub escalas: Option<(f64, f64)>,
     /// Qual impressora termina antes, quando o historico tem dados de todas e a diferenca e grande.
     pub comparacao: Option<ComparacaoDoResumo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GestoDaImpressora {
+    pub impressora: String,
+    pub recolocar: Recolocar,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -1477,6 +1585,10 @@ pub fn trechos_dos_fluxos(lotes: &[LotePapel]) -> Vec<TrechoDoFluxo> {
     trechos
 }
 
+fn folhas_do_lote(lote: &LotePapel) -> usize {
+    lote.paginas.len().div_ceil(2)
+}
+
 /// As paginas de um lote; o verso em branco do fim nao conta.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct FaixaDoLote {
@@ -1501,54 +1613,52 @@ pub fn faixas_dos_lotes(lotes: &[LotePapel]) -> Vec<FaixaDoLote> {
         .collect()
 }
 
-/// Quem imprime quais lotes, numerados como no documento. `vira_para_ler` vazio quer dizer que o
-/// perfil nao afirma: vale o que foi visto na calibracao.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ParteDoResumo {
-    pub impressora: String,
-    pub lotes: Vec<usize>,
-    pub vira_para_ler: Option<bool>,
-}
-
 /// Lotes e papeis nao dependem do perfil: o plano padrao diz quantos sao. Com um trecho, tudo aqui
 /// conta so o trecho.
 #[cfg(test)]
 pub fn resumo_do_envio(
     caminho: &str,
-    folhas: usize,
     intervalo: Option<IntervaloPaginas>,
 ) -> Result<ResumoDoEnvio, documento::ErroDocumento> {
-    resumo_do_envio_com_papel(caminho, folhas, intervalo, None)
+    resumo_do_envio_com_papel(caminho, intervalo, None)
 }
 
 pub fn resumo_do_envio_com_papel(
     caminho: &str,
-    folhas: usize,
     intervalo: Option<IntervaloPaginas>,
     papel: Option<plots_core::ajuste::PapelDeAjuste>,
 ) -> Result<ResumoDoEnvio, documento::ErroDocumento> {
+    resumo_do_envio_com_copias(caminho, intervalo, papel, 1)
+}
+
+/// O resumo de um envio com `copias` cópias do trecho: folhas, maço e faixas contam todas elas.
+pub fn resumo_do_envio_com_copias(
+    caminho: &str,
+    intervalo: Option<IntervaloPaginas>,
+    papel: Option<plots_core::ajuste::PapelDeAjuste>,
+    copias: usize,
+) -> Result<ResumoDoEnvio, documento::ErroDocumento> {
     let lido = leitura_pdf::ler_pdf(caminho)?;
     let falha = || documento::falha_inesperada(caminho);
-    let folhas = folhas.clamp(1, LOTE_MAXIMO);
     let escalas = papel
         .map(|formato| formato.faixa_de_escala(&lido.dimensoes, intervalo))
         .transpose()
         .map_err(|_| falha())?
         .flatten();
     let dimensoes_ajustadas = papel.map(|formato| formato.dimensoes_no_papel(&lido.dimensoes));
-    let lotes = plano_lotes_do_intervalo(
-        dimensoes_ajustadas.as_deref().unwrap_or(&lido.dimensoes),
+    let medidas = dimensoes_ajustadas.as_deref().unwrap_or(&lido.dimensoes);
+    let lotes = plano_copias_do_intervalo(
+        medidas,
         intervalo,
-        folhas,
+        copias,
         OrdemPassadas::default(),
         PerfilImpressora::default(),
     )
     .map_err(|_| falha())?;
-    let automatico = plano_automatico_do_intervalo(
-        dimensoes_ajustadas.as_deref().unwrap_or(&lido.dimensoes),
+    let automatico = plano_automatico_copias_do_intervalo(
+        medidas,
         intervalo,
-        folhas,
+        copias,
         OrdemPassadas::default(),
         PerfilImpressora::default(),
         RepartoAutomatico::PorTrechoDePapel,
@@ -1571,11 +1681,12 @@ pub fn resumo_do_envio_com_papel(
         papeis: papeis.into_iter().map(papel_do_cartao).collect(),
         pares_mistos,
         assinado: lido.assinado,
-        divisao: Vec::new(),
-        paginas_do_documento: lido.dimensoes.len(),
+        gestos: Vec::new(),
         faixas: faixas_dos_lotes(&lotes),
         fluxos: trechos_dos_fluxos(&automatico),
         lotes_automaticos: automatico.len(),
+        folhas: lotes.iter().map(folhas_do_lote).sum(),
+        maior_maco: lotes.iter().map(folhas_do_lote).max().unwrap_or(0),
         escalas,
         comparacao: None,
     })

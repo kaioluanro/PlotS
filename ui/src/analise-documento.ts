@@ -21,7 +21,6 @@ export function useAnaliseDoDocumento(aba: Aba | null): AnaliseDoDocumento | nul
   const caminho = aba?.documento.caminho ?? null;
   const conhecido = aba?.paginas.estado === "conhecido";
   const papel = aba?.papelDeAjuste ?? null;
-  const tamanho = aba?.tamanhoLote ?? 1;
   const inicio = trecho?.inicio ?? null;
   const fim = trecho?.fim ?? null;
   useEffect(() => {
@@ -32,9 +31,7 @@ export function useAnaliseDoDocumento(aba: Aba | null): AnaliseDoDocumento | nul
     let valida = true;
     resumoDoEnvio(
       caminho,
-      tamanho,
       inicio === null || fim === null ? null : { inicio, fim },
-      "espelho",
       [],
       papel,
     )
@@ -53,8 +50,6 @@ export function useAnaliseDoDocumento(aba: Aba | null): AnaliseDoDocumento | nul
     return () => {
       valida = false;
     };
-    // O tamanho do lote nao muda os papeis: so a leitura que ja ia acontecer o usa.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caminho, conhecido, papel, inicio, fim]);
   return analise;
 }

@@ -1,15 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   caminhoDoAviso,
-  confirmarLote,
-  conteudoAbaixoDoLote,
-  contarLotes,
-  interpretarLote,
   liberaMenuDeContexto,
-  LOTE_MAXIMO,
-  LOTE_MINIMO,
-  LOTE_PADRAO,
-  resumoDoLote,
+  contarFolhas,
+  resumoDoDocumento,
   textoDoEstado,
   type Impressora,
 } from "./impressoras";
@@ -24,54 +18,6 @@ function impressora(id: string): Impressora {
     modo: "sem_perfil",
   };
 }
-
-describe("campo de lote", () => {
-  it("usa 10 folhas como padrao, dentro de 1 a 50", () => {
-    expect([LOTE_MINIMO, LOTE_PADRAO, LOTE_MAXIMO]).toEqual([1, 10, 50]);
-  });
-
-  it("aceita enquanto digita so inteiros dentro do intervalo", () => {
-    expect(interpretarLote("1")).toBe(1);
-    expect(interpretarLote("50")).toBe(50);
-    expect(interpretarLote(" 25 ")).toBe(25);
-    for (const texto of ["", "0", "51", "-3", "1e1", "10.5", "abc", "٣", "99999999999999999999999"]) {
-      expect(interpretarLote(texto), texto).toBeNull();
-    }
-  });
-
-  it("ao confirmar leva ao limite mais proximo ou volta ao valor atual", () => {
-    expect(confirmarLote("0", 10)).toBe(1);
-    expect(confirmarLote("51", 10)).toBe(50);
-    expect(confirmarLote("99999999999999999999999", 10)).toBe(50);
-    expect(confirmarLote("", 7)).toBe(7);
-    expect(confirmarLote("abc", 7)).toBe(7);
-    expect(confirmarLote("-3", 7)).toBe(7);
-    expect(confirmarLote("23", 7)).toBe(23);
-  });
-});
-
-describe("resumo do lote", () => {
-  it("conta folhas de duas paginas, nao paginas", () => {
-    expect(contarLotes(24, 10)).toBe(2);
-    expect(contarLotes(20, 10)).toBe(1);
-    expect(contarLotes(21, 10)).toBe(2);
-    expect(contarLotes(1, 10)).toBe(1);
-    expect(contarLotes(100_000, 1)).toBe(50_000);
-  });
-
-  it("recusa numeros sem sentido sem inventar um total", () => {
-    expect(contarLotes(0, 10)).toBe(0);
-    expect(contarLotes(10, 0)).toBe(0);
-    expect(contarLotes(Number.NaN, 10)).toBe(0);
-  });
-
-  it("escreve o resumo nos dois idiomas, com singular", () => {
-    expect(resumoDoLote(24, 10, "pt-BR")).toBe("24 pág · 2 lotes");
-    expect(resumoDoLote(1, 10, "pt-BR")).toBe("1 pág · 1 lote");
-    expect(resumoDoLote(24, 10, "en")).toBe("24 pages · 2 batches");
-    expect(resumoDoLote(1, 10, "en")).toBe("1 page · 1 batch");
-  });
-});
 
 describe("estado da impressora", () => {
   it("traduz as condicoes e mantem o codigo das desconhecidas", () => {
@@ -131,15 +77,18 @@ describe("caminho no aviso", () => {
   });
 });
 
-describe("abaixo do campo de lote", () => {
-  it("o erro ocupa o lugar do resumo, qualquer que seja o estado do PDF", () => {
-    expect(conteudoAbaixoDoLote(true, { estado: "conhecido", total: 24 })).toBe("erro");
-    expect(conteudoAbaixoDoLote(true, { estado: "contando" })).toBe("erro");
-    expect(conteudoAbaixoDoLote(true, { estado: "recusado", motivo: "x" })).toBe("erro");
+describe("resumo do documento", () => {
+  it("conta folhas de duas paginas, nos dois idiomas e com singular", () => {
+    expect(contarFolhas(24)).toBe(12);
+    expect(contarFolhas(23)).toBe(12);
+    expect(resumoDoDocumento(24, "pt-BR")).toBe("24 pág · 12 folhas");
+    expect(resumoDoDocumento(1, "en")).toBe("1 page · 1 sheet");
   });
 
-  it("sem erro mostra o resumo da aba, e sem aba nao mostra nada", () => {
-    expect(conteudoAbaixoDoLote(false, { estado: "conhecido", total: 24 })).toBe("resumo");
-    expect(conteudoAbaixoDoLote(false, null)).toBe("nada");
+  it("numero sem sentido nao inventa folhas", () => {
+    expect(contarFolhas(0)).toBe(0);
+    expect(contarFolhas(-3)).toBe(0);
+    expect(contarFolhas(1.5)).toBe(0);
+    expect(contarFolhas(Number.NaN)).toBe(0);
   });
 });

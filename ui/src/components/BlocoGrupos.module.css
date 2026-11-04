@@ -287,19 +287,6 @@
   color: var(--fg-muted);
 }
 
-.juncao {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 0 4px 10px;
-  padding: 8px;
-  background: var(--bg-sunken);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  scroll-margin-top: 4px;
-}
-
-/* A linha do lote no cartao: quem junta os macos procura este numero primeiro. */
 .loteTitulo {
   margin: 0;
   color: var(--fg);
@@ -307,29 +294,6 @@
   font-weight: 500;
   line-height: 16px;
   overflow-wrap: anywhere;
-}
-
-.loteDetalhe {
-  margin: -6px 0 0;
-  color: var(--fg-muted);
-  font-size: 11px;
-  line-height: 15px;
-  overflow-wrap: anywhere;
-}
-
-.frase,
-.falta {
-  margin: 0;
-  color: var(--fg);
-  font-size: 12px;
-  line-height: 17px;
-  overflow-wrap: anywhere;
-}
-
-.falta {
-  display: flex;
-  gap: 6px;
-  font-weight: 500;
 }
 
 @media (forced-colors: active) {
@@ -354,9 +318,6 @@
     opacity: 1;
   }
 
-  .juncao {
-    border-color: CanvasText;
-  }
 
   .campoInvalido,
   .campoInvalido:hover {

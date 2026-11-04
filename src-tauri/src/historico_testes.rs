@@ -371,6 +371,10 @@ struct Palco {
 impl Palco {
     /// Um documento de 4 folhas em dois lotes, na fila fingida.
     fn iniciar(cena: &[Cena]) -> Self {
+        Self::iniciar_com_copias(cena, 1)
+    }
+
+    fn iniciar_com_copias(cena: &[Cena], copias: usize) -> Self {
         let palco = Self {
             gerente: Gerente::default(),
             cartoes: Arc::default(),
@@ -392,11 +396,20 @@ impl Palco {
             nome: "Medida".to_owned(),
             simulada: false,
         };
-        let pedido = Pedido::novo("x.pdf".to_owned(), 2, None).unwrap();
         let dimensoes = [plots_core::DimensoesPagina::new(210.0, 297.0); 8];
-        let lotes =
-            trabalhos::planejar_pedido(&dimensoes, &pedido, PerfilImpressora::default(), false)
-                .unwrap();
+        let lotes = if copias == 1 {
+            trabalhos::planejar(&dimensoes, None, 2, PerfilImpressora::default()).unwrap()
+        } else {
+            let planejados = plots_core::plano_copias_do_intervalo(
+                &dimensoes,
+                None,
+                copias,
+                plots_core::OrdemPassadas::default(),
+                PerfilImpressora::default(),
+            )
+            .unwrap();
+            plots_windows::plots_print::fluxo::lotes_do_plano(&planejados)
+        };
         let relogio: Arc<dyn Relogio> = palco.relogio.clone();
         assert!(palco
             .gerente
@@ -567,11 +580,11 @@ fn preparacao_recusada_conta_como_erro_sem_nada_impresso() {
     };
     let relogio: Arc<dyn Relogio> = Arc::new(RelogioFalso::default());
     gerente.iniciar_medido::<FilaFingida, _>(identidade, emitir, relogio, fim, || {
-        Err(trabalhos::Motivo::novo(
-            trabalhos::MOTIVO_DOCUMENTO_MUDOU,
-            "mudou",
-        ))
+        Err(trabalhos::Motivo::novo("pdf", "não abriu"))
     });
+    gerente
+        .comandar("fila:X", trabalhos::Comando::Cancelar)
+        .unwrap();
     let inicio = Instant::now();
     while desfechos.lock().unwrap().is_empty() {
         assert!(inicio.elapsed() < PRAZO);
@@ -589,8 +602,7 @@ fn a_simulada_com_controle_mostra_a_marca_e_sem_controle_nao() {
     std::fs::write(&pdf, pdf_a4(4)).unwrap();
     let caminho = pdf.to_string_lossy().into_owned();
     let marcas = |controle: Option<IdiomaDaMarca>| {
-        let pedido = Pedido::novo(caminho.clone(), 2, None)
-            .unwrap()
+        let pedido = Pedido::novo(caminho.clone(), None)
             .com_controle(controle)
             .com_driver_da_simulada(DriverDaSimulada::default());
         let preparo = trabalhos::preparar_simulada(ModeloImpressora::Laser, &pedido)
@@ -600,29 +612,9 @@ fn a_simulada_com_controle_mostra_a_marca_e_sem_controle_nao() {
     };
     assert!(marcas(None).is_empty());
     let com = marcas(Some(IdiomaDaMarca::Portugues));
-    assert_eq!(com[&Some(2)], "Lote 1 · folha 1");
-    assert_eq!(com[&Some(4)], "Lote 1 · folha 2");
+    assert_eq!(com[&(0, Some(2))], "Folha 1");
+    assert_eq!(com[&(0, Some(4))], "Folha 2");
     std::fs::remove_file(&pdf).unwrap();
-}
-
-#[test]
-fn na_divisao_a_marca_mantem_o_numero_do_lote_no_documento() {
-    use plots_windows::plots_print::opcoes::IdiomaDaMarca;
-    let dimensoes = [plots_core::DimensoesPagina::new(210.0, 297.0); 8];
-    let pedido = Pedido::novo("x.pdf".to_owned(), 1, None)
-        .unwrap()
-        .com_controle(Some(IdiomaDaMarca::Portugues))
-        .com_parte(Some(trabalhos::ParteDoEnvio {
-            indice: 1,
-            impressoras: 2,
-            lotes: 4,
-            paginas: 8,
-        }));
-    let lotes = trabalhos::planejar_pedido(&dimensoes, &pedido, PerfilImpressora::default(), false)
-        .unwrap();
-    assert_eq!(lotes.len(), 2);
-    assert_eq!(lotes[0].marcas[&Some(4)], "Lote 2 · folha 1");
-    assert_eq!(lotes[1].marcas[&Some(8)], "Lote 4 · folha 1");
 }
 
 fn pdf_a4(paginas: usize) -> Vec<u8> {
@@ -862,4 +854,99 @@ fn o_registro_guarda_cada_rota_em_uma_medida_e_a_simulada_em_nenhuma() {
         .map(|tempo| (tempo.impressora.as_str(), tempo.automatico, tempo.folhas))
         .collect();
     assert_eq!(tempos, [("x", false, 3), ("x", true, 10)]);
+}
+
+#[test]
+fn com_copias_o_historico_conta_cada_copia_que_saiu() {
+    let palco = Palco::iniciar_com_copias(
+        &[
+            Cena::Confirma(1_000),
+            Cena::Confirma(1_000),
+            Cena::Confirma(1_000),
+            Cena::Confirma(1_000),
+        ],
+        2,
+    );
+    palco.esperar(aguardando);
+    palco.comandar(Comando::EnviarVerso);
+    palco.esperar(|estado| matches!(estado, EstadoCartao::Concluido));
+    let desfecho = palco.desfecho();
+    assert_eq!(desfecho.resultado, ResultadoDoEnvio::Concluido);
+    assert_eq!(desfecho.paginas, 16);
+    assert_eq!(desfecho.medida.folhas, 8);
+    assert_eq!(desfecho.lotes_feitos, 1);
+}
+
+#[test]
+fn cancelar_com_copias_nao_conta_o_lote_que_nao_terminou() {
+    let palco = Palco::iniciar_com_copias(
+        &[Cena::Confirma(1_000), Cena::Confirma(1_000), Cena::Anda(50)],
+        2,
+    );
+    palco.esperar(aguardando);
+    palco.comandar(Comando::EnviarVerso);
+    palco.comandar(Comando::Cancelar);
+    let desfecho = palco.desfecho();
+    assert_eq!(desfecho.resultado, ResultadoDoEnvio::Cancelado);
+    assert_eq!((desfecho.medida.folhas, desfecho.lotes_feitos), (0, 0));
+}
+
+#[test]
+fn reimprimir_com_copias_refaz_o_trecho_com_a_contagem_de_todas_as_copias() {
+    let palco = Palco::iniciar_com_copias(
+        &[
+            Cena::Falha(70_000),
+            Cena::Confirma(1_000),
+            Cena::Confirma(1_000),
+            Cena::Confirma(1_000),
+            Cena::Confirma(1_000),
+        ],
+        2,
+    );
+    palco.esperar(|estado| matches!(estado, EstadoCartao::Erro { .. }));
+    let antes = palco
+        .cartoes
+        .lock()
+        .unwrap()
+        .last()
+        .map(|c| c.folhas_do_lote);
+    assert_eq!(antes, Some(8));
+    palco.comandar(Comando::Reimprimir);
+    palco.esperar(aguardando);
+    let depois = palco
+        .cartoes
+        .lock()
+        .unwrap()
+        .last()
+        .map(|c| c.folhas_do_lote);
+    assert_eq!(depois, Some(8));
+}
+
+#[test]
+fn cartao_diz_quantas_copias_o_trabalho_imprime() {
+    let palco = Palco::iniciar_com_copias(&[Cena::Confirma(1_000); 6], 3);
+    palco.esperar(com_lote);
+    let cartao = palco.cartoes.lock().unwrap().last().cloned();
+    assert_eq!(cartao.map(|c| c.copias), Some(3));
+}
+
+#[test]
+fn cartao_so_numera_a_copia_quando_o_lote_tem_uma_so() {
+    let mistura = Palco::iniciar_com_copias(&[Cena::Confirma(1_000); 6], 3);
+    mistura.esperar(com_lote);
+    let mistura = mistura.cartoes.lock().unwrap().last().cloned();
+    assert_eq!(mistura.map(|c| c.copia), Some(None));
+
+    let uma = Palco::iniciar_com_copias(&[Cena::Confirma(1_000); 6], 1);
+    uma.esperar(com_lote);
+    let uma = uma.cartoes.lock().unwrap().last().cloned();
+    assert_eq!(uma.map(|c| c.copia), Some(Some(1)));
+}
+
+/// O cartao so tem o lote depois de a fila confirmar a primeira passada.
+fn com_lote(estado: &EstadoCartao) -> bool {
+    matches!(
+        estado,
+        EstadoCartao::Imprimindo { .. } | EstadoCartao::Aguardando
+    )
 }

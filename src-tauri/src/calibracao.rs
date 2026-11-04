@@ -308,7 +308,7 @@ fn lotes_do_teste(
     dimensoes: &[DimensoesPagina],
     automatico: bool,
 ) -> Result<Vec<LoteDoFluxo>, Motivo> {
-    let pedido = Pedido::novo(String::new(), FOLHAS_DO_TESTE, None)?;
+    let pedido = Pedido::novo(String::new(), None);
     let mut lotes = trabalhos::planejar_pedido(dimensoes, &pedido, teste.perfil, automatico)?;
     if teste.driver_inverte {
         compensar_driver(&mut lotes);
@@ -564,6 +564,7 @@ fn saida_da_simulada(
             .map(|numero| Pagina {
                 numero: Some(numero),
                 girar_180: false,
+                copia: 0,
             })
             .collect();
         simulador.imprimir_duas_faces(&paginas)?;

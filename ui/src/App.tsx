@@ -14,8 +14,11 @@ import {
   limitarLote,
   listarImpressoras,
 } from "./backend";
-import { BlocoModo } from "./components/BlocoModo";
 import { BlocoAjuste } from "./components/BlocoAjuste";
+import { BlocoFace } from "./components/BlocoFace";
+import { CampoCopias } from "./components/CampoCopias";
+import { copiasDaFace } from "./tabs";
+import { BlocoGrupos } from "./components/BlocoGrupos";
 import { HistoricoDialog } from "./components/HistoricoDialog";
 import { CalibracaoDialog } from "./components/CalibracaoDialog";
 import { ConfirmDialog } from "./components/ConfirmDialog";
@@ -36,21 +39,28 @@ import {
 } from "./cartoes";
 import {
   conteudoDaConfirmacao,
-  conteudoDaDivisao,
-  envioComDivisao,
   conteudoDaReimpressao,
   conteudoDaSubstituicao,
   conteudoDoApagarGrupo,
   conteudoDoCancelamento,
   conteudoDoEnvio,
-  divisaoDoResumo,
   type ConteudoConfirmacao,
   type PedidoDeSubstituicao,
 } from "./confirmacao";
 import { mensagemDeErro } from "./erros";
+import {
+  conteudoDoVerso,
+  dicaDaFace,
+  envioComFace,
+  faceDisponivel,
+  faceDoEnvio,
+  mudouDesdeAFrente,
+  notasDaFrente,
+  quemJaSaiu,
+} from "./face-do-envio";
 import { useGrupos } from "./grupos-uso";
 import { apagarHistorico, conteudoDoApagarHistorico } from "./historico";
-import { idiomaAtual, t } from "./i18n";
+import { idiomaAtual, t, traduzir } from "./i18n";
 import { useAnaliseDoDocumento } from "./analise-documento";
 import { envioSemMarca, notasDasOpcoes, textoDoPapelAjustado } from "./opcoes-envio";
 import {
@@ -74,12 +84,9 @@ import {
   decidirFechamentoJanela,
   deveOuvirFechamentoJanela,
   estadoInicial,
-  modoDoEnvio,
   reduzirAbas,
   type Aba,
-  type ParteDaDivisao,
-  type DivisaoDoEnvio,
-  type ModoDistribuicao,
+  type FaceDoEnvio,
 } from "./tabs";
 import {
   comandarTrabalho,
@@ -89,21 +96,12 @@ import {
   soltarTrabalhos,
 } from "./trabalhos";
 
-/** O que o envio manda, alem da aba e dos destinos. No espelho, nao ha lotes a repartir. */
-interface PlanoDoEnvio {
-  modo: ModoDistribuicao;
-  lotes: number;
-  /** Paginas do documento na confirmacao: se o arquivo mudar, nada sai. */
-  paginas: number;
-  divisao: DivisaoDoEnvio | null;
-}
-
-const ENVIO_EM_ESPELHO: PlanoDoEnvio = { modo: "espelho", lotes: 0, paginas: 0, divisao: null };
-
 export function App() {
   const [estado, despachar] = useReducer(reduzirAbas, estadoInicial);
   const [lateralAberta, setLateralAberta] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
+  // A quantidade digitada e um numero de 1 a 999: enquanto nao for, o envio da face espera.
+  const [copiasValidas, setCopiasValidas] = useState(true);
   const [arrastando, setArrastando] = useState(false);
   const seletorAberto = useRef(false);
   const inicioFeito = useRef(false);
@@ -120,7 +118,7 @@ export function App() {
     conteudo: ConteudoConfirmacao;
     aba: Aba;
     destinos: readonly Impressora[];
-    plano: PlanoDoEnvio;
+    face: FaceDoEnvio;
   } | null>(null);
   const grupos = useGrupos(despachar);
   const [cartaoACancelar, setCartaoACancelar] = useState<Cartao | null>(null);
@@ -230,20 +228,22 @@ export function App() {
   // Os trabalhos continuam em qualquer aba: o evento diz a quem cada cartao pertence.
   useEffect(() => assinar(ouvirCartoes((cartao) => despachar({ tipo: "cartao", cartao }))), []);
 
-  const iniciar = useCallback((aba: Aba, destinos: readonly Impressora[], plano: PlanoDoEnvio) => {
-    // Antes de pedir: o primeiro cartao chega durante o pedido e ja precisa dos numeros dos lotes.
-    despachar({ tipo: "divisao_enviada", id: aba.id, divisao: plano.divisao });
+  const iniciar = useCallback((aba: Aba, destinos: readonly Impressora[], face: FaceDoEnvio) => {
+    const trecho = trechoDoEnvio(lerIntervaloDaAba(aba));
+    const papel = aba.papelDeAjuste ?? null;
+    // Guardado aqui: o verso compara com o que foi pedido, nao com o que a aba mostra depois.
+    if (face === "frente") {
+      despachar({ tipo: "frente_enviada", id: aba.id, frente: { trecho, papel } });
+    }
     iniciarImpressao(
       aba.id,
       aba.documento.caminho,
-      aba.tamanhoLote,
       destinos.map((destino) => destino.id),
-      trechoDoEnvio(lerIntervaloDaAba(aba)),
-      plano.modo,
-      plano.lotes,
-      plano.paginas,
-      aba.papelDeAjuste ?? null,
+      trecho,
+      face,
+      papel,
       aba.controle ? idiomaAtual : null,
+      copiasDaFace(aba, face),
     )
       .then((aceitas) => {
         // Quem nao foi aceito ja tinha um trabalho: o cartao diz isso, em vez de sumir em silencio.
@@ -267,7 +267,7 @@ export function App() {
 
   const aoComandarCartao = useCallback(
     (cartao: Cartao, comando: Comando) => {
-      // Numa fila real, reimprimir cancela o que resta do lote: so depois de perguntar.
+      // Numa fila real, reimprimir cancela o que resta do trecho: so depois de perguntar.
       if (comando === "reimprimir" && !cartao.simulada) {
         setCartaoAReimprimir(cartao);
         return;
@@ -404,7 +404,6 @@ export function App() {
         aplicarCartao(cartao: Cartao): void;
         abaAtiva(): number | null;
         definirLista(nova: ListaImpressoras): void;
-        definirDivisao(divisao: DivisaoDoEnvio | null): void;
         abrir(caminho: string): void;
         definirLendo(lendo: boolean): void;
         reterContagens(): void;
@@ -413,11 +412,6 @@ export function App() {
     };
     alvo.__plotsE2e = {
       definirLista: setLista,
-      definirDivisao(divisao) {
-        if (estado.ativa !== null) {
-          despachar({ tipo: "divisao_enviada", id: estado.ativa, divisao });
-        }
-      },
       aplicarCartao(cartao) {
         despachar({ tipo: "cartao", cartao });
       },
@@ -446,78 +440,74 @@ export function App() {
 
   const ocupadas = impressorasOcupadas(estado.abas);
 
-  const aoImprimir = () => {
-    const { destinos, desabilitado } = envioComDivisao(
-      envioComIntervalo(estadoDoEnvio(abaAtiva, lista.impressoras, ocupadas), abaAtiva),
-      abaAtiva,
-      lista.impressoras,
-      ocupadas,
-    );
-    if (abaAtiva === null || desabilitado || preparandoEnvio.current) return;
-    const modo = modoDoEnvio(abaAtiva.modo, destinos.length);
-    // A divisao sempre pergunta, mesmo simulada: e la que o usuario le como juntar os macos.
-    if (modo === "espelho" && !precisaConfirmar(destinos) && !abaAtiva.papelDeAjuste) {
-      iniciar(abaAtiva, destinos, ENVIO_EM_ESPELHO);
+  // A frente repetida e o verso sempre perguntam: papel gasto a toa ou maco errado nao tem volta.
+  const prepararEnvio = (aba: Aba, destinos: readonly Impressora[], face: FaceDoEnvio) => {
+    const repetida = face === "frente" && quemJaSaiu(aba, destinos).length > 0;
+    if (face === "frente" && !precisaConfirmar(destinos) && !aba.papelDeAjuste && !repetida) {
+      iniciar(aba, destinos, face);
       return;
     }
-    const aba = abaAtiva;
     preparandoEnvio.current = true;
     const leitura = lerIntervaloDaAba(aba);
+    const trecho = trechoDoEnvio(leitura);
+    const papel = aba.papelDeAjuste ?? null;
     resumoDoEnvio(
       aba.documento.caminho,
-      aba.tamanhoLote,
-      trechoDoEnvio(leitura),
-      modo,
+      trecho,
       destinos.map((destino) => destino.id),
-      aba.papelDeAjuste ?? null,
+      papel,
+      copiasDaFace(aba, face),
     )
       .then((resumo) => {
         const papelAjustado = textoDoPapelAjustado(aba.papelDeAjuste, resumo.escalas);
-        const notasDoMeio = (partes?: readonly ParteDaDivisao[]) =>
-          notasDasOpcoes({
-            controle: aba.controle,
-            comparacao: resumo.comparacao,
-            modo,
-            destinos,
-            fluxos: resumo.fluxos,
-            partes,
-          });
-        if (modo === "espelho") {
-          const { linhas, notas } = linhasDoEnvio(destinos, resumo, undefined, undefined, {
-            papel: papelAjustado,
-            notasDoMeio: notasDoMeio(),
-          });
+        if (face === "verso") {
+          const marcadas = lista.impressoras.filter((item) => aba.impressorasMarcadas.includes(item.id));
           setPedidoDeEnvio({
-            conteudo: conteudoDoEnvio(
-              linhasComTrecho(linhas, leitura),
-              notas,
-              destinos.some((destino) => destino.modo === "automatico"),
-              destinos.every((destino) => destino.tipo === "simulada"),
+            conteudo: conteudoDoVerso(
+              destinos,
+              marcadas.filter((item) => !destinos.includes(item) && item.modo === "automatico"),
+              resumo,
+              leitura,
+              papelAjustado,
+              mudouDesdeAFrente(aba.frenteEnviada, trecho, papel),
+              idiomaAtual,
+              { frente: copiasDaFace(aba, "frente"), verso: copiasDaFace(aba, "verso") },
             ),
             aba,
             destinos,
-            plano: ENVIO_EM_ESPELHO,
+            face,
           });
           return;
         }
-        // Quem ficou sem lote so aparece na confirmacao: nao recebe trabalho nem cartao.
-        const partes = divisaoDoResumo(destinos, resumo).filter((parte) => parte.lotes.length > 0);
-        const conteudo = conteudoDaDivisao(destinos, resumo, leitura, undefined, {
+        const notasDaFace = notasDaFrente(aba, destinos, resumo);
+        const { linhas, notas } = linhasDoEnvio(destinos, resumo, undefined, undefined, {
           papel: papelAjustado,
-          notasDoMeio: notasDoMeio(partes),
+          copias: copiasDaFace(aba, face),
+          notasDoMeio: [
+            ...notasDasOpcoes({
+              controle: aba.controle,
+              comparacao: resumo.comparacao,
+              destinos,
+              fluxos: resumo.fluxos,
+            }),
+            ...notasDaFace.depois,
+          ],
         });
         setPedidoDeEnvio({
-          conteudo,
-          aba,
-          destinos: destinos.filter((destino) =>
-            partes.some((parte) => parte.impressora === destino.id),
+          conteudo: conteudoDoEnvio(
+            [
+              ...linhasComTrecho(linhas, leitura),
+              ...(copiasDaFace(aba, face) > 1
+                ? [traduzir(idiomaAtual, "copias.linha", { n: String(copiasDaFace(aba, face)) })]
+                : []),
+            ],
+            [...notasDaFace.antes, ...notas],
+            destinos.some((destino) => destino.modo === "automatico"),
+            destinos.every((destino) => destino.tipo === "simulada"),
           ),
-          plano: {
-            modo,
-            lotes: resumo.lotes,
-            paginas: resumo.paginasDoDocumento,
-            divisao: { partes, papeis: resumo.papeis },
-          },
+          aba,
+          destinos,
+          face,
         });
       })
       .catch((falha: unknown) => setErro(mensagemDeErro(falha)))
@@ -526,12 +516,37 @@ export function App() {
       });
   };
 
-  const aoAlternarImpressora = (impressora: string) => {
-    if (idAtiva !== null) despachar({ tipo: "alternar_impressora", id: idAtiva, impressora });
+  const marcadasDaAbaAtiva =
+    abaAtiva === null
+      ? []
+      : lista.impressoras.filter((item) => abaAtiva.impressorasMarcadas.includes(item.id));
+  const faceDaAbaAtiva = abaAtiva === null ? "frente" : faceDoEnvio(abaAtiva, marcadasDaAbaAtiva);
+
+  const aoImprimir = () => {
+    if (abaAtiva === null || preparandoEnvio.current || !copiasValidas) return;
+    const marcadas = lista.impressoras.filter((item) => abaAtiva.impressorasMarcadas.includes(item.id));
+    const { destinos, desabilitado } = envioComFace(
+      envioComIntervalo(estadoDoEnvio(abaAtiva, lista.impressoras, ocupadas), abaAtiva),
+      abaAtiva,
+      lista.impressoras,
+      analiseDoDocumento,
+    );
+    if (desabilitado) return;
+    prepararEnvio(abaAtiva, destinos, faceDoEnvio(abaAtiva, marcadas));
   };
 
-  const aoDefinirLote = (tamanho: number) => {
-    if (idAtiva !== null) despachar({ tipo: "definir_lote", id: idAtiva, tamanho });
+  /** O verso de uma impressora so, pelo cartao dela: o caminho e a confirmacao sao os mesmos do rodape. */
+  const aoPedirVerso = (cartao: Cartao) => {
+    const aba = estado.abas.find((candidata) => candidata.id === cartao.aba);
+    const impressora = lista.impressoras.find((item) => item.id === cartao.impressora);
+    if (aba === undefined || impressora === undefined || preparandoEnvio.current) return;
+    // O verso da tela so espera se o campo da face de verso mostra um numero que nao vale.
+    if (!copiasValidas && faceDaAbaAtiva === "verso") return;
+    prepararEnvio(aba, [impressora], "verso");
+  };
+
+  const aoAlternarImpressora = (impressora: string) => {
+    if (idAtiva !== null) despachar({ tipo: "alternar_impressora", id: idAtiva, impressora });
   };
 
   const aoDefinirIntervalo = (intervalo: RascunhoIntervalo | null) => {
@@ -586,12 +601,12 @@ export function App() {
             aoEscolherModelo={aoEscolherModelo}
             aoPedirSubstituicao={(fila, modelo) => setSubstituicao({ fila, modelo })}
             aoAlternar={aoAlternarImpressora}
-            aoDefinirLote={aoDefinirLote}
             aoDefinirIntervalo={aoDefinirIntervalo}
             aoCalibrar={setACalibrar}
             ocupadas={ocupadas}
             aoImprimir={aoImprimir}
             aoComandar={aoComandarCartao}
+            aoPedirVerso={aoPedirVerso}
             aoPedirCancelar={setCartaoACancelar}
             aoDispensar={dispensar}
             documento={analiseDoDocumento}
@@ -611,14 +626,35 @@ export function App() {
                 }}
               />
             }
-            blocoModo={
-              <BlocoModo
-                aba={abaAtiva}
-                grupos={grupos}
-                aoDefinirModo={(modo) => {
-                  if (idAtiva !== null) despachar({ tipo: "definir_modo", id: idAtiva, modo });
-                }}
-              />
+            blocoGrupos={<BlocoGrupos aba={abaAtiva} grupos={grupos} />}
+            campoCopias={
+              abaAtiva !== null ? (
+                <CampoCopias
+                  key={abaAtiva.id}
+                  face={faceDaAbaAtiva}
+                  valor={copiasDaFace(abaAtiva, faceDaAbaAtiva)}
+                  aoDefinir={(valor) => {
+                    if (idAtiva !== null)
+                      despachar({ tipo: "definir_copias", id: idAtiva, face: faceDaAbaAtiva, valor });
+                  }}
+                  aoMudarValidade={setCopiasValidas}
+                />
+              ) : null
+            }
+            copiasValidas={copiasValidas}
+            blocoFace={
+              abaAtiva !== null &&
+              faceDisponivel(
+                lista.impressoras.filter((item) => abaAtiva.impressorasMarcadas.includes(item.id)),
+              ) ? (
+                <BlocoFace
+                  face={abaAtiva.face}
+                  dicaDoEstado={dicaDaFace(abaAtiva, marcadasDaAbaAtiva)}
+                  aoDefinir={(face) => {
+                    if (idAtiva !== null) despachar({ tipo: "definir_face", id: idAtiva, face });
+                  }}
+                />
+              ) : null
             }
           />
         )}
@@ -681,7 +717,7 @@ export function App() {
         aoCancelar={() => setPedidoDeEnvio(null)}
         aoConfirmar={() => {
           if (pedidoDeEnvio !== null) {
-            iniciar(pedidoDeEnvio.aba, pedidoDeEnvio.destinos, pedidoDeEnvio.plano);
+            iniciar(pedidoDeEnvio.aba, pedidoDeEnvio.destinos, pedidoDeEnvio.face);
           }
           setPedidoDeEnvio(null);
         }}
@@ -701,12 +737,7 @@ export function App() {
       <ConfirmDialog
         conteudo={
           confirmacao === null && cartaoAReimprimir !== null
-            ? conteudoDaReimpressao(
-                nomeDoCartao(cartaoAReimprimir),
-                cartaoAReimprimir.lote,
-                cartaoAReimprimir.total,
-                cartaoAReimprimir,
-              )
+            ? conteudoDaReimpressao(nomeDoCartao(cartaoAReimprimir), cartaoAReimprimir)
             : null
         }
         aoCancelar={() => setCartaoAReimprimir(null)}

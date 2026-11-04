@@ -1,59 +1,52 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { Cartao, Comando } from "./cartoes";
+import type { Cartao, Comando, ResumoDoEnvio } from "./cartoes";
 import type { Idioma } from "./i18n";
-import type { ResumoComDivisao } from "./confirmacao";
 import type { TrechoDoEnvio } from "./intervalo";
-import type { ModoDistribuicao, PapelDeAjuste } from "./tabs";
+import type { FaceDoEnvio, PapelDeAjuste } from "./tabs";
 
 /** O backend publica cada mudanca de um trabalho por este evento. */
 export function ouvirCartoes(aoReceber: (cartao: Cartao) => void): Promise<() => void> {
   return listen<Cartao>("trabalho", (evento) => aoReceber(evento.payload));
 }
 
-/** Le o PDF para a confirmacao, contando so o trecho, e diz o que cabe a cada impressora; nada e enviado. */
+/** Le o PDF para a confirmacao, contando so o trecho, e traz o gesto de cada impressora; nada e enviado. */
 export function resumoDoEnvio(
   caminho: string,
-  folhas: number,
   intervalo: TrechoDoEnvio | null,
-  modo: ModoDistribuicao,
   impressoras: readonly string[],
   papelDeAjuste: PapelDeAjuste | null = null,
-): Promise<ResumoComDivisao> {
-  return invoke<ResumoComDivisao>("resumo_do_envio", {
+  copias = 1,
+): Promise<ResumoDoEnvio> {
+  return invoke<ResumoDoEnvio>("resumo_do_envio", {
     caminho,
-    folhas,
     intervalo,
-    modo,
     impressoras,
     papelDeAjuste,
+    copias,
   });
 }
 
-/** Inicia um trabalho por impressora, so com o trecho, e devolve quem aceitou. */
+/** Inicia um trabalho por impressora, com a mesma face e o mesmo trecho, e devolve quem aceitou. */
 export function iniciarImpressao(
   aba: number,
   caminho: string,
-  folhas: number,
   impressoras: readonly string[],
   intervalo: TrechoDoEnvio | null,
-  modo: ModoDistribuicao,
-  lotes: number,
-  paginas: number,
+  face: FaceDoEnvio,
   papelDeAjuste: PapelDeAjuste | null = null,
   marcaControle: Idioma | null = null,
+  copias = 1,
 ): Promise<string[]> {
   return invoke<string[]>("iniciar_impressao", {
     aba,
     caminho,
-    folhas,
     impressoras,
     intervalo,
-    modo,
-    lotes,
-    paginas,
+    face,
     papelDeAjuste,
     marcaControle,
+    copias,
   });
 }
 

@@ -1,5 +1,4 @@
 import { idiomaAtual, traduzir, type Chave, type Idioma } from "./i18n";
-import type { PaginasDaAba } from "./tabs";
 
 export type Nivel = "pronta" | "ativa" | "atencao" | "problema";
 export type Modelo = "jato" | "laser" | "automatico" | "automatico:jato" | "automatico:laser";
@@ -40,53 +39,25 @@ export interface ListaImpressoras {
   avisos: Aviso[];
 }
 
-export const LOTE_MINIMO = 1;
-export const LOTE_MAXIMO = 50;
-export const LOTE_PADRAO = 10;
-
-export function limitarAoIntervaloDoLote(valor: number): number {
-  return Math.min(LOTE_MAXIMO, Math.max(LOTE_MINIMO, valor));
-}
-
-/** Enquanto se digita: so vale um inteiro dentro do intervalo. */
-export function interpretarLote(texto: string): number | null {
-  const limpo = texto.trim();
-  if (!/^[0-9]{1,3}$/.test(limpo)) return null;
-  const valor = Number(limpo);
-  return valor >= LOTE_MINIMO && valor <= LOTE_MAXIMO ? valor : null;
-}
-
-/** Ao sair do campo: numero fora do intervalo vai ao limite; o que nao e numero volta ao atual. */
-export function confirmarLote(texto: string, atual: number): number {
-  const limpo = texto.trim();
-  if (!/^[0-9]+$/.test(limpo)) return atual;
-  return limitarAoIntervaloDoLote(Number(limpo));
-}
-
 /** Cada folha leva duas paginas; pagina impar ocupa uma folha inteira. Mesma conta do plano. */
-export function contarLotes(paginas: number, folhasPorLote: number): number {
-  if (!Number.isInteger(paginas) || !Number.isInteger(folhasPorLote)) return 0;
-  if (paginas <= 0 || folhasPorLote <= 0) return 0;
-  return Math.ceil(Math.ceil(paginas / 2) / folhasPorLote);
+export function contarFolhas(paginas: number): number {
+  return Number.isInteger(paginas) && paginas > 0 ? Math.ceil(paginas / 2) : 0;
 }
 
-export function resumoDoLote(
-  paginas: number,
-  folhasPorLote: number,
-  idioma: Idioma = idiomaAtual,
-  soAutomaticas = false,
-): string {
-  const lotes = contarLotes(paginas, folhasPorLote);
+/**
+ * A linha que fica acima do botao: o tamanho do que vai sair. Com duas ou mais copias, mostra o numero
+ * de copias e as folhas de todas elas; com uma, a linha fica como era.
+ */
+export function resumoDoDocumento(paginas: number, idioma: Idioma = idiomaAtual, copias = 1): string {
   const textoPaginas = traduzir(idioma, paginas === 1 ? "folhas.paginas.um" : "folhas.paginas.varios", {
     n: String(paginas),
   });
-  // Sem gesto, folhas por lote nao reparte nada, e cada papel reparte os seus lotes: nos dois casos
-  // a conta simples de lotes nao diria o que vai acontecer.
-  if (soAutomaticas) return textoPaginas;
-  const textoLotes = traduzir(idioma, lotes === 1 ? "folhas.lotes.um" : "folhas.lotes.varios", {
-    n: String(lotes),
+  const folhas = contarFolhas(paginas) * copias;
+  const textoFolhas = traduzir(idioma, folhas === 1 ? "face.folhas.um" : "face.folhas.varios", {
+    n: String(folhas),
   });
-  return `${textoPaginas} · ${textoLotes}`;
+  const comCopias = copias > 1 ? `${textoPaginas} × ${copias}` : textoPaginas;
+  return `${comCopias} · ${textoFolhas}`;
 }
 
 const CHAVES_DE_CONDICAO: ReadonlyMap<string, Chave> = new Map<string, Chave>([
@@ -373,14 +344,6 @@ export async function gravarEscolha(
 }
 
 /** O erro do campo fica no lugar do resumo: as duas informacoes nao aparecem juntas. */
-export function conteudoAbaixoDoLote(
-  invalido: boolean,
-  paginas: PaginasDaAba | null,
-): "erro" | "resumo" | "nada" {
-  if (invalido) return "erro";
-  return paginas === null ? "nada" : "resumo";
-}
-
 /** Marca, no HTML, o que pode abrir o menu de contexto do sistema. */
 export const ATRIBUTO_MENU_DE_CONTEXTO = "data-menu-de-contexto";
 

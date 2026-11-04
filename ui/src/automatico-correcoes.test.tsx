@@ -1,12 +1,8 @@
-import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { linhasDoCartao, linhasDoEnvio, type Cartao, type EstadoCartao } from "./cartoes";
-import { CampoLote } from "./components/Sidebar";
-import { conteudoDaDivisao } from "./confirmacao";
-import { resumoDoLote, type Impressora } from "./impressoras";
+import type { Impressora } from "./impressoras";
 import { traduzir } from "./i18n";
 import { conteudoDoApagarAjuste } from "./preferencias";
-import { estadoInicial, reduzirAbas, type Aba } from "./tabs";
 
 const SALA: Impressora = {
   id: "fila:Sala",
@@ -19,21 +15,6 @@ const SALA: Impressora = {
 };
 const RECEPCAO: Impressora = { ...SALA, id: "fila:Recepção", nome: "Recepção" };
 const GAVETA: Impressora = { ...SALA, id: "fila:Gaveta", nome: "Gaveta", modo: "laser", duasFaces: false };
-const SIM_AUTOMATICA: Impressora = {
-  ...SALA,
-  id: "simulada:automatica",
-  nome: "Simulada — Automática",
-  tipo: "simulada",
-};
-const SIM_TRASEIRA: Impressora = {
-  ...SALA,
-  id: "simulada:traseira",
-  nome: "Simulada — Traseira",
-  tipo: "simulada",
-  modo: "jato",
-  duasFaces: false,
-};
-
 const MISTO = {
   paginas: 6,
   lotes: 2,
@@ -70,37 +51,6 @@ function cartao(estado: EstadoCartao, mudancas: Partial<Cartao> = {}): Cartao {
 
 const textos = (item: Cartao, idioma: "pt-BR" | "en" = "pt-BR") =>
   linhasDoCartao(item, idioma).map((linha) => linha.texto);
-
-function abaComPaginas(paginas: number): Aba {
-  const aberta = reduzirAbas(estadoInicial, {
-    tipo: "abrir",
-    documento: { caminho: "C:\\a.pdf", nome: "a.pdf" },
-  });
-  return { ...(aberta.abas[0] as Aba), tamanhoLote: 1, paginas: { estado: "conhecido", total: paginas } };
-}
-
-describe("contagem no rodape", () => {
-  it("so com automaticas mostra as paginas, sem lotes", () => {
-    expect(resumoDoLote(8, 1, "pt-BR", true)).toBe("8 pág");
-    expect(resumoDoLote(8, 1, "en", true)).toBe("8 pages");
-  });
-
-  it("com impressora manual junto, a contagem de lotes continua", () => {
-    expect(resumoDoLote(8, 1, "pt-BR", false)).toBe("8 pág · 4 lotes");
-    expect(resumoDoLote(8, 1, "pt-BR")).toBe("8 pág · 4 lotes");
-  });
-
-  it("o campo passa a escolha adiante", () => {
-    const so = renderToStaticMarkup(
-      <CampoLote aba={abaComPaginas(8)} aoDefinir={() => undefined} nota={null} soAutomaticas />,
-    );
-    const junto = renderToStaticMarkup(
-      <CampoLote aba={abaComPaginas(8)} aoDefinir={() => undefined} nota={null} soAutomaticas={false} />,
-    );
-    expect(so).toContain(">8 pág<");
-    expect(junto).toContain(">8 pág · 4 lotes<");
-  });
-});
 
 describe("linhas de trecho na confirmacao", () => {
   it("dizem o gesto de cada trecho antes de pedir papel normal", () => {
@@ -164,10 +114,10 @@ describe("recusa do driver", () => {
     const frases = textos(cartao(recusa, { lote: 3, total: 3 }));
     expect(frases.join(" ")).not.toContain("Nada foi enviado");
     expect(frases).toContain(
-      "O driver recusou duas faces. Este lote não saiu; os anteriores saíram. Escolha um modelo manual.",
+      "O driver recusou duas faces. Este trecho não saiu; os anteriores já foram enviados. Escolha um modelo manual.",
     );
     expect(textos(cartao(recusa, { lote: 2, total: 2 }), "en")).toContain(
-      "The driver rejected two-sided printing. This batch did not print; the earlier ones did. Choose a manual model.",
+      "The driver rejected two-sided printing. This section did not print; the earlier ones were already sent. Choose a manual model.",
     );
   });
 
@@ -175,88 +125,6 @@ describe("recusa do driver", () => {
     expect(textos(cartao(recusa, { lote: 1, total: 3 }))).toContain(
       "O driver recusou duas faces. Nada foi enviado. Escolha um modelo manual.",
     );
-  });
-});
-
-describe("aviso de simulacao", () => {
-  const resumo = {
-    ...MISTO,
-    paginasDoDocumento: 6,
-    faixas: [
-      { lote: 1, inicio: 1, fim: 4 },
-      { lote: 2, inicio: 5, fim: 6 },
-    ],
-  };
-  const AVISO = "Simulação: nada vai à impressora.";
-
-  it("aparece na divisao so com simuladas", () => {
-    const conteudo = conteudoDaDivisao(
-      [SIM_AUTOMATICA, SIM_TRASEIRA],
-      {
-        ...resumo,
-        divisao: [
-          { impressora: SIM_AUTOMATICA.id, lotes: [1], viraParaLer: null },
-          { impressora: SIM_TRASEIRA.id, lotes: [2], viraParaLer: true },
-        ],
-      },
-      null,
-      "pt-BR",
-    );
-    expect(conteudo.notas ?? []).toContain(AVISO);
-  });
-
-  it("aparece no lote unico so com simuladas", () => {
-    const conteudo = conteudoDaDivisao(
-      [SIM_AUTOMATICA, SIM_TRASEIRA],
-      {
-        ...resumo,
-        lotes: 1,
-        faixas: [{ lote: 1, inicio: 1, fim: 6 }],
-        divisao: [
-          { impressora: SIM_AUTOMATICA.id, lotes: [1], viraParaLer: null },
-          { impressora: SIM_TRASEIRA.id, lotes: [], viraParaLer: true },
-        ],
-      },
-      null,
-      "pt-BR",
-    );
-    expect(conteudo.titulo).toBe("modo.unico.titulo");
-    expect(conteudo.notas ?? []).toContain(AVISO);
-  });
-
-  it("com fila real recebendo, nao aparece", () => {
-    const conteudo = conteudoDaDivisao(
-      [SALA, SIM_TRASEIRA],
-      {
-        ...resumo,
-        divisao: [
-          { impressora: SALA.id, lotes: [1], viraParaLer: null },
-          { impressora: SIM_TRASEIRA.id, lotes: [2], viraParaLer: true },
-        ],
-      },
-      null,
-      "pt-BR",
-    );
-    expect(conteudo.notas ?? []).not.toContain(AVISO);
-  });
-});
-
-describe("nota de folhas por lote", () => {
-  it("o campo aponta para a nota, que continua na pagina mesmo escondida", () => {
-    const html = renderToStaticMarkup(
-      <CampoLote aba={abaComPaginas(8)} aoDefinir={() => undefined} nota="modo.automatico.lote" soAutomaticas />,
-    );
-    const descrita = /aria-describedby="([^"]+)"/.exec(html)?.[1] ?? "";
-    expect(descrita).not.toBe("");
-    const paragrafo = new RegExp(`<p id="${descrita}"[^>]*>([^<]+)</p>`).exec(html);
-    expect(paragrafo?.[1]).toBe(traduzir("pt-BR", "modo.automatico.lote"));
-  });
-
-  it("sem nota, nao aponta para nada", () => {
-    const html = renderToStaticMarkup(
-      <CampoLote aba={abaComPaginas(8)} aoDefinir={() => undefined} nota={null} soAutomaticas={false} />,
-    );
-    expect(html).not.toContain("aria-describedby");
   });
 });
 
@@ -303,5 +171,25 @@ describe("medidas da lateral", () => {
     const folha = await folhaDaLateral();
     expect(regra(folha, ".rolagem")).toMatch(/position: relative/);
     expect(regra(folha, ".camposDoRodape")).toMatch(/position: relative/);
+  });
+});
+
+describe("garantias do automatico que voltam sem a palavra lote", () => {
+  // Restaurado do teste de contagem: o texto mudou por decisão do plano 24, a garantia é a mesma.
+  it("so com automaticas mostra as paginas, sem a palavra lote", () => {
+    const resumo = {
+      paginas: 8,
+      lotes: 1,
+      papeis: [{ formato: "a4", larguraMm: 210, alturaMm: 297 }],
+      paresMistos: [],
+      assinado: false,
+      fluxos: [{ automatico: true, inicio: 1, fim: 8 }],
+    } as unknown as Parameters<typeof linhasDoEnvio>[1];
+    const pt = linhasDoEnvio([SALA], resumo, "pt-BR").linhas;
+    expect(pt).toContain("8 pág");
+    expect(pt.join(" ")).not.toMatch(/lote/);
+    const en = linhasDoEnvio([SALA], resumo, "en").linhas;
+    expect(en).toContain("8 pages");
+    expect(en.join(" ")).not.toMatch(/batch/);
   });
 });

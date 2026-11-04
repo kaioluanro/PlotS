@@ -258,7 +258,7 @@ impl PdfOrigem {
                 &mut dict,
                 (rotacao.rem_euclid(360) + if pagina.girar_180 { 180 } else { 0 }) % 360,
                 opcoes.papel_mm,
-                opcoes.marcas.get(&pagina.numero).map(String::as_str),
+                opcoes.marcas.get(&pagina.identidade()).map(String::as_str),
             )?;
             dict.set("Parent", pages_id);
             saida.objects.insert(pagina_id, Object::Dictionary(dict));
@@ -1517,14 +1517,17 @@ mod tests {
             Pagina {
                 numero: Some(2),
                 girar_180: true,
+                copia: 0,
             },
             Pagina {
                 numero: Some(1),
                 girar_180: true,
+                copia: 0,
             },
             Pagina {
                 numero: None,
                 girar_180: true,
+                copia: 0,
             },
         ];
         let bytes = origem.gerar_passada(&paginas, 1).unwrap();
@@ -1560,7 +1563,8 @@ mod tests {
                 origem.gerar_passada(
                     &[Pagina {
                         numero: Some(numero),
-                        girar_180: false
+                        girar_180: false,
+                        copia: 0,
                     }],
                     1
                 ),
@@ -1585,7 +1589,8 @@ mod tests {
             origem.gerar_passada(
                 &[Pagina {
                     numero: Some(1),
-                    girar_180: false
+                    girar_180: false,
+                    copia: 0,
                 }],
                 1
             ),
@@ -1673,6 +1678,7 @@ mod tests {
                 &[Pagina {
                     numero: Some(1),
                     girar_180: false,
+                    copia: 0,
                 }],
                 1,
             )
@@ -1731,6 +1737,7 @@ mod tests {
                 &[Pagina {
                     numero: Some(1),
                     girar_180: false,
+                    copia: 0,
                 }],
                 1,
             )
@@ -1786,6 +1793,7 @@ mod tests {
                 &[Pagina {
                     numero: Some(1),
                     girar_180: false,
+                    copia: 0,
                 }],
                 1,
             )
@@ -1840,7 +1848,8 @@ mod tests {
             origem.gerar_passada(
                 &[Pagina {
                     numero: Some(1),
-                    girar_180: false
+                    girar_180: false,
+                    copia: 0,
                 }],
                 1
             ),
@@ -1879,6 +1888,7 @@ mod tests {
                 &[Pagina {
                     numero: Some(1),
                     girar_180: false,
+                    copia: 0,
                 }],
                 1,
             )
@@ -1953,6 +1963,7 @@ mod tests {
                 &[Pagina {
                     numero: None,
                     girar_180: false,
+                    copia: 0,
                 }],
                 1,
             )
@@ -1976,7 +1987,8 @@ mod tests {
             .gerar_passada(
                 &[Pagina {
                     numero: None,
-                    girar_180: false
+                    girar_180: false,
+                    copia: 0,
                 }],
                 1
             )
@@ -1999,6 +2011,7 @@ mod tests {
                 &[Pagina {
                     numero: None,
                     girar_180: false,
+                    copia: 0,
                 }],
                 1,
             )
@@ -2027,7 +2040,8 @@ mod tests {
             .gerar_passada(
                 &[Pagina {
                     numero: None,
-                    girar_180: false
+                    girar_180: false,
+                    copia: 0,
                 }],
                 1
             )
@@ -2273,6 +2287,7 @@ mod tests {
             &[Pagina {
                 numero: Some(1),
                 girar_180: false,
+                copia: 0,
             }],
             1,
         )?;
@@ -2643,6 +2658,7 @@ mod tests {
         [Pagina {
             numero: Some(1),
             girar_180: false,
+            copia: 0,
         }]
     }
 
@@ -2852,6 +2868,7 @@ mod tests {
             .map(|n| Pagina {
                 numero: Some(n),
                 girar_180: false,
+                copia: 0,
             })
             .collect();
         origem.gerar_passada(&todas, 1).unwrap();
@@ -3000,10 +3017,12 @@ mod tests {
             Pagina {
                 numero: Some(1),
                 girar_180: false,
+                copia: 0,
             },
             Pagina {
                 numero: Some(2),
                 girar_180: false,
+                copia: 0,
             },
         ];
         let passada = Document::load_mem(&origem.gerar_passada(&todas, 1).unwrap()).unwrap();

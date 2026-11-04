@@ -57,13 +57,13 @@ const TABELA: readonly (readonly [string, Passada, { pt: string[]; en: string[] 
     {
       pt: [
         "A impressora acusa falta de papel.",
-        "Não coloque folhas em branco: na entrada fica só o maço impresso. Confira se ele está encaixado e retome na impressora.",
-        "Se o maço acabou antes do fim, o lote desalinhou: use Reimprimir lote.",
+        "Não coloque folhas em branco. Se ainda há parte do maço, coloque o resto agora, sem mudar a ordem, e retome na impressora.",
+        "Se o maço acabou antes do fim, o trecho desalinhou: use Reimprimir.",
       ],
       en: [
         "The printer reports it is out of paper.",
-        "Do not add blank sheets: the feed holds only the printed stack. Check that it is seated, then resume at the printer.",
-        "If the stack ran out early, the batch is misaligned: use Reprint batch.",
+        "Do not add blank sheets. If part of the stack is still out, load the rest now, without changing the order, and resume at the printer.",
+        "If the stack ran out early, the section is misaligned: use Reprint.",
       ],
     },
   ],
@@ -81,11 +81,11 @@ const TABELA: readonly (readonly [string, Passada, { pt: string[]; en: string[] 
     {
       pt: [
         "O papel atolou na impressora.",
-        "Retire a folha presa como indica o manual da impressora. O lote pode ter desalinhado: confira antes de seguir.",
+        "Retire a folha presa como indica o manual da impressora. O trecho pode ter desalinhado: confira antes de seguir.",
       ],
       en: [
         "The paper is jammed in the printer.",
-        "Remove the stuck sheet as the printer manual describes. The batch may be misaligned: check it before going on.",
+        "Remove the stuck sheet as the printer manual describes. The section may be misaligned: check it before going on.",
       ],
     },
   ],
@@ -157,6 +157,7 @@ function html(pedido: Cartao): string {
     <CartaoImpressao
       cartao={pedido}
       aoComandar={() => {}}
+      aoPedirVerso={() => undefined}
       aoPedirCancelar={() => {}}
       aoDispensar={() => {}}
     />,
@@ -167,7 +168,7 @@ describe("botoes no aviso", () => {
   it.each(["frente", "verso"] as const)("na passada de %s, reimprimir aparece", (passada) => {
     const pedido = cartao(aviso("sem_papel", passada));
     expect(acoesDoCartao(pedido).reimprimir).toBe(true);
-    expect(html(pedido)).toMatch(/<button[^>]*>(Reimprimir lote|Reprint batch)<\/button>/);
+    expect(html(pedido)).toMatch(/<button[^>]*>(Reimprimir|Reprint)<\/button>/);
   });
 
   it.each(["frente", "verso"] as const)(
@@ -176,11 +177,11 @@ describe("botoes no aviso", () => {
       const rotulos = [...html(cartao(aviso("atolado", passada))).matchAll(/<button[^>]*>([^<]*)<\/button>/g)].map(
         (achado) => achado[1],
       );
-      const emPortugues = rotulos.includes("Reimprimir lote");
+      const emPortugues = rotulos.includes("Reimprimir");
       expect(rotulos).toEqual(
         emPortugues
-          ? ["Imprimir verso", "Continuar esperando", "Reimprimir lote", "Cancelar trabalho"]
-          : ["Print back", "Keep waiting", "Reprint batch", "Cancel job"],
+          ? ["Imprimir versos", "Continuar esperando", "Reimprimir", "Cancelar trabalho"]
+          : ["Print backs", "Keep waiting", "Reprint", "Cancel job"],
       );
     },
   );
@@ -220,7 +221,7 @@ describe("mensagem da impressora no aviso", () => {
     const linhas = linhasDoCartao(cartao(comMensagem("atolado", "Bandeja 2")), "pt-BR");
     expect(linhas.map((linha) => linha.texto)).toEqual([
       "O papel atolou na impressora.",
-      "Retire a folha presa como indica o manual da impressora. O lote pode ter desalinhado: confira antes de seguir.",
+      "Retire a folha presa como indica o manual da impressora. O trecho pode ter desalinhado: confira antes de seguir.",
       "Mensagem da impressora: Bandeja 2",
     ]);
   });

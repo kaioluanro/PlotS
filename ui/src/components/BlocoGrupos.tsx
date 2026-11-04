@@ -1,71 +1,26 @@
 import { Check, ChevronDown, CircleAlert, Save, Trash2 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { juncaoDaAba, type JuncaoDaAba } from "../confirmacao";
 import { NOME_DE_GRUPO_MAXIMO, notaValeNaSelecao, selecaoCoincide } from "../grupos";
 import type { UsoDosGrupos } from "../grupos-uso";
 import { t } from "../i18n";
 import { abrirListaPeloTeclado, ATRIBUTO_MENU_DE_CONTEXTO, teclaAbreALista } from "../impressoras";
-import type { Aba, ModoDistribuicao } from "../tabs";
-import styles from "./BlocoModo.module.css";
+import type { Aba } from "../tabs";
+import styles from "./BlocoGrupos.module.css";
 import botoes from "./Botao.module.css";
-import { OrdemDaPilha } from "./OrdemDaPilha";
 import lateral from "./Sidebar.module.css";
-
-const MODOS: readonly { valor: ModoDistribuicao; rotulo: "modo.espelho" | "modo.divisao" }[] = [
-  { valor: "espelho", rotulo: "modo.espelho" },
-  { valor: "divisao", rotulo: "modo.divisao" },
-];
 
 interface Props {
   aba: Aba | null;
   grupos: UsoDosGrupos;
-  aoDefinirModo: (modo: ModoDistribuicao) => void;
 }
 
-/** O modo, com duas ou mais marcadas, nunca sai da tela: muda o que cada impressora recebe. Na altura curta, com cartao, so os grupos saem. */
-export function BlocoModo({ aba, grupos, aoDefinirModo }: Props) {
+/** Os grupos salvos: um nome para uma selecao de impressoras. */
+export function BlocoGrupos({ aba, grupos }: Props) {
   if (aba === null) return null;
-  const marcadas = aba.impressorasMarcadas.length;
   return (
-    <div className={styles.bloco} data-bloco-modo="">
-      {marcadas >= 2 && <EscolhaDoModo modo={aba.modo} aoDefinir={aoDefinirModo} />}
+    <div className={styles.bloco}>
       <LinhaDosGrupos key={aba.id} aba={aba} uso={grupos} />
     </div>
-  );
-}
-
-function EscolhaDoModo({
-  modo,
-  aoDefinir,
-}: {
-  modo: ModoDistribuicao;
-  aoDefinir: (modo: ModoDistribuicao) => void;
-}) {
-  const nome = useId();
-  const idDica = useId();
-  return (
-    <fieldset className={styles.modo} aria-describedby={idDica}>
-      <legend className={styles.rotulo}>{t("modo.distribuicao.rotulo")}</legend>
-      <div className={styles.opcoes}>
-        {MODOS.map(({ valor, rotulo }) => (
-          <label key={valor} className={valor === modo ? `${styles.opcao} ${styles.opcaoAtiva}` : styles.opcao}>
-            <input
-              type="radio"
-              className={lateral.ocultoVisual}
-              name={nome}
-              value={valor}
-              checked={valor === modo}
-              onChange={() => aoDefinir(valor)}
-            />
-            {valor === modo && <Check size={12} strokeWidth={3} aria-hidden="true" />}
-            <span>{t(rotulo)}</span>
-          </label>
-        ))}
-      </div>
-      <p id={idDica} className={styles.dica} data-dica-modo="">
-        {t(modo === "espelho" ? "modo.espelho.dica" : "modo.divisao.dica")}
-      </p>
-    </fieldset>
   );
 }
 
@@ -83,7 +38,6 @@ function focarDepoisDoDialogo(alvo: () => HTMLElement | null, tentativas = 60) {
 interface GrupoEscolhido {
   nome: string;
   impressoras: readonly string[];
-  modo: ModoDistribuicao;
 }
 
 function LinhaDosGrupos({ aba, uso }: { aba: Aba; uso: UsoDosGrupos }) {
@@ -98,7 +52,7 @@ function LinhaDosGrupos({ aba, uso }: { aba: Aba; uso: UsoDosGrupos }) {
   const coincide =
     escolhido !== null &&
     uso.grupos.some((grupo) => grupo.nome === escolhido.nome) &&
-    selecaoCoincide(escolhido, aba.impressorasMarcadas, aba.modo);
+    selecaoCoincide(escolhido, aba.impressorasMarcadas);
   // Grupo apagado, que sumiu do arquivo ou selecao mudada: a lista volta ao convite e aplica de novo.
   const valor = aplicando ?? (coincide ? escolhido.nome : "");
   const semMarcadas = aba.impressorasMarcadas.length === 0;
@@ -141,9 +95,7 @@ function LinhaDosGrupos({ aba, uso }: { aba: Aba; uso: UsoDosGrupos }) {
     setAplicando(nome);
     void uso.aplicar(aba.id, nome).then((aplicado) => {
       setAplicando(null);
-      setEscolhido(
-        aplicado === null ? null : { nome, impressoras: aplicado.impressoras, modo: aplicado.modo },
-      );
+      setEscolhido(aplicado === null ? null : { nome, impressoras: aplicado.impressoras });
     });
   };
 
@@ -160,12 +112,8 @@ function LinhaDosGrupos({ aba, uso }: { aba: Aba; uso: UsoDosGrupos }) {
           falha={uso.falha}
           aoEditar={uso.limparFalha}
           aoSalvar={async (nome) => {
-            if (await uso.salvar(nome, aba.impressorasMarcadas, aba.modo)) {
-              setEscolhido({
-                nome: nome.trim(),
-                impressoras: aba.impressorasMarcadas,
-                modo: aba.modo,
-              });
+            if (await uso.salvar(nome, aba.impressorasMarcadas)) {
+              setEscolhido({ nome: nome.trim(), impressoras: aba.impressorasMarcadas });
               voltarFoco.current = true;
               setNomeando(false);
             }
@@ -343,38 +291,5 @@ function CampoDoNome({
         </button>
       </div>
     </form>
-  );
-}
-
-/** Quando todos os trabalhos da divisao acabam: o que faltou e como juntar os macos, na ordem fisica. */
-export function JuncaoDosMacos({ aba }: { aba: Aba | null }) {
-  const juncao = aba === null ? null : juncaoDaAba(aba);
-  if (aba === null || juncao === null) return null;
-  return <TextoDaJuncao key={aba.id} id={aba.id} juncao={juncao} />;
-}
-
-function TextoDaJuncao({ id, juncao }: { id: number; juncao: JuncaoDaAba }) {
-  const idTitulo = `juncao-${id}`;
-  const raiz = useRef<HTMLElement>(null);
-  // Fica acima dos cartoes, e a lista pode estar rolada ate o ultimo deles quando o trabalho acaba.
-  // O efeito roda depois de o rodape voltar, entao a altura da lista ja e a final.
-  // Com chaves: o scrollIntoView pode devolver uma promessa, e o React a trataria como limpeza.
-  useEffect(() => {
-    raiz.current?.scrollIntoView({ block: "start" });
-  }, []);
-  return (
-    <section ref={raiz} className={styles.juncao} role="status" aria-labelledby={idTitulo}>
-      <h3 id={idTitulo} className={lateral.tituloSecao}>
-        {t("modo.juntar.titulo")}
-      </h3>
-      {juncao.faltas.map((falta) => (
-        <p key={falta} className={styles.falta}>
-          <CircleAlert size={12} className={styles.iconeFalha} aria-hidden="true" />
-          <span>{falta}</span>
-        </p>
-      ))}
-      <OrdemDaPilha ordem={juncao.pilha} />
-      <p className={styles.frase}>{juncao.conferencia}</p>
-    </section>
   );
 }

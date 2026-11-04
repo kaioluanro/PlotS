@@ -9,6 +9,9 @@ pub mod distribuicao;
 /// Maior quantidade de páginas que o planejador aceita em uma chamada.
 pub const LIMITE_PAGINAS: usize = 100_000;
 
+/// Quem uma página é no plano: a cópia e o número de origem (`None` é a face em branco).
+pub type IdentidadeDaPagina = (usize, Option<usize>);
+
 /// Uma página original, ou a folha em branco acrescentada ao fim de um documento ímpar.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Pagina {
@@ -16,13 +19,23 @@ pub struct Pagina {
     pub numero: Option<usize>,
     /// Indica que o conteúdo deve ser girado em 180 graus ao ser enviado.
     pub girar_180: bool,
+    /// Cópia do documento a que a página pertence, a partir de 0. Com o número, identifica a folha
+    /// no plano mesmo quando as cópias repetem as mesmas páginas, e acompanha a página em qualquer
+    /// reordenação das passadas.
+    pub copia: usize,
 }
 
 impl Pagina {
+    /// Quem a página é no plano: a cópia e o número de origem.
+    pub fn identidade(&self) -> IdentidadeDaPagina {
+        (self.copia, self.numero)
+    }
+
     fn original(numero: usize) -> Self {
         Self {
             numero: Some(numero),
             girar_180: false,
+            copia: 0,
         }
     }
 
@@ -30,6 +43,7 @@ impl Pagina {
         Self {
             numero: None,
             girar_180: false,
+            copia: 0,
         }
     }
 }
@@ -354,11 +368,20 @@ pub enum ErroPapel {
         fim: usize,
         total: usize,
     },
+    CopiasInvalidas {
+        copias: usize,
+    },
 }
 
 impl std::fmt::Display for ErroPapel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::CopiasInvalidas { copias } => {
+                write!(
+                    f,
+                    "o número de cópias deve estar entre 1 e {LIMITE_COPIAS}, não {copias}"
+                )
+            }
             Self::DimensaoInvalida { pagina } => {
                 write!(f, "dimensões inválidas na página {pagina}")
             }
@@ -531,6 +554,8 @@ pub fn pares_mistos_do_intervalo(
 pub struct LotePapel {
     pub papel: Papel,
     pub paginas: Vec<Option<usize>>,
+    /// A cópia de cada item de `paginas`, na mesma ordem.
+    pub copias: Vec<usize>,
     pub passada1: Vec<Pagina>,
     pub passada2: Vec<Pagina>,
     /// A impressora imprime as duas faces sozinha: `passada1` é um trabalho só, na ordem do
@@ -633,6 +658,7 @@ pub fn plano_lotes_do_intervalo(
             lotes.push(LotePapel {
                 papel,
                 paginas: Vec::new(),
+                copias: Vec::new(),
                 passada1: Vec::new(),
                 passada2: Vec::new(),
                 duas_faces: false,
@@ -650,6 +676,7 @@ pub fn plano_lotes_do_intervalo(
                 .map_err(|_| ErroPapel::ReservaFalhou)?;
             lote.paginas.push(frente);
             lote.paginas.push(verso);
+            lote.copias.extend([0, 0]);
             let pagina_frente = frente
                 .map(Pagina::original)
                 .unwrap_or_else(Pagina::em_branco);
@@ -676,6 +703,137 @@ pub fn plano_lotes_do_intervalo(
                 pagina.girar_180 = true;
             }
         }
+    }
+    Ok(lotes)
+}
+
+/// Plano de quem imprime sem parar: um lote por trecho seguido do mesmo papel, na ordem do perfil.
+/// Não há limite de folhas: o que separa um lote do outro é a troca de papel.
+pub fn plano_em_trechos_do_intervalo(
+    paginas: &[DimensoesPagina],
+    intervalo: Option<IntervaloPaginas>,
+    ordem_passadas: OrdemPassadas,
+    perfil: PerfilImpressora,
+) -> Result<Vec<LotePapel>, ErroPapel> {
+    plano_lotes_do_intervalo(
+        paginas,
+        intervalo,
+        paginas.len().max(1),
+        ordem_passadas,
+        perfil,
+    )
+}
+
+/// Maior número de cópias que um pedido aceita.
+pub const LIMITE_COPIAS: usize = 999;
+
+/// Marca as páginas do lote como da cópia `copia`.
+fn da_copia(lote: &mut LotePapel, copia: usize) {
+    lote.copias.iter_mut().for_each(|c| *c = copia);
+    for pagina in lote.passada1.iter_mut().chain(&mut lote.passada2) {
+        pagina.copia = copia;
+    }
+}
+
+/// Cópias do documento, planejadas como um documento só: cada cópia é planejada sozinha, com o
+/// intervalo, e fecha as suas folhas antes da próxima, então a última folha de uma cópia de total
+/// ímpar leva o verso em branco dela. Trechos do mesmo papel viram um lote só, com as passadas das
+/// cópias em sequência. A ordem das passadas e o giro do perfil valem para o maço inteiro, por isso
+/// são aplicados uma vez, depois de juntar as cópias. Com uma cópia, o resultado é o mesmo do plano
+/// de trechos.
+pub fn plano_copias_do_intervalo(
+    paginas: &[DimensoesPagina],
+    intervalo: Option<IntervaloPaginas>,
+    copias: usize,
+    ordem_passadas: OrdemPassadas,
+    perfil: PerfilImpressora,
+) -> Result<Vec<LotePapel>, ErroPapel> {
+    if !(1..=LIMITE_COPIAS).contains(&copias) {
+        return Err(ErroPapel::CopiasInvalidas { copias });
+    }
+    let total = paginas
+        .len()
+        .checked_mul(copias)
+        .ok_or(ErroPapel::LimitePaginasExcedido)?;
+    if total > LIMITE_PAGINAS {
+        return Err(ErroPapel::LimitePaginasExcedido);
+    }
+    let sem_ajuste_do_perfil = PerfilImpressora {
+        passada1_inversa: false,
+        passada2_inversa: false,
+        verso_girar_180: false,
+        ..perfil
+    };
+    let mut lotes: Vec<LotePapel> = Vec::new();
+    for copia in 0..copias {
+        for mut lote in
+            plano_em_trechos_do_intervalo(paginas, intervalo, ordem_passadas, sem_ajuste_do_perfil)?
+        {
+            da_copia(&mut lote, copia);
+            match lotes.last_mut() {
+                Some(anterior)
+                    if anterior.papel == lote.papel && anterior.duas_faces == lote.duas_faces =>
+                {
+                    anterior.paginas.extend(lote.paginas);
+                    anterior.copias.extend(lote.copias);
+                    anterior.passada1.extend(lote.passada1);
+                    anterior.passada2.extend(lote.passada2);
+                }
+                _ => lotes.push(lote),
+            }
+        }
+    }
+    for lote in &mut lotes {
+        if perfil.passada1_inversa {
+            lote.passada1.reverse();
+        }
+        if perfil.passada2_inversa {
+            lote.passada2.reverse();
+        }
+        if perfil.verso_girar_180 {
+            for pagina in &mut lote.passada2 {
+                pagina.girar_180 = true;
+            }
+        }
+    }
+    Ok(lotes)
+}
+
+/// Cópias para a impressora que imprime as duas faces sozinha. Cada cópia sai como um trabalho
+/// próprio, com as páginas do trecho em ordem: a impressora fecha a última folha de uma cópia ímpar
+/// com o verso em branco, e nenhuma página se junta a outra cópia. Não se usa a cópia do driver.
+pub fn plano_automatico_copias_do_intervalo(
+    paginas: &[DimensoesPagina],
+    intervalo: Option<IntervaloPaginas>,
+    copias: usize,
+    ordem_passadas: OrdemPassadas,
+    perfil: PerfilImpressora,
+    reparto: RepartoAutomatico,
+) -> Result<Vec<LotePapel>, ErroPapel> {
+    if !(1..=LIMITE_COPIAS).contains(&copias) {
+        return Err(ErroPapel::CopiasInvalidas { copias });
+    }
+    let total = paginas
+        .len()
+        .checked_mul(copias)
+        .ok_or(ErroPapel::LimitePaginasExcedido)?;
+    if total > LIMITE_PAGINAS {
+        return Err(ErroPapel::LimitePaginasExcedido);
+    }
+    let mut lotes: Vec<LotePapel> = Vec::new();
+    for copia in 0..copias {
+        let inicio = lotes.len();
+        lotes.extend(plano_automatico_do_intervalo(
+            paginas,
+            intervalo,
+            paginas.len().max(1),
+            ordem_passadas,
+            perfil,
+            reparto,
+        )?);
+        lotes[inicio..]
+            .iter_mut()
+            .for_each(|lote| da_copia(lote, copia));
     }
     Ok(lotes)
 }
@@ -740,11 +898,13 @@ pub fn plano_automatico_do_intervalo(
                     .try_reserve(documento.len())
                     .map_err(|_| ErroPapel::ReservaFalhou)?;
                 anterior.paginas.extend(lote.paginas);
+                anterior.copias.extend(lote.copias);
                 anterior.passada1.extend(documento);
             }
             _ => lotes.push(LotePapel {
                 papel: lote.papel,
                 paginas: lote.paginas,
+                copias: lote.copias,
                 passada1: documento,
                 passada2: Vec::new(),
                 duas_faces: true,
@@ -768,6 +928,182 @@ mod tests {
 
     fn trecho(inicio: usize, fim: usize) -> Option<IntervaloPaginas> {
         Some(IntervaloPaginas { inicio, fim })
+    }
+
+    #[test]
+    fn plano_em_trechos_faz_um_lote_por_papel_sem_limite_de_folhas() {
+        let perfil = PerfilImpressora::default();
+        let inteiro =
+            plano_em_trechos_do_intervalo(&[A4; 101], None, OrdemPassadas::default(), perfil)
+                .unwrap();
+        assert_eq!(inteiro.len(), 1);
+        assert_eq!(inteiro[0].passada1.len(), 51);
+        assert_eq!(inteiro[0].passada2.len(), 51);
+        let mut misto = vec![A4; 4];
+        misto.extend([A5; 4]);
+        misto.extend([A4; 2]);
+        let trechos =
+            plano_em_trechos_do_intervalo(&misto, None, OrdemPassadas::default(), perfil).unwrap();
+        assert_eq!(trechos.len(), 3);
+        assert_eq!(trechos[1].papel.formato, FormatoPapel::A5);
+        let parte = plano_em_trechos_do_intervalo(
+            &[A4; 24],
+            trecho(3, 12),
+            OrdemPassadas::default(),
+            perfil,
+        )
+        .unwrap();
+        assert_eq!(parte.len(), 1);
+        assert_eq!(parte[0].paginas.first(), Some(&Some(3)));
+        assert_eq!(parte[0].paginas.last(), Some(&Some(12)));
+    }
+
+    #[test]
+    fn automatico_com_copias_faz_um_trabalho_por_copia_e_cada_uma_fecha_as_folhas() {
+        let perfil = PerfilImpressora::default();
+        let reparto = RepartoAutomatico::PorTrechoDePapel;
+        for paginas in [4usize, 3] {
+            let doc = vec![A4; paginas];
+            for copias in [1usize, 2, 3] {
+                let lotes = plano_automatico_copias_do_intervalo(
+                    &doc,
+                    None,
+                    copias,
+                    OrdemPassadas::default(),
+                    perfil,
+                    reparto,
+                )
+                .unwrap();
+                assert_eq!(lotes.len(), copias, "{copias} cópias de {paginas}");
+                let folhas_por_copia = paginas.div_ceil(2);
+                for lote in &lotes {
+                    assert!(lote.duas_faces);
+                    let numeros: Vec<Option<usize>> =
+                        lote.passada1.iter().map(|p| p.numero).collect();
+                    assert_eq!(numeros, (1..=paginas).map(Some).collect::<Vec<_>>());
+                    assert_eq!(lote.paginas.len(), folhas_por_copia * 2);
+                }
+                let folhas: usize = lotes.iter().map(|lote| lote.paginas.len() / 2).sum();
+                assert_eq!(folhas, copias * folhas_por_copia);
+            }
+        }
+        let um = plano_automatico_copias_do_intervalo(
+            &[A4; 4],
+            None,
+            1,
+            OrdemPassadas::default(),
+            perfil,
+            reparto,
+        )
+        .unwrap();
+        let esperado = plano_automatico_do_intervalo(
+            &[A4; 4],
+            None,
+            4,
+            OrdemPassadas::default(),
+            perfil,
+            reparto,
+        )
+        .unwrap();
+        assert_eq!(um, esperado);
+    }
+
+    fn numeros_das_passadas(lote: &LotePapel) -> (Vec<Option<usize>>, Vec<Option<usize>>) {
+        (
+            lote.passada1.iter().map(|p| p.numero).collect(),
+            lote.passada2.iter().map(|p| p.numero).collect(),
+        )
+    }
+
+    #[test]
+    fn uma_copia_sai_igual_ao_plano_de_trechos() {
+        let perfil = PerfilImpressora::default();
+        let mut misto = vec![A4; 4];
+        misto.extend([A5; 4]);
+        for intervalo in [None, trecho(1, 4), trecho(5, 8)] {
+            let um =
+                plano_copias_do_intervalo(&misto, intervalo, 1, OrdemPassadas::default(), perfil)
+                    .unwrap();
+            let trechos =
+                plano_em_trechos_do_intervalo(&misto, intervalo, OrdemPassadas::default(), perfil)
+                    .unwrap();
+            assert_eq!(um, trechos);
+        }
+    }
+
+    #[test]
+    fn cada_copia_de_total_impar_fecha_com_o_verso_em_branco_da_sua_ultima_folha() {
+        let perfil = PerfilImpressora::default();
+        let copias =
+            plano_copias_do_intervalo(&[A4; 3], None, 2, OrdemPassadas::ParesPrimeiro, perfil)
+                .unwrap();
+        assert_eq!(copias.len(), 1);
+        let paginas: Vec<Option<usize>> = copias[0].paginas.clone();
+        assert_eq!(
+            paginas,
+            [
+                Some(1),
+                Some(2),
+                Some(3),
+                None,
+                Some(1),
+                Some(2),
+                Some(3),
+                None
+            ]
+        );
+        let (passada1, passada2) = numeros_das_passadas(&copias[0]);
+        assert_eq!(passada1, [Some(2), None, Some(2), None]);
+        assert_eq!(passada2, [Some(1), Some(3), Some(1), Some(3)]);
+    }
+
+    #[test]
+    fn copias_com_trechos_de_papeis_diferentes_repetem_o_trecho_inteiro() {
+        let perfil = PerfilImpressora::default();
+        let mut misto = vec![A4; 2];
+        misto.push(A5);
+        let lotes =
+            plano_copias_do_intervalo(&misto, None, 2, OrdemPassadas::default(), perfil).unwrap();
+        let trechos: Vec<Vec<Option<usize>>> =
+            lotes.iter().map(|lote| lote.paginas.clone()).collect();
+        assert_eq!(
+            trechos,
+            [
+                vec![Some(1), Some(2)],
+                vec![Some(3), None],
+                vec![Some(1), Some(2)],
+                vec![Some(3), None],
+            ]
+        );
+    }
+
+    #[test]
+    fn copias_fora_de_um_a_novecentos_e_noventa_e_nove_sao_recusadas() {
+        let perfil = PerfilImpressora::default();
+        let doc = [A4; 2];
+        let planejar = |copias| {
+            plano_copias_do_intervalo(&doc, None, copias, OrdemPassadas::default(), perfil)
+        };
+        assert!(matches!(
+            planejar(0),
+            Err(ErroPapel::CopiasInvalidas { copias: 0 })
+        ));
+        assert!(planejar(1).is_ok());
+        assert!(planejar(LIMITE_COPIAS).is_ok());
+        assert!(matches!(
+            planejar(LIMITE_COPIAS + 1),
+            Err(ErroPapel::CopiasInvalidas { .. })
+        ));
+    }
+
+    #[test]
+    fn copias_que_passam_do_limite_de_paginas_sao_recusadas_sem_planejar() {
+        let perfil = PerfilImpressora::default();
+        let grande = vec![A4; LIMITE_PAGINAS];
+        assert!(matches!(
+            plano_copias_do_intervalo(&grande, None, 2, OrdemPassadas::default(), perfil),
+            Err(ErroPapel::LimitePaginasExcedido)
+        ));
     }
 
     fn plano_do_modelo(

@@ -103,7 +103,7 @@ describe("botao de enviar a frente", () => {
     const botao = estadoDoEnvio(null, [TRASEIRA], NENHUMA, "pt-BR");
     expect(botao.desabilitado).toBe(true);
     expect(botao.motivo).toBe("Abra um PDF para imprimir.");
-    expect(botao.rotulo).toBe("Imprimir frente");
+    expect(botao.rotulo).toBe("Imprimir frentes");
   });
 
   it("sem impressora marcada fica desabilitado com o motivo", () => {
@@ -118,7 +118,7 @@ describe("botao de enviar a frente", () => {
     const lista = [boa, semPerfil, fila("Livre")];
     const botao = estadoDoEnvio(abaPronta([boa, semPerfil]), lista, NENHUMA, "pt-BR");
     expect(botao.desabilitado).toBe(false);
-    expect(botao.rotulo).toBe("Imprimir frente (1)");
+    expect(botao.rotulo).toBe("Imprimir frentes em 1");
     expect(botao.destinos).toEqual([boa]);
     expect(botao.motivo).toBe("Fora da contagem: Sem (sem perfil).");
   });
@@ -174,7 +174,7 @@ describe("botao de enviar a frente", () => {
   it("fila marcada que saiu da lista nao conta", () => {
     const a = fila("A");
     const botao = estadoDoEnvio(abaPronta([a, fila("Sumiu")]), [a], NENHUMA, "pt-BR");
-    expect(botao.rotulo).toBe("Imprimir frente (1)");
+    expect(botao.rotulo).toBe("Imprimir frentes em 1");
   });
 
   it("muitas de fora nao estouram o espaco do motivo", () => {
@@ -186,8 +186,8 @@ describe("botao de enviar a frente", () => {
 
   it("so com simuladas o botao fala em simular e nao pede confirmacao", () => {
     for (const [idioma, rotulo] of [
-      ["pt-BR", "Simular frente (2)"],
-      ["en", "Simulate front (2)"],
+      ["pt-BR", "Simular frentes em 2"],
+      ["en", "Simulate fronts on 2"],
     ] as const) {
       const botao = estadoDoEnvio(abaPronta([TRASEIRA, GAVETA]), [TRASEIRA, GAVETA], NENHUMA, idioma);
       expect(botao.rotulo).toBe(rotulo);
@@ -198,7 +198,7 @@ describe("botao de enviar a frente", () => {
   it("qualquer fila real pede confirmacao e o botao nao fala em simular", () => {
     const a = fila("A");
     const botao = estadoDoEnvio(abaPronta([a, TRASEIRA]), [a, TRASEIRA], NENHUMA, "pt-BR");
-    expect(botao.rotulo).toBe("Imprimir frente (2)");
+    expect(botao.rotulo).toBe("Imprimir frentes em 2");
     expect(precisaConfirmar(botao.destinos)).toBe(true);
   });
 });
@@ -217,7 +217,7 @@ describe("confirmacao do envio", () => {
 
   it("lista as impressoras reais, as paginas, o papel e as observacoes", () => {
     const { linhas, notas } = linhasDoEnvio([fila("Sala"), TRASEIRA], resumo, "pt-BR");
-    expect(linhas).toEqual(["Sala", "6 páginas em 2 lotes", "Papel: A4, Carta"]);
+    expect(linhas).toEqual(["Sala", "6 pág", "Papel: A4, Carta"]);
     expect(notas.join(" ")).toContain("mistura retrato e paisagem");
     expect(notas.join(" ")).toContain("assinatura digital");
     expect(notas.join(" ")).toContain("2 ou 3 folhas");
@@ -225,7 +225,7 @@ describe("confirmacao do envio", () => {
     expect(notas.join(" ")).toContain("mais de um papel");
   });
 
-  it("em ingles, com um lote e sem simulada", () => {
+  it("em ingles, com um so trecho e sem simulada, nao cita lote", () => {
     const { linhas, notas } = linhasDoEnvio(
       [fila("Room", { modo: "personalizado" })],
       {
@@ -237,7 +237,7 @@ describe("confirmacao do envio", () => {
       },
       "en",
     );
-    expect(linhas).toEqual(["Room", "2 pages in 1 batch", "Paper: Letter"]);
+    expect(linhas).toEqual(["Room", "2 pages", "Paper: Letter"]);
     expect(notas).toEqual([]);
   });
 });
@@ -274,11 +274,11 @@ describe("frases do cartao", () => {
   it("aguardando traz a espera da folha e o gesto, com o lado e a segunda linha", () => {
     const frases = frasesDoCartao(cartao({ tipo: "aguardando" }), "pt-BR");
     expect(frases).toEqual([
-      "O trabalho da frente terminou ou saiu da fila. Isso não garante que o papel já saiu.",
-      "Espere a última folha sair antes de recolocar o maço.",
+      "Os versos do trecho anterior terminaram ou saíram da fila.",
+      "Tire esse maço e guarde-o à parte.",
       "Não vire nem gire o maço.",
       "Sem mudar a ordem das folhas, coloque na entrada com a face impressa para baixo.",
-      "Com o maço na entrada, clique em Imprimir verso.",
+      "Com o maço na entrada, clique em Imprimir versos.",
     ]);
   });
 
@@ -317,13 +317,13 @@ describe("frases do cartao", () => {
     expect(frasesDoCartao(cartao(fim), "pt-BR").join(" ")).not.toContain("vire o maço");
   });
 
-  it("troca de papel aparece antes do proximo lote", () => {
+  it("troca de papel aparece antes do proximo trecho", () => {
     const proximo = cartao(
       { tipo: "proximo_lote" },
       { trocaDePapel: { formato: "a5", larguraMm: 148, alturaMm: 210 } },
     );
     expect(frasesDoCartao(proximo, "pt-BR").join(" ")).toContain(
-      "Troque o papel para A5 e retire as folhas do lote anterior.",
+      "Troque o papel para A5 e retire as folhas do trecho anterior.",
     );
     expect(frasesDoCartao(proximo, "en").join(" ")).toContain("Change the paper to A5");
     expect(frasesDoCartao(cartao({ tipo: "proximo_lote" }), "pt-BR").join(" ")).not.toContain(
@@ -446,7 +446,7 @@ describe("motivos", () => {
 
   it("em ingles nao mostra mensagem de envio em portugues", () => {
     const texto = textoDoMotivo({ codigo: "papel", texto: "o driver não aplicou o papel" }, "en");
-    expect(texto).toBe("The driver did not accept the paper size of these sheets.");
+    expect(texto).toBe("The driver did not accept the paper size of this job.");
     expect(textoDoMotivo({ codigo: "novo", texto: "algo" }, "en")).toBe(
       "The system refused a step of the job.",
     );
@@ -499,6 +499,7 @@ describe("acoes do cartao", () => {
     const fim = acoesDoCartao(cartao({ tipo: "concluido" }));
     expect(fim).toEqual({
       frente: false,
+      pedirVerso: false,
       verso: { visivel: false, liberado: false },
       reimprimir: false,
       continuar: false,
@@ -509,11 +510,11 @@ describe("acoes do cartao", () => {
 
   it("com impressora simulada os botoes falam em simular", () => {
     const simulado = cartao({ tipo: "aguardando" }, { simulada: true });
-    expect(rotuloDoVerso(simulado, "pt-BR")).toBe("Simular verso");
-    expect(rotuloDoVerso(simulado, "en")).toBe("Simulate back");
-    expect(rotuloDaFrente(simulado, "pt-BR")).toBe("Simular frente");
-    expect(rotuloDoVerso(cartao({ tipo: "aguardando" }), "pt-BR")).toBe("Imprimir verso");
-    expect(rotuloDaFrente(cartao({ tipo: "aguardando" }), "en")).toBe("Print front");
+    expect(rotuloDoVerso(simulado, "pt-BR")).toBe("Simular versos");
+    expect(rotuloDoVerso(simulado, "en")).toBe("Simulate backs");
+    expect(rotuloDaFrente(simulado, "pt-BR")).toBe("Simular frentes");
+    expect(rotuloDoVerso(cartao({ tipo: "aguardando" }), "pt-BR")).toBe("Imprimir versos");
+    expect(rotuloDaFrente(cartao({ tipo: "aguardando" }), "en")).toBe("Print fronts");
   });
 
   it("perder o contato com o trabalho vira erro com motivo", () => {
@@ -659,7 +660,7 @@ describe("rotulo e contagem pelos destinos", () => {
     const ruim = fila("Ruim", { modo: "sem_perfil" });
     const botao = estadoDoEnvio(abaPronta([TRASEIRA, ruim]), [TRASEIRA, ruim], NENHUMA, "pt-BR");
     expect(botao.destinos).toEqual([TRASEIRA]);
-    expect(botao.rotulo).toBe("Simular frente (1)");
+    expect(botao.rotulo).toBe("Simular frentes em 1");
     expect(precisaConfirmar(botao.destinos)).toBe(false);
   });
 
@@ -731,9 +732,9 @@ describe("texto do gesto na jato e na lateral", () => {
 describe("frases do cartao nos novos textos", () => {
   it("aguardando real termina com o clique em imprimir verso", () => {
     const frases = frasesDoCartao(cartao({ tipo: "aguardando" }), "pt-BR");
-    expect(frases.at(-1)).toBe("Com o maço na entrada, clique em Imprimir verso.");
+    expect(frases.at(-1)).toBe("Com o maço na entrada, clique em Imprimir versos.");
     expect(frasesDoCartao(cartao({ tipo: "aguardando" }), "en").at(-1)).toBe(
-      "With the stack in the feed, click Print back.",
+      "With the stack in the feed, click Print backs.",
     );
   });
 
@@ -741,28 +742,28 @@ describe("frases do cartao nos novos textos", () => {
     const simulado = cartao({ tipo: "aguardando" }, { simulada: true });
     const frases = frasesDoCartao(simulado, "pt-BR");
     expect(frases).toContain("Na impressora real, o próximo passo seria:");
-    expect(frases.at(-1)).toBe("Clique em Simular verso para conferir.");
+    expect(frases.at(-1)).toBe("Clique em Simular versos para conferir.");
     expect(frasesDoCartao(simulado, "en")).toContain("On a real printer, the next step would be:");
-    expect(frasesDoCartao(simulado, "en").at(-1)).toBe("Click Simulate back to check.");
+    expect(frasesDoCartao(simulado, "en").at(-1)).toBe("Click Simulate backs to check.");
   });
 
-  it("frente real em envio mostra o motivo do verso desabilitado como texto", () => {
+  it("frente real em envio mostra o que a fila faz com as frentes, como texto", () => {
     expect(frasesDoCartao(cartao({ tipo: "imprimindo", passada: "frente" }), "pt-BR")).toEqual([
-      "A frente está indo para a fila. O verso libera quando a fila confirmar.",
+      "As frentes estão indo para a fila.",
     ]);
   });
 
-  it("proximo lote diz o estado novo e o que fazer, com o termo batch em ingles", () => {
+  it("proximo trecho diz o estado novo e o que fazer, sem a palavra lote", () => {
     const sem = cartao({ tipo: "proximo_lote" });
-    expect(textoDoEstadoDoCartao(sem, "pt-BR")).toBe("Pronto para o próximo lote");
-    expect(textoDoEstadoDoCartao(sem, "en")).toBe("Ready for the following batch");
+    expect(textoDoEstadoDoCartao(sem, "pt-BR")).toBe("Pronto para o próximo trecho");
+    expect(textoDoEstadoDoCartao(sem, "en")).toBe("Ready for the next section");
     expect(frasesDoCartao(sem, "pt-BR")).toEqual([
-      "O verso do lote anterior terminou ou saiu da fila.",
-      "Retire as folhas do lote anterior e coloque papel em branco.",
+      "As frentes deste trecho terminaram ou saíram da fila.",
+      "Retire as folhas do trecho anterior e coloque papel em branco.",
       "Depois, clique em Imprimir frente.",
     ]);
     const en = frasesDoCartao(sem, "en").join(" ");
-    expect(en).toContain("batch");
+    expect(en).toContain("section");
     expect(en).not.toMatch(/set of sheets/);
   });
 
@@ -871,21 +872,21 @@ describe("recusas do inicio e reimpressao", () => {
     expect(cartoesRecusados(3, [a], [a.id, "outra"])).toEqual([]);
   });
 
-  it("reimprimir numa fila real pede confirmacao com o lote e o total", () => {
-    const pt = conteudoDaReimpressao("Fila A", 2, 4);
-    expect(traduzir("pt-BR", pt.titulo, pt.parametros)).toBe("Reimprimir o lote 2 de 4 em Fila A?");
-    expect(traduzir("pt-BR", pt.texto)).toBe(
-      "O que restar deste lote sai da fila e a frente é enviada de novo. Deixe na entrada só folhas em branco: tire qualquer folha já impressa deste lote.",
+  it("reimprimir diz quantas folhas saem de novo, e so a face do trabalho", () => {
+    const frentes = cartao({ tipo: "erro", motivo: { codigo: "fila", texto: "" } }, {
+      folhasDoLote: 12,
+      alcance: "so_frentes",
+    });
+    const pt = conteudoDaReimpressao("Fila A", frentes, "pt-BR");
+    expect(traduzir("pt-BR", pt.titulo, pt.parametros)).toBe("Reimprimir este trecho em Fila A?");
+    expect(traduzir("pt-BR", pt.texto, pt.parametros)).toBe(
+      "São 12 folhas. O que restar sai da fila e as frentes são enviadas de novo. Deixe na entrada só folhas em branco: tire as folhas já impressas deste trecho.",
     );
-    expect(traduzir("pt-BR", pt.manter)).toBe("Voltar");
-    expect(traduzir("pt-BR", pt.fechar)).toBe("Reimprimir lote");
-    const en = conteudoDaReimpressao("Fila A", 2, 4);
-    expect(traduzir("en", en.titulo, en.parametros)).toBe("Reprint batch 2 of 4 on Fila A?");
-    expect(traduzir("en", en.texto)).toBe(
-      "What is left of the batch leaves the queue, and the front is sent again. Leave only blank sheets in the feed: take out any sheet already printed.",
+    expect(traduzir("pt-BR", pt.fechar)).toBe("Reimprimir");
+    const versos = conteudoDaReimpressao("Fila A", { ...frentes, alcance: "so_versos", folhasDoLote: 1 }, "en");
+    expect(traduzir("en", versos.texto, versos.parametros)).toBe(
+      "That is 1 sheet. What is left leaves the queue, and the backs are sent again. Load a stack with the fronts ready and no backs.",
     );
-    expect(traduzir("en", en.manter)).toBe("Cancel");
-    expect(traduzir("en", en.fechar)).toBe("Reprint batch");
   });
 });
 
@@ -893,15 +894,9 @@ describe("simulacao em envio explica o verso desabilitado", () => {
   it("a frente e o verso simulados dizem que nada foi a impressora, nos dois idiomas", () => {
     const frente = cartao({ tipo: "imprimindo", passada: "frente" }, { simulada: true });
     const verso = cartao({ tipo: "imprimindo", passada: "verso" }, { simulada: true });
-    expect(frasesDoCartao(frente, "pt-BR")).toEqual([
-      "A frente está sendo simulada. O verso libera quando a simulação confirmar.",
-    ]);
-    expect(frasesDoCartao(verso, "pt-BR")).toEqual([
-      "O verso está sendo simulado. Nada foi à impressora.",
-    ]);
-    expect(frasesDoCartao(verso, "en")).toEqual([
-      "The back is being simulated. Nothing went to the printer.",
-    ]);
+    expect(frasesDoCartao(frente, "pt-BR")).toEqual(["As frentes estão sendo simuladas."]);
+    expect(frasesDoCartao(verso, "pt-BR")).toEqual(["Os versos estão sendo simulados. Nada foi à impressora."]);
+    expect(frasesDoCartao(verso, "en")).toEqual(["The backs are being simulated. Nothing went to the printer."]);
     expect(acoesDoCartao(verso).verso).toEqual({ visivel: true, liberado: false });
   });
 });

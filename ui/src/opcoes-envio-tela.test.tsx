@@ -2,10 +2,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { BlocoAjuste, OpcaoInversao } from "./components/BlocoAjuste";
 import { VistaGuardarHistorico } from "./components/HistoricoDialog";
-import { CampoLote, SeletorDoGesto } from "./components/Sidebar";
+import { SeletorDoGesto } from "./components/Sidebar";
 import { traduzir } from "./i18n";
 import type { Impressora } from "./impressoras";
-import { estadoInicial, reduzirAbas, type Aba } from "./tabs";
+import type { Aba } from "./tabs";
 
 // Os CSS de modulo nao voltam como texto sob o teste: as folhas sao lidas do disco.
 interface Leitor {
@@ -199,19 +199,3 @@ describe("posicao da seta e rodape da janela curta", () => {
   });
 });
 
-describe("resumo abaixo das folhas por lote", () => {
-  let estado = reduzirAbas(estadoInicial, { tipo: "abrir", documento: { caminho: "a.pdf", nome: "a.pdf" } });
-  const id = estado.abas[0]?.id ?? -1;
-  estado = reduzirAbas(estado, { tipo: "paginas_contadas", id, total: 8 });
-  const aba = estado.abas[0] as Aba;
-  const campo = (variosPapeis: boolean) =>
-    renderToStaticMarkup(
-      <CampoLote aba={aba} aoDefinir={() => undefined} nota={null} soAutomaticas={false} variosPapeis={variosPapeis} />,
-    );
-
-  it("com um papel so, conta os lotes; com mais de um, fala so das paginas", () => {
-    expect(campo(false)).toMatch(/8 pág · 1 lote/);
-    expect(campo(true)).toContain("8 pág");
-    expect(campo(true)).not.toMatch(/lote<\/p>/);
-  });
-});

@@ -101,11 +101,9 @@ export function textoDoTamanho(
       }),
     );
   }
-  partes.push(
-    traduzir(idioma, registro.lotes === 1 ? "historico.lotes.um" : "historico.lotes.varios", {
-      n: String(registro.lotes),
-    }),
-  );
+  if (registro.lotes > 1) {
+    partes.push(traduzir(idioma, "historico.lotes.varios", { n: String(registro.lotes) }));
+  }
   return partes.join(" · ");
 }
 

@@ -1,0 +1,22 @@
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* A entrada e o rotulo usam as classes da linha de Páginas: o mesmo tamanho e a mesma borda. */
+/* O erro nao mora aqui: ele aparece no rodape, onde esta o botao que ele trava. */
+.dica {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 10px;
+  line-height: 14px;
+}
+
+/* Em altura curta a dica some; o erro, no rodape, continua, porque ele diz o que corrigir. */
+@media (max-height: 560px) {
+  .dica {
+    display: none;
+  }
+}

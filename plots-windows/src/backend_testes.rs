@@ -72,6 +72,7 @@ fn original(numero: usize) -> Pagina {
     Pagina {
         numero: Some(numero),
         girar_180: false,
+        copia: 0,
     }
 }
 
@@ -95,6 +96,7 @@ fn giro_de_180_da_passada_leva_a_marca_para_o_canto_oposto() {
     let pagina = Pagina {
         numero: Some(1),
         girar_180: true,
+        copia: 0,
     };
     let (plano, pixels) = desenhar(
         &pdf_com_marca(200, 300, 0, None),
@@ -156,6 +158,7 @@ fn pagina_em_branco_sai_quase_toda_branca_com_o_ponto_discreto() {
     let pagina = Pagina {
         numero: None,
         girar_180: false,
+        copia: 0,
     };
     let (plano, pixels) = desenhar(
         &pdf_com_marca(200, 300, 0, None),

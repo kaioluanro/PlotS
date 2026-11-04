@@ -1,7 +1,7 @@
 import { nomeDoPapel } from "./cartoes";
 import { idiomaAtual, traduzir, type Idioma } from "./i18n";
 import { nomeDeExibicao, type Impressora } from "./impressoras";
-import type { ModoDistribuicao, PapelDeAjuste } from "./tabs";
+import type { PapelDeAjuste } from "./tabs";
 
 export const PAPEIS_DE_AJUSTE: readonly PapelDeAjuste[] = ["a4", "a5", "carta", "oficio", "legal"];
 
@@ -46,20 +46,12 @@ interface TrechoDoFluxo {
   fim: number;
 }
 
-interface ParteDaNota {
-  impressora: string;
-  faixas?: readonly { inicio: number; fim: number }[];
-}
-
 export interface OpcoesDaNota {
   controle?: boolean;
   comparacao?: ComparacaoDoEnvio | null;
-  modo: ModoDistribuicao;
   destinos: readonly Impressora[];
   /** Por que rota cada trecho do documento sai numa impressora automatica. */
   fluxos?: readonly TrechoDoFluxo[];
-  /** Na divisao, o que cada impressora recebe. */
-  partes?: readonly ParteDaNota[];
 }
 
 function nomeDoDestino(id: string, destinos: readonly Impressora[], idioma: Idioma): string {
@@ -68,33 +60,13 @@ function nomeDoDestino(id: string, destinos: readonly Impressora[], idioma: Idio
 }
 
 /** Quem nao e automatica so tem a rota manual. A automatica, so se recebe papel que nao sai sozinho. */
-function passaPelaRotaManual(
-  destino: Impressora,
-  fluxos: readonly TrechoDoFluxo[],
-  partes: readonly ParteDaNota[] | undefined,
-): boolean {
-  if (destino.modo !== "automatico") return true;
-  const manuais = fluxos.filter((fluxo) => !fluxo.automatico);
-  if (partes === undefined) return manuais.length > 0;
-  const faixas = partes.find((parte) => parte.impressora === destino.id)?.faixas ?? [];
-  return manuais.some((fluxo) =>
-    faixas.some((faixa) => faixa.inicio <= fluxo.fim && fluxo.inicio <= faixa.fim),
-  );
+export function passaPelaRotaManual(destino: Impressora, fluxos: readonly TrechoDoFluxo[]): boolean {
+  return destino.modo !== "automatico" || fluxos.some((fluxo) => !fluxo.automatico);
 }
 
 /** A automatica passa pela rota sem gesto se recebe algum papel que sai sozinho. */
-function passaPelaRotaAutomatica(
-  destino: Impressora,
-  fluxos: readonly TrechoDoFluxo[],
-  partes: readonly ParteDaNota[] | undefined,
-): boolean {
-  if (destino.modo !== "automatico") return false;
-  const automaticos = fluxos.filter((fluxo) => fluxo.automatico);
-  if (partes === undefined) return automaticos.length > 0;
-  const faixas = partes.find((parte) => parte.impressora === destino.id)?.faixas ?? [];
-  return automaticos.some((fluxo) =>
-    faixas.some((faixa) => faixa.inicio <= fluxo.fim && fluxo.inicio <= faixa.fim),
-  );
+function passaPelaRotaAutomatica(destino: Impressora, fluxos: readonly TrechoDoFluxo[]): boolean {
+  return destino.modo === "automatico" && fluxos.some((fluxo) => fluxo.automatico);
 }
 
 /**
@@ -135,26 +107,22 @@ function notaDaCompensacao(
 
 /**
  * O que as opcoes acrescentam entre a rota e as instrucoes gerais, sempre na mesma ordem. A comparacao
- * de velocidade e so um aviso: os lotes continuam repartidos em rodizio. O que fala do driver vale so
+ * de velocidade e so um aviso. O que fala do driver vale so
  * para quem passa pela rota manual neste envio, e o aviso some na fila em que o PlotS ja compensa. A
  * folha de controle e citada porque na janela curta a opcao pode estar fora de vista, e so a rota manual
  * a usa: o que sai todo sem gesto nao tem marca nenhuma a citar.
  */
 export function notasDasOpcoes(opcoes: OpcoesDaNota, idioma: Idioma = idiomaAtual): string[] {
   const notas: string[] = [];
-  const { controle, comparacao, modo, destinos, fluxos = [], partes } = opcoes;
-  const recebem =
-    partes === undefined
-      ? destinos
-      : destinos.filter((destino) => partes.some((parte) => parte.impressora === destino.id));
-  const naRotaManual = recebem.filter((destino) => passaPelaRotaManual(destino, fluxos, partes));
+  const { controle, comparacao, destinos, fluxos = [] } = opcoes;
+  const naRotaManual = destinos.filter((destino) => passaPelaRotaManual(destino, fluxos));
   if (controle && naRotaManual.length > 0) {
-    const misto = recebem.some((destino) => passaPelaRotaAutomatica(destino, fluxos, partes));
+    const misto = destinos.some((destino) => passaPelaRotaAutomatica(destino, fluxos));
     notas.push(traduzir(idioma, misto ? "controle.confirmacaoMista" : "controle.confirmacao"));
   }
   const compensacao = notaDaCompensacao(
     naRotaManual.filter((destino) => destino.driverInverte),
-    recebem,
+    destinos,
     idioma,
   );
   if (compensacao !== null) notas.push(compensacao);
@@ -163,11 +131,9 @@ export function notasDasOpcoes(opcoes: OpcoesDaNota, idioma: Idioma = idiomaAtua
   }
   if (comparacao) {
     // "As duas" so vale para duas: com mais, a frase final nao conta quantas sao.
-    const varias = recebem.length >= 3;
-    const divisao = varias ? "historico.compara.divisaoVarias" : "historico.compara.divisao";
-    const espelho = varias ? "historico.compara.espelhoVarias" : "historico.compara.espelho";
+    const varias = destinos.length >= 3;
     notas.push(
-      traduzir(idioma, modo === "divisao" ? divisao : espelho, {
+      traduzir(idioma, varias ? "historico.compara.espelhoVarias" : "historico.compara.espelho", {
         rapida: nomeDoDestino(comparacao.rapida, destinos, idioma),
         lenta: nomeDoDestino(comparacao.lenta, destinos, idioma),
         fator: textoDoFator(comparacao.razao, idioma),

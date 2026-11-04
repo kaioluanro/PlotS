@@ -22,8 +22,8 @@ const CAIXAS_RETIRADAS: [&[u8]; 4] = [b"CropBox", b"TrimBox", b"BleedBox", b"Art
 pub struct OpcoesDaPassada {
     /// Papel de destino em retrato, em milímetros; ausente, cada página fica no próprio tamanho.
     pub papel_mm: Option<(f64, f64)>,
-    /// Texto da marca por número de página; a chave vazia é a face em branco.
-    pub marcas: BTreeMap<Option<usize>, String>,
+    /// Texto da marca por página e cópia (`Pagina::identidade`); sem número é a face em branco.
+    pub marcas: BTreeMap<plots_core::IdentidadeDaPagina, String>,
 }
 
 fn invalido(motivo: &'static str) -> ErroPdf {
@@ -349,6 +349,7 @@ mod testes {
         Pagina {
             numero: Some(numero),
             girar_180: false,
+            copia: 0,
         }
     }
 
@@ -389,7 +390,7 @@ mod testes {
 
     fn com_marca(numero: Option<usize>, texto: &str) -> OpcoesDaPassada {
         OpcoesDaPassada {
-            marcas: BTreeMap::from([(numero, texto.to_owned())]),
+            marcas: BTreeMap::from([((0, numero), texto.to_owned())]),
             ..OpcoesDaPassada::default()
         }
     }
@@ -557,6 +558,7 @@ mod testes {
                 &[Pagina {
                     numero: None,
                     girar_180: false,
+                    copia: 0,
                 }],
                 1,
                 &opcoes_de_papel(210.0, 297.0),
@@ -586,7 +588,9 @@ mod testes {
     fn a_marca_sai_no_canto_do_papel_escolhido_e_nao_dentro_da_escala() {
         let origem = PdfOrigem::carregar(&pdf(&[(420, 595, 0, None)])).unwrap();
         let mut opcoes = opcoes_de_papel(210.0, 297.0);
-        opcoes.marcas.insert(Some(1), "Lote 1 · folha 1".to_owned());
+        opcoes
+            .marcas
+            .insert((0, Some(1)), "Lote 1 · folha 1".to_owned());
         let saida = origem
             .gerar_passada_com(&[original(1)], 1, &opcoes)
             .unwrap();
@@ -604,6 +608,29 @@ Q
         let marca = texto.find(" Tf 0 g ").unwrap();
         assert!(fim_da_escala < marca, "{texto}");
         assert!(texto.contains(" 7.00 Tf 0 g 16.00 16.00 Td"), "{texto}");
+    }
+
+    #[test]
+    fn a_mesma_pagina_em_copias_diferentes_leva_marcas_diferentes() {
+        let origem =
+            PdfOrigem::carregar(&pdf(&[(595, 842, 0, None), (595, 842, 0, None)])).unwrap();
+        let da_copia = |copia| Pagina {
+            copia,
+            ..original(2)
+        };
+        let mut opcoes = OpcoesDaPassada::default();
+        opcoes.marcas.insert((0, Some(2)), "Folha 1".to_owned());
+        opcoes.marcas.insert((1, Some(2)), "Folha 2".to_owned());
+        let saida = origem
+            .gerar_passada_com(&[da_copia(0), da_copia(1)], 1, &opcoes)
+            .unwrap();
+        for (indice, esperado) in ["Folha 1", "Folha 2"].into_iter().enumerate() {
+            let (doc, pagina) = pagina_de(&saida, indice);
+            let texto = conteudo_junto(&doc, &pagina);
+            assert!(texto.contains(&texto_em_hexadecimal(esperado)), "{texto}");
+            let outro = if indice == 0 { "Folha 2" } else { "Folha 1" };
+            assert!(!texto.contains(&texto_em_hexadecimal(outro)), "{texto}");
+        }
     }
 
     #[test]

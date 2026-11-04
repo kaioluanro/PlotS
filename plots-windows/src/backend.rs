@@ -22,7 +22,7 @@ use pdfium_render::prelude::{
     PdfBitmapFormat, PdfColor, PdfDocument, PdfPageRenderRotation, PdfRenderConfig, Pdfium,
     PdfiumError,
 };
-use plots_core::{DimensoesPagina, Pagina};
+use plots_core::{DimensoesPagina, IdentidadeDaPagina, Pagina};
 use plots_pdf::{OpcoesDaPassada, PdfOrigem};
 use plots_print::fluxo::{CondicaoDoAviso, DescreveFalha};
 use plots_print::job::{Backend, EstadoEnvio, Passada};
@@ -62,7 +62,7 @@ pub struct BackendWindows {
     impressora: Impressora,
     origem: PdfOrigem,
     opcoes_pdf: OpcoesDaPassada,
-    marcas_dos_lotes: Vec<BTreeMap<Option<usize>, String>>,
+    marcas_dos_lotes: Vec<BTreeMap<IdentidadeDaPagina, String>>,
     dimensoes: Vec<DimensoesPagina>,
     pasta_saida: Option<PathBuf>,
     /// Lote em andamento, começando em 1 depois da primeira frente.
@@ -133,7 +133,7 @@ impl BackendWindows {
     }
 
     /// O texto a escrever nos versos de cada lote deste trabalho, na ordem dos lotes.
-    pub fn definir_marcas(&mut self, marcas: Vec<BTreeMap<Option<usize>, String>>) {
+    pub fn definir_marcas(&mut self, marcas: Vec<BTreeMap<IdentidadeDaPagina, String>>) {
         self.marcas_dos_lotes = marcas;
     }
 
@@ -390,6 +390,12 @@ impl Backend for BackendWindows {
     fn cancelar(&mut self) -> Result<(), ErroEnvio> {
         self.repetir_lote = true;
         cancelar_trabalho(&mut self.trabalho, |id| self.impressora.cancelar(id))
+    }
+
+    /// As frentes saíram em outro trabalho: o nome do documento e do arquivo segue o lote do maço.
+    fn maco_de_fora(&mut self, indice: usize, _frentes: &[Pagina]) -> Result<(), ErroEnvio> {
+        self.lote = indice.saturating_add(1);
+        Ok(())
     }
 }
 

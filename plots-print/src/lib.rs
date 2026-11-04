@@ -723,6 +723,7 @@ mod tests {
             .map(|n| Pagina {
                 numero: Some(*n),
                 girar_180: false,
+                copia: 0,
             })
             .collect()
     }

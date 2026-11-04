@@ -2,11 +2,11 @@
 //! cancelamento. Não lê nem escreve em terminal ou janela: quem chama recebe cada passo e decide
 //! como perguntar ao usuário. Nada aqui apaga um trabalho sem um pedido explícito.
 
-use crate::job::{Backend, ErroJob, EstadoEnvio, EstadoJob, Job, Passada, SimBackend};
+use crate::job::{Alcance, Backend, ErroJob, EstadoEnvio, EstadoJob, Job, Passada, SimBackend};
 use crate::{conferir_folhas, ErroSimulacao, Folha, Mecanica, Recolocacao, Veredito};
 use plots_core::{
-    papel_aceita_duas_faces, reconhecer_papel, DimensoesPagina, FormatoPapel, Lote, LotePapel,
-    ModeloImpressora, Pagina, Papel, PerfilImpressora, TOLERANCIA_PAPEL_MM,
+    papel_aceita_duas_faces, reconhecer_papel, DimensoesPagina, FormatoPapel, IdentidadeDaPagina,
+    Lote, LotePapel, ModeloImpressora, Pagina, Papel, PerfilImpressora, TOLERANCIA_PAPEL_MM,
 };
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -69,8 +69,8 @@ pub trait DescreveFalha {
 pub struct LoteDoFluxo {
     pub papel: Papel,
     pub lote: Lote,
-    /// Texto que sai no verso, por página; a chave vazia é a face em branco. Vazio sem a opção.
-    pub marcas: BTreeMap<Option<usize>, String>,
+    /// Texto que sai no verso, por página e cópia; o número vazio é a face em branco. Vazio sem a opção.
+    pub marcas: BTreeMap<IdentidadeDaPagina, String>,
 }
 
 /// Lotes do plano do documento, cada um com o seu papel.
@@ -83,9 +83,11 @@ pub fn lotes_do_plano(lotes: &[LotePapel]) -> Vec<LoteDoFluxo> {
                 paginas: lote
                     .paginas
                     .iter()
-                    .map(|numero| Pagina {
+                    .zip(&lote.copias)
+                    .map(|(numero, copia)| Pagina {
                         numero: *numero,
                         girar_180: false,
+                        copia: *copia,
                     })
                     .collect(),
                 passada1: lote.passada1.clone(),
@@ -435,6 +437,16 @@ impl<B: Backend + DescreveFalha> Condutor<B> {
         })
     }
 
+    /// Vale antes do primeiro envio: só as frentes, só os versos, ou as duas passadas.
+    pub fn com_alcance(mut self, alcance: Alcance) -> Self {
+        self.job = self.job.com_alcance(alcance);
+        self
+    }
+
+    pub fn alcance(&self) -> Alcance {
+        self.job.alcance()
+    }
+
     pub fn estado(&self) -> EstadoJob {
         self.job.estado()
     }
@@ -466,10 +478,9 @@ impl<B: Backend + DescreveFalha> Condutor<B> {
         self.lotes.get(self.numero().saturating_sub(1))
     }
 
-    /// Lote que acabou de terminar: o anterior ao atual, ou o último ao fim do documento.
+    /// Lote que acabou de terminar neste trabalho.
     pub fn lote_terminado(&self) -> Option<&LoteDoFluxo> {
-        let indice = self.job.lote_atual().checked_sub(1)?;
-        self.lotes.get(indice)
+        self.lotes.get(self.job.lote_terminado()?)
     }
 
     /// O lote atual sai em um trabalho só, com as duas faces, sem gesto no meio.
@@ -502,10 +513,10 @@ impl<B: Backend + DescreveFalha> Condutor<B> {
             && self.troca_de_papel().is_none()
     }
 
-    /// Papel a colocar antes do lote atual, quando ele é outro que o do lote anterior.
+    /// Papel a colocar antes do lote atual, quando ele é outro que o do lote anterior deste trabalho.
     pub fn troca_de_papel(&self) -> Option<Papel> {
         let atual = self.lotes.get(self.job.lote_atual())?;
-        let anterior = self.lotes.get(self.job.lote_atual().checked_sub(1)?)?;
+        let anterior = self.lotes.get(self.job.lote_terminado()?)?;
         (!mesma_folha(&anterior.papel, &atual.papel)).then_some(atual.papel)
     }
 
@@ -538,6 +549,7 @@ impl<B: Backend + DescreveFalha> Condutor<B> {
         if self.restantes == 0 {
             return Passo::TempoEsgotado;
         }
+        let antes = self.job.estado();
         match self.job.atualizar() {
             Ok(
                 EstadoJob::FrenteEnviada | EstadoJob::VersoEnviado | EstadoJob::DuasFacesEnviadas,
@@ -560,6 +572,10 @@ impl<B: Backend + DescreveFalha> Condutor<B> {
                         Passo::EmAndamento
                     }
                 }
+            }
+            // Só de versos, um maço acabou e o trabalho já espera o do lote seguinte.
+            Ok(EstadoJob::AguardandoRecolocacao) if antes == EstadoJob::VersoEnviado => {
+                Passo::LoteConcluido
             }
             Ok(EstadoJob::AguardandoRecolocacao) => Passo::FrenteConfirmada,
             Ok(EstadoJob::Pronto) => Passo::LoteConcluido,
@@ -586,6 +602,16 @@ impl<B: Backend + DescreveFalha> Condutor<B> {
     pub fn cancelar(&mut self) -> Result<(), ErroJob<B::Erro>> {
         self.rearmar();
         self.job.cancelar_envio()
+    }
+
+    /// Tira da fila a passada atual e a envia de novo: só de versos, a frente não é deste trabalho.
+    pub fn enviar_de_novo(&mut self) -> Result<(), ErroJob<B::Erro>> {
+        self.cancelar()?;
+        if self.alcance() == Alcance::SoVersos {
+            self.enviar_verso()
+        } else {
+            self.enviar_frente()
+        }
     }
 
     /// Refaz só o lote atual, desde a frente. Só vale com a passada falha ou ainda na fila.
@@ -676,6 +702,11 @@ impl Backend for SimGuiado {
     }
     fn cancelar(&mut self) -> Result<(), ErroSimulacao> {
         self.sim.cancelar()
+    }
+    /// O maço vem de fora: aqui, ele é o que as frentes deste lote fariam nesta máquina.
+    fn maco_de_fora(&mut self, _indice: usize, frentes: &[Pagina]) -> Result<(), ErroSimulacao> {
+        self.ultimo_em_duas_faces = false;
+        self.sim.enviar(Passada::Frente, frentes)
     }
 }
 

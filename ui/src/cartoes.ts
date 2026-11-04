@@ -15,6 +15,7 @@ export type EstadoCartao =
   | { tipo: "preparando" }
   | { tipo: "imprimindo"; passada: Passada }
   | { tipo: "aguardando" }
+  | { tipo: "frentes_prontas" }
   | { tipo: "proximo_lote" }
   | {
       tipo: "aviso";
@@ -45,6 +46,8 @@ export interface FaceDaSequencia {
   girada: boolean;
 }
 
+export type AlcanceDoCartao = "so_frentes" | "so_versos" | "frente_e_verso";
+
 /** O que a interface recebe de cada trabalho; toda decisao fica no backend. */
 export interface Cartao {
   aba: number;
@@ -60,10 +63,16 @@ export interface Cartao {
   resultado: { corretas: number; folhas: number } | null;
   sequencia: { frente: FaceDaSequencia[]; verso: FaceDaSequencia[]; marcas?: string[] } | null;
   viraParaLer: boolean;
-  /** Na divisao, o numero de cada lote desta impressora no documento. */
-  lotesNoDocumento?: readonly number[];
-  /** As paginas desses lotes, como o backend as planejou. */
-  faixasNoDocumento?: readonly FaixaDoLote[];
+  /** A copia que o lote atual imprime, a partir de 1; nulo quando o lote mistura copias. */
+  copia?: number | null;
+  /** Quantas copias o trabalho inteiro imprime. */
+  copias?: number;
+  /** O que este trabalho imprime. */
+  alcance?: AlcanceDoCartao;
+  /** Folhas do trecho atual: e o que sai de novo ao reimprimir. */
+  folhasDoLote?: number;
+  /** As paginas do trecho atual: e por elas que a pessoa acha o maco. */
+  faixaDoLote?: FaixaDoLote | null;
   /** O driver nao aceitou o ajuste salvo: este trabalho saiu com o padrao da impressora. */
   ajusteRecusado?: boolean;
   loteAutomatico?: boolean;
@@ -100,8 +109,20 @@ const MOTIVOS_SEM_TRABALHO: ReadonlySet<string> = new Set([
 export function cartaoEmAndamento(cartao: Cartao): boolean {
   const { estado } = cartao;
   if (estado.tipo === "concluido" || estado.tipo === "cancelado") return false;
+  // As frentes sairam e o trabalho acabou: a impressora fica livre ate alguem pedir os versos.
+  if (estado.tipo === "frentes_prontas") return false;
   if (estado.tipo === "erro" && MOTIVOS_SEM_TRABALHO.has(estado.motivo.codigo)) return false;
   return true;
+}
+
+/** Ainda ha versos por imprimir: fechar perde o cartao, e por isso o fechamento pergunta. */
+export function cartaoSeguraAAba(cartao: Cartao): boolean {
+  return cartaoEmAndamento(cartao) || cartao.estado.tipo === "frentes_prontas";
+}
+
+/** A secao so diz "Encerrados" quando nenhum cartao ainda segura a aba, e frentes prontas seguram. */
+export function tituloDaSecao(cartoes: readonly Cartao[]): Chave {
+  return cartoes.some(cartaoSeguraAAba) ? "cartao.secao" : "cartao.secao.encerrados";
 }
 
 /** Cada impressora tem um cartao por aba: o novo fica no lugar do antigo. */
@@ -214,18 +235,16 @@ export function marcadasTodasOcupadas(
 }
 
 /**
- * Na altura curta, o rodape so sai quando nao ha o que fazer nele: a divisao desta aba ainda corre,
- * ou toda marcada da lista tem trabalho correndo aqui. Marcada ocupada por outra aba, ou cartao
- * ja encerrado, nao tira o rodape: desmarcar ainda resolve, e o motivo precisa ficar a vista.
+ * Na altura curta, o rodape so sai quando nao ha o que fazer nele: toda marcada da lista tem trabalho
+ * correndo aqui. Marcada ocupada por outra aba, ou cartao ja encerrado, nao tira o rodape: desmarcar
+ * ainda resolve, e o motivo precisa ficar a vista.
  */
 export function rodapeCedeAoCartao(
-  envio: EstadoDoEnvio,
   aba: Aba | null,
   lista: readonly Impressora[],
   ocupadas: ReadonlySet<string>,
 ): boolean {
   if (aba === null) return false;
-  if (envio.semDestino === true) return true;
   if (!marcadasTodasOcupadas(lista, aba.impressorasMarcadas, ocupadas)) return false;
   const emAndamento = new Set(
     aba.cartoes.filter(cartaoEmAndamento).map((cartao) => cartao.impressora),
@@ -262,8 +281,16 @@ export interface EstadoDoEnvio {
   motivo: string | null;
   desabilitado: boolean;
   destinos: readonly Impressora[];
-  /** Esta aba ainda corre uma divisao: nada se envia dela ate o fim, e a altura curta tira o rodape da frente. */
-  semDestino?: boolean;
+  /** O rotulo com a contagem por extenso, para quem ouve o botao. So existe com contagem. */
+  rotuloAcessivel?: string;
+}
+
+/** A contagem de impressoras com a palavra inteira: "em 2 impressoras", "em 1 impressora". */
+export function contagemPorExtenso(chave: Chave, n: number, idioma: Idioma = idiomaAtual): string {
+  return traduzir(idioma, chave, {
+    n: String(n),
+    impressoras: traduzir(idioma, n === 1 ? "impressoras.um" : "impressoras.varias"),
+  });
 }
 
 const MAXIMO_DE_NOMES_NO_MOTIVO = 2;
@@ -323,7 +350,15 @@ export function estadoDoEnvio(
       lista: listaDeFora(motivosDeFora, idioma),
     });
   }
-  return { rotulo, motivo, desabilitado: destinos.length === 0, destinos };
+  const rotuloAcessivel =
+    destinos.length > 0 && !soAutomaticas
+      ? contagemPorExtenso(
+          soSimuladas ? "cartao.simular.frenteContagem.aria" : "imprimir.frenteContagem.aria",
+          destinos.length,
+          idioma,
+        )
+      : undefined;
+  return { rotulo, motivo, desabilitado: destinos.length === 0, destinos, rotuloAcessivel };
 }
 
 /**
@@ -351,30 +386,6 @@ export function nomeDoPapel(papel: PapelDoCartao, idioma: Idioma = idiomaAtual):
   });
 }
 
-const LOTES_NUMA_LISTA = 8;
-
-/** Numeros de lote em uma linha; muitos viram o comeco, o fim e a contagem. */
-export function listaDeLotes(lotes: readonly number[], idioma: Idioma = idiomaAtual): string {
-  if (lotes.length <= LOTES_NUMA_LISTA) return lotes.join(", ");
-  return traduzir(idioma, "modo.lotes.resumo", {
-    inicio: lotes.slice(0, LOTES_NUMA_LISTA - 2).join(", "),
-    ultimo: String(lotes.at(-1) ?? ""),
-    n: String(lotes.length),
-  });
-}
-
-/** O que ainda nao terminou nesta impressora, numerado como no documento. */
-export function lotesSemImprimir(cartao: Cartao): readonly number[] {
-  if (cartao.estado.tipo === "concluido") return [];
-  return (cartao.lotesNoDocumento ?? []).slice(Math.max(cartao.lote - 1, 0));
-}
-
-/** O numero do lote atual no documento; sem divisao, ou fora da lista, nao ha. */
-export function loteNoDocumento(cartao: Cartao): number | null {
-  if (cartao.lote < 1) return null;
-  return cartao.lotesNoDocumento?.[cartao.lote - 1] ?? null;
-}
-
 /** As paginas de um lote, com os numeros do documento: "págs. 3–6". */
 export function textoDasPaginas(faixa: FaixaDoLote, idioma: Idioma = idiomaAtual): string {
   return faixa.inicio === faixa.fim
@@ -383,6 +394,59 @@ export function textoDasPaginas(faixa: FaixaDoLote, idioma: Idioma = idiomaAtual
         a: String(faixa.inicio),
         b: String(faixa.fim),
       });
+}
+
+/**
+ * O numero da copia de um lote automatico, quando o trabalho tem varias copias e o lote sai de uma so.
+ * Lote misturado, ou lote que nao e automatico, nao leva numero de copia.
+ */
+export function copiaDoLote(cartao: Cartao): number | null {
+  return cartao.loteAutomatico === true && cartao.copia != null && (cartao.copias ?? 1) > 1
+    ? cartao.copia
+    : null;
+}
+
+/**
+ * Quantos lotes cada copia ocupa: `total` lotes divididos pelas copias. Vale 1 quando cada copia sai
+ * de um lote so; nunca menos que 1, para que a conta de trecho nao divida por zero.
+ */
+export function trechosPorCopia(cartao: Cartao): number {
+  const copias = cartao.copias ?? 1;
+  return copias > 0 ? Math.max(1, Math.floor(cartao.total / copias)) : 1;
+}
+
+/** "Copia 2 de 3 · 12 folhas · A4", ou com o trecho quando cada copia ocupa mais de um lote. */
+export function linhaDaCopia(cartao: Cartao, idioma: Idioma = idiomaAtual): string | null {
+  const copias = cartao.copias ?? 1;
+  const tt = trechosPorCopia(cartao);
+  if (cartao.estado.tipo === "concluido") {
+    // Uma copia por lote: as folhas do ultimo lote sao as de uma copia, e o total sai da multiplicacao.
+    if (!(cartao.temAutomatico === true && copias > 1 && tt === 1)) return null;
+    return traduzir(idioma, "cartao.copia.concluido", {
+      total: String(copias),
+      folhas: textoDasFolhas((cartao.folhasDoLote ?? 0) * copias, idioma),
+      papel: cartao.papel ? nomeDoPapel(cartao.papel, idioma) : "",
+    });
+  }
+  const copia = copiaDoLote(cartao);
+  if (copia === null) return null;
+  const base = {
+    n: String(copia),
+    total: String(copias),
+    folhas: textoDasFolhas(cartao.folhasDoLote ?? 0, idioma),
+  };
+  if (tt > 1) {
+    const t = (Math.max(0, cartao.lote - 1) % tt) + 1;
+    return traduzir(idioma, "cartao.copia.trechos", {
+      ...base,
+      t: String(t),
+      tt: String(tt),
+    });
+  }
+  return traduzir(idioma, "cartao.copia.andamento", {
+    ...base,
+    papel: cartao.papel ? nomeDoPapel(cartao.papel, idioma) : "",
+  });
 }
 
 /** Varias faixas de uma vez: "págs. 3–4, 7–8". */
@@ -401,68 +465,21 @@ export function textoDasFaixas(
   });
 }
 
-/** Em "proximo lote", o trabalho ja avancou: o maco a retirar e o do lote anterior a este. */
-function fraseDeRetirar(cartao: Cartao, idioma: Idioma): string | null {
-  const lote = cartao.lotesNoDocumento?.[cartao.lote - 2];
-  const faixa = cartao.faixasNoDocumento?.find((item) => item.lote === lote);
-  if (lote === undefined || faixa === undefined) return null;
-  return traduzir(idioma, "modo.proximo.retirar", {
-    n: String(lote),
-    paginas: textoDasPaginas(faixa, idioma),
-  });
-}
-
-/** Na divisao, as linhas do lote no cartao. Fora dela, ou se a contagem nao bate, nao ha. */
-export interface LinhasDoLote {
-  titulo: string | null;
-  detalhe: string | null;
-  semImprimir: string | null;
-}
-
-function trechoDosLotes(
-  lotes: readonly number[],
-  chaves: { um: Chave; varios: Chave },
-  idioma: Idioma,
-): string {
-  return traduzir(idioma, lotes.length === 1 ? chaves.um : chaves.varios, {
-    lista: listaDeLotes(lotes, idioma),
-  });
-}
-
-/** O numero que vale e o do documento: e por ele que os macos se juntam. */
-export function linhasDoLote(cartao: Cartao, idioma: Idioma = idiomaAtual): LinhasDoLote | null {
-  const lotes = cartao.lotesNoDocumento;
-  // Uma contagem que nao bate com a do envio nao autoriza afirmar numero nenhum.
-  if (!lotes || (cartao.total > 0 && cartao.total !== lotes.length)) return null;
-  const todos = trechoDosLotes(lotes, { um: "modo.lotes.um", varios: "modo.lotes.varios" }, idioma);
-  const { tipo } = cartao.estado;
-  if (tipo === "concluido") return { titulo: todos, detalhe: null, semImprimir: null };
-  const atual = loteNoDocumento(cartao);
-  const titulo =
-    atual === null ? null : traduzir(idioma, "modo.lote.documento", { n: String(atual) });
-  if (tipo === "erro" || tipo === "cancelado") {
-    const semImprimir = trechoDosLotes(
-      lotesSemImprimir(cartao),
-      { um: "modo.semImprimir.um", varios: "modo.semImprimir.varios" },
-      idioma,
-    );
-    return { titulo, detalhe: null, semImprimir };
-  }
-  if (titulo === null) return { titulo: todos, detalhe: null, semImprimir: null };
-  const depois = lotes.length - cartao.lote;
-  const detalhe =
-    depois > 0
-      ? traduzir(idioma, "modo.lote.restam", { n: String(depois) })
-      : traduzir(idioma, "modo.lote.ultimo");
-  return { titulo, detalhe, semImprimir: null };
-}
-
-/** A linha de dados fora da divisao. */
+/** Com um trecho so, nao ha o que numerar. */
 export function linhaDoLote(cartao: Cartao, idioma: Idioma = idiomaAtual): string | null {
-  return cartao.total > 0
+  // Concluido com varias copias automaticas nunca diz "trecho": a linha de copias, quando existe, fala do trabalho.
+  if (cartao.estado.tipo === "concluido" && cartao.temAutomatico === true && (cartao.copias ?? 1) > 1) return null;
+  return cartao.total > 1
     ? traduzir(idioma, "cartao.lote", { n: String(cartao.lote), total: String(cartao.total) })
     : null;
 }
+
+export function textoDasFolhas(folhas: number, idioma: Idioma = idiomaAtual): string {
+  return traduzir(idioma, folhas === 1 ? "face.folhas.um" : "face.folhas.varios", { n: String(folhas) });
+}
+
+/** Acima disto, o maco pode nao caber de uma vez na entrada. */
+export const FOLHAS_QUE_CABEM = 30;
 
 export function nomeDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual): string {
   if (!cartao.simulada) return cartao.nome;
@@ -489,6 +506,7 @@ export function tomDoCartao(cartao: Cartao): TomDoCartao {
       return resultado !== null && resultado.corretas < resultado.folhas ? "problema" : "ativo";
     }
     case "aguardando":
+    case "frentes_prontas":
     case "proximo_lote":
     case "aviso":
       return "espera";
@@ -545,6 +563,7 @@ export function textoDoEstadoDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtu
     preparando: "cartao.estado.preparando",
     imprimindo: cartao.simulada ? "cartao.estado.simulando" : "cartao.estado.imprimindo",
     aguardando: "cartao.estado.aguardando",
+    frentes_prontas: "face.estado.frentesProntas",
     proximo_lote: "cartao.estado.proximo",
     aviso: "cartao.estado.aviso",
     erro: "cartao.estado.erro",
@@ -583,7 +602,7 @@ const CHAVES_DE_MOTIVO: ReadonlyMap<string, Chave> = new Map<string, Chave>([
   ["fila_fax", "cartao.motivo.filaFax"],
   ["fila_pede_arquivo", "cartao.motivo.filaPedeArquivo"],
   ["ocupada", "cartao.motivo.ocupada"],
-  ["documento_mudou", "modo.motivo.documentoMudou"],
+  ["documento_mudou", "cartao.motivo.documentoMudou"],
   ["duas_faces_recusadas", "modo.automatico.recusado"],
 ]);
 
@@ -659,9 +678,9 @@ export function resultadoDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual):
 }
 
 function listaDeFaces(faces: readonly FaceDaSequencia[], idioma: Idioma): string {
-  const numeros = faces
-    .map((face) => (face.numero === null ? traduzir(idioma, "cartao.sequencia.branca") : face.numero))
-    .join(", ");
+  const numeros = encurtada(
+    faces.map((face) => (face.numero === null ? traduzir(idioma, "cartao.sequencia.branca") : face.numero)),
+  ).join(", ");
   const girada = faces.length > 0 && faces.every((face) => face.girada);
   return girada ? `${numeros} ${traduzir(idioma, "cartao.sequencia.girada")}` : numeros;
 }
@@ -672,43 +691,43 @@ function folhasDoTrabalho(faces: readonly FaceDaSequencia[]): string {
     const par = faces.slice(indice, indice + 2).map((face) => face.numero ?? "");
     folhas.push(par.join("|"));
   }
-  return folhas.join(", ");
+  return encurtada(folhas).join(", ");
 }
 
-/**
- * As marcas chegam uma por folha, como saem no papel: "Lote 1 · folha 4". Na tela, cada lote vira um
- * trecho so, na mesma ordem. O que nao tiver esse formato fica como veio.
- */
+/** As marcas chegam uma por folha, como saem no papel: "Folha 4". Na tela, viram uma lista so. */
 function listaDeMarcas(marcas: readonly string[], idioma: Idioma): string {
-  const trechos: ({ lote: string; folhas: string[] } | string)[] = [];
+  const folhas: string[] = [];
+  const outras: string[] = [];
   for (const marca of marcas) {
-    const [, lote, folha] = /^\S+ (\d{1,9}) · \S+ (\d{1,9})$/.exec(marca) ?? [];
-    if (lote === undefined || folha === undefined) {
-      trechos.push(marca);
-      continue;
-    }
-    const anterior = trechos[trechos.length - 1];
-    if (typeof anterior === "object" && anterior?.lote === lote) anterior.folhas.push(folha);
-    else trechos.push({ lote, folhas: [folha] });
+    const [, folha] = /^\S+ (\d{1,9})$/.exec(marca) ?? [];
+    if (folha === undefined) outras.push(marca);
+    else folhas.push(folha);
   }
-  return trechos
-    .map((trecho) =>
-      typeof trecho === "string"
-        ? trecho
-        : traduzir(idioma, trecho.folhas.length === 1 ? "controle.marcas.umaFolha" : "controle.marcas.folhas", {
-            lote: trecho.lote,
-            folhas: trecho.folhas.join(", "),
+  const trecho =
+    folhas.length === 0
+      ? []
+      : [
+          traduzir(idioma, folhas.length === 1 ? "controle.marcas.umaFolha" : "controle.marcas.folhas", {
+            folhas: encurtada(folhas).join(", "),
           }),
-    )
-    .join("; ");
+        ];
+  return [...trecho, ...outras].join("; ");
+}
+
+const NUMEROS_NUMA_LINHA = 12;
+
+/** Um trecho inteiro pode ter centenas de folhas: a linha mostra o comeco, o fim e nada no meio. */
+function encurtada<T>(lista: readonly T[]): readonly (T | "…")[] {
+  return lista.length <= NUMEROS_NUMA_LINHA ? lista : [...lista.slice(0, 8), "…", ...lista.slice(-2)];
 }
 
 /** So a simulacao mostra a ordem: e o que ela existe para conferir. */
 export function sequenciaDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual): string[] {
-  if (cartao.sequencia === null) return [];
+  if (cartao.sequencia === null || cartao.estado.tipo === "frentes_prontas") return [];
   // Um trabalho so, sem verso a parte: o que se confere sao as folhas que ele forma.
   if (cartao.sequencia.verso.length === 0 && (cartao.loteAutomatico || cartao.temAutomatico)) {
-    return [traduzir(idioma, "modo.automatico.folhas", { lista: folhasDoTrabalho(cartao.sequencia.frente) })];
+    const lista = folhasDoTrabalho(cartao.sequencia.frente);
+    return [traduzir(idioma, copiaDoLote(cartao) !== null ? "cartao.copia.cada" : "modo.automatico.folhas", { lista })];
   }
   const marcas = cartao.sequencia.marcas ?? [];
   return [
@@ -735,6 +754,8 @@ export interface LinhaDoCartao {
   papel: PapelDaLinha;
   /** Texto de fora, de tamanho variavel: o cartao limita a altura e guarda o inteiro no titulo. */
   limitada?: boolean;
+  /** Sai depois do botao da acao, e nao antes dele. */
+  depoisDaAcao?: boolean;
 }
 
 /** O que o cartao explica em cada estado, com os termos de quem so sabe o que a fila diz. */
@@ -747,6 +768,8 @@ export function linhasDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual): Li
     cartao.recolocar
       ? frasesDoGesto(cartao.recolocar, idioma).map((texto) => linha(texto, "gesto"))
       : [];
+  const doMacoGrande = (): LinhaDoCartao[] =>
+    (cartao.folhasDoLote ?? 0) > FOLHAS_QUE_CABEM ? [linha(em("face.verso.emPartes"), "contexto")] : [];
   switch (estado.tipo) {
     case "preparando":
       return [linha(em("cartao.preparando"), "contexto")];
@@ -766,33 +789,49 @@ export function linhasDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual): Li
           : linha(em("cartao.verso.espera"), "ressalva"),
       ];
     case "aguardando": {
-      if (cartao.simulada) {
-        return [
-          linha(em("cartao.frente.simulada"), "contexto"),
-          linha(em("cartao.simulada.proximo"), "contexto"),
-          ...gesto(),
-          linha(em("cartao.simulada.clique"), "acao"),
-        ];
-      }
+      // So os versos de outro papel chegam aqui: o trecho anterior acabou, e agora entra outro maco.
+      const faixa = cartao.faixaDoLote;
       return [
-        linha(em("cartao.frente.confirmada"), "ressalva"),
-        linha(em("cartao.esperar"), "contexto"),
+        linha(em(cartao.simulada ? "cartao.verso.simulado" : "cartao.verso.confirmado"), "ressalva"),
+        linha(em("face.verso.guardar"), "contexto"),
+        ...(cartao.trocaDePapel
+          ? [linha(em("face.verso.troca", { papel: nomeDoPapel(cartao.trocaDePapel, idioma) }), "contexto")]
+          : []),
+        ...(faixa ? [linha(em("face.verso.pegue", { paginas: textoDasPaginas(faixa, idioma) }), "acao")] : []),
+        ...(cartao.simulada ? [linha(em("cartao.simulada.proximo"), "contexto")] : []),
         ...gesto(),
-        linha(em("cartao.verso.clique"), "acao"),
+        ...doMacoGrande(),
+        linha(em(cartao.simulada ? "cartao.simulada.clique" : "cartao.verso.clique"), "acao"),
       ];
     }
+    case "frentes_prontas":
+      // O botao de versos vem logo depois do gesto; a frase de espera, depois do botao.
+      return [
+        cartao.simulada
+          ? linha(em("cartao.frente.simulada"), "contexto")
+          : linha(em("cartao.frente.confirmada"), "ressalva"),
+        ...(cartao.simulada ? [] : [linha(em("cartao.esperar"), "contexto")]),
+        ...gesto(),
+        ...doMacoGrande(),
+        { ...linha(em("face.espera"), "contexto"), depoisDaAcao: true },
+      ];
     case "proximo_lote": {
       const linhas = [
-        linha(em(cartao.anteriorAutomatico ? "modo.automatico.trechoConcluido" : cartao.simulada ? "cartao.verso.simulado" : "cartao.verso.confirmado"), "ressalva"),
+        linha(
+          em(
+            cartao.anteriorAutomatico
+              ? "modo.automatico.trechoConcluido"
+              : cartao.simulada
+                ? "cartao.frente.simulada"
+                : "cartao.frente.trechoPronto",
+          ),
+          "ressalva",
+        ),
       ];
-      const retirar = fraseDeRetirar(cartao, idioma);
-      if (retirar !== null) linhas.push(linha(retirar, "contexto"));
       if (cartao.trocaDePapel) {
         linhas.push(
           linha(em("cartao.trocaPapel", { papel: nomeDoPapel(cartao.trocaDePapel, idioma) }), "contexto"),
         );
-      } else if (retirar !== null) {
-        linhas.push(linha(em("modo.proximo.depois"), "contexto"));
       } else if (!cartao.simulada) {
         linhas.push(linha(em("cartao.proximo.semTroca"), "contexto"));
       }
@@ -828,9 +867,13 @@ export function linhasDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual): Li
       ];
       // Com um trecho automatico, como o maco saiu nao se sabe, mesmo que o ultimo lote tenha sido manual.
       if (cartao.temAutomatico) {
-        linhas.push(linha(em(cartao.total >= 2 ? "modo.automatico.finalVarios" : "modo.automatico.final"), "acao"));
+        // Com varias copias, a virada e de cada copia; sem elas, segue o texto de antes.
+        const virada = (cartao.copias ?? 1) > 1 ? "cartao.copia.vire" : cartao.total >= 2 ? "modo.automatico.finalVarios" : "modo.automatico.final";
+        linhas.push(linha(em(virada), "acao"));
       }
       else if (cartao.viraParaLer) linhas.push(linha(em("cartao.virarParaLer"), "acao"));
+      // Juntar so importa com mais de um papel por copia: o total de lotes passa do numero de copias.
+      if (cartao.total > (cartao.copias ?? 1)) linhas.push(linha(em("face.juntar"), "contexto"));
       return linhas;
     }
     case "cancelado":
@@ -848,6 +891,8 @@ export function frasesDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual): st
 export interface AcoesDoCartao {
   /** Frente do proximo lote. */
   frente: boolean;
+  /** Os versos sao outro pedido, com a confirmacao de sempre: as frentes ja acabaram. */
+  pedirVerso: boolean;
   /**
    * O verso aparece durante a frente e durante o proprio verso, mas so libera quando a fila
    * confirma a frente: enquanto a passada de verso roda, fica visivel e desabilitado.
@@ -871,6 +916,7 @@ export function acoesDoCartao(cartao: Cartao): AcoesDoCartao {
   const semTrabalho = estado.tipo === "erro" && !cartaoEmAndamento(cartao);
   return {
     frente: estado.tipo === "proximo_lote",
+    pedirVerso: estado.tipo === "frentes_prontas",
     verso: {
       visivel: !cartao.loteAutomatico && (emFrente || emVerso || estado.tipo === "aguardando"),
       liberado: estado.tipo === "aguardando",
@@ -897,6 +943,10 @@ export function rotuloDaFrente(cartao: Cartao, idioma: Idioma = idiomaAtual): st
 export interface ResumoDoEnvio {
   paginas: number;
   lotes: number;
+  /** Folhas do envio inteiro, em cada impressora. */
+  folhas?: number;
+  /** O maior maco que alguem vai ter de recolocar de uma vez. */
+  maiorMaco?: number;
   papeis: PapelDoCartao[];
   paresMistos: [number, number][];
   assinado: boolean;
@@ -904,23 +954,32 @@ export interface ResumoDoEnvio {
   lotesAutomaticos?: number;
   escalas?: [number, number] | null;
   comparacao?: ComparacaoDoEnvio | null;
+  faixas?: FaixaDoLote[];
+  gestos?: { impressora: string; recolocar: Recolocar }[];
 }
 
 /** O que as opcoes do envio acrescentam ao que a confirmacao diz. */
 export interface EscolhasDoEnvio {
   /** O papel de destino, ja com a escala, quando o documento vai ajustado. */
   papel?: string | null;
+  /** Copias da face que sai: com duas ou mais, a primeira linha mostra o numero. */
+  copias?: number;
   /** O que vem entre a rota e as instrucoes gerais: folha de controle, driver e velocidade. */
   notasDoMeio?: readonly string[];
-  /** Na divisao, os lotes de quem e manual aparecem na pilha: a nota do espelho nao se aplica. */
-  divisao?: boolean;
-  /** Na divisao, o que cada impressora automatica recebe, por rota: cada uma tem a sua nota. */
-  rotasNaDivisao?: readonly RotasDaImpressora[];
 }
 
-export interface RotasDaImpressora {
-  nome: string;
-  trechos: NonNullable<ResumoDoEnvio["fluxos"]>;
+/** Quantas paginas e quantas folhas: e o papel que a pessoa precisa ter a mao. */
+/** Paginas do documento, com o numero de copias quando passa de uma, e as folhas de todas elas. */
+export function textoDoTamanhoDoEnvio(
+  resumo: ResumoDoEnvio,
+  idioma: Idioma = idiomaAtual,
+  copias = 1,
+): string {
+  const paginas = traduzir(idioma, resumo.paginas === 1 ? "folhas.paginas.um" : "folhas.paginas.varios", {
+    n: String(resumo.paginas),
+  });
+  const comCopias = copias > 1 ? `${paginas} × ${copias}` : paginas;
+  return resumo.folhas === undefined ? comCopias : `${comCopias} · ${textoDasFolhas(resumo.folhas, idioma)}`;
 }
 
 /** As linhas da confirmacao: quem recebe, quantas paginas e em que papel. */
@@ -942,8 +1001,6 @@ export function linhasDoEnvio(
   const simuladas = destinos.length - reais.length;
   const automaticas = destinos.filter((impressora) => impressora.modo === "automatico");
   const soAutomaticas = destinos.length > 0 && automaticas.length === destinos.length;
-  // Sem gesto, folhas por lote nao limita nada: quem so tem automaticas ve os trabalhos que elas fazem.
-  const lotes = soAutomaticas ? (resumo.lotesAutomaticos ?? resumo.lotes) : resumo.lotes;
   const fluxos = resumo.fluxos ?? [];
   // Uma rota so, para todas: cabe na linha do papel, e nenhuma nota precisa repetir o papel.
   const rotaUnica = soAutomaticas && fluxos.length === 1 ? fluxos[0] : undefined;
@@ -958,10 +1015,7 @@ export function linhasDoEnvio(
         });
   const linhas = [
     ...(reais.length > 0 ? reais : destinos).map((impressora) => nomeDeExibicao(impressora, idioma)),
-    traduzir(idioma, lotes === 1 ? "cartao.envio.paginasUmLote" : "cartao.envio.paginas", {
-      paginas: String(resumo.paginas),
-      lotes: String(lotes),
-    }),
+    textoDoTamanhoDoEnvio(resumo, idioma, escolhas.copias),
     linhaDoPapel,
   ];
   const doAjuste = linhaDoAjusteNoEnvio(destinos, filasComAjuste, idioma);
@@ -981,20 +1035,9 @@ export function linhasDoEnvio(
         : sozinha ? "modo.automatico.manual" : "modo.automatico.manualNela";
       return traduzir(idioma, chave, { nomes: nome, paginas: textoDasFaixas(faixas, idioma) });
     };
-    if (escolhas.rotasNaDivisao === undefined) {
-      for (const fluxo of fluxos) notasDaRota.push(notaDaRota(fluxo.automatico, nomes, [fluxo]));
-    } else {
-      for (const { nome, trechos } of escolhas.rotasNaDivisao) {
-        // A rota do primeiro trecho vem antes, para a nota seguir a ordem das paginas.
-        const primeira = trechos[0]?.automatico ?? true;
-        for (const automatico of [primeira, !primeira]) {
-          const daRota = trechos.filter((trecho) => trecho.automatico === automatico);
-          if (daRota.length > 0) notasDaRota.push(notaDaRota(automatico, nome, daRota));
-        }
-      }
-    }
+    for (const fluxo of fluxos) notasDaRota.push(notaDaRota(fluxo.automatico, nomes, [fluxo]));
     const manuais = destinos.filter((impressora) => impressora.modo !== "automatico");
-    if (manuais.length > 0 && escolhas.divisao !== true) {
+    if (manuais.length > 0) {
       notasDaRota.push(traduzir(idioma, "modo.automatico.manualEm", { nomes: listaDeNomes(manuais) }));
     }
   }

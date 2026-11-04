@@ -12,6 +12,47 @@ pub struct PdfLido {
     pub origem: PdfOrigem,
     pub dimensoes: Vec<DimensoesPagina>,
     pub assinado: bool,
+    /// Impressão dos mesmos bytes que `origem` carrega: confere se o arquivo mudou.
+    pub impressao: String,
+}
+
+/// Impressão de um conteúdo: FNV-1a de 64 bits sobre todos os bytes, com o tamanho. Qualquer troca
+/// do arquivo muda o texto, inclusive a medida de uma página. Alimentada em blocos, dá o mesmo texto
+/// que uma única chamada com o conteúdo inteiro.
+#[derive(Clone, Copy, Debug)]
+pub struct Impressao {
+    hash: u64,
+    total: u64,
+}
+
+impl Default for Impressao {
+    fn default() -> Self {
+        Self {
+            hash: 0xcbf2_9ce4_8422_2325,
+            total: 0,
+        }
+    }
+}
+
+impl Impressao {
+    pub fn acrescentar(&mut self, bloco: &[u8]) {
+        self.total = self.total.saturating_add(bloco.len() as u64);
+        for byte in bloco {
+            self.hash ^= u64::from(*byte);
+            self.hash = self.hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    }
+
+    pub fn texto(&self) -> String {
+        format!("{:016x}:{}", self.hash, self.total)
+    }
+}
+
+/// Impressão de um conteúdo inteiro, pronta para comparar com a guardada.
+pub fn impressao_dos_bytes(bytes: &[u8]) -> String {
+    let mut impressao = Impressao::default();
+    impressao.acrescentar(bytes);
+    impressao.texto()
 }
 
 fn ler_bytes(caminho: &str, limite: u64) -> Result<Vec<u8>, CodigoErro> {
@@ -53,6 +94,7 @@ pub fn ler_pdf(caminho: &str) -> Result<PdfLido, ErroDocumento> {
             _ => CodigoErro::PdfInvalido,
         })
     })?;
+    let impressao = impressao_dos_bytes(&bytes);
     let dimensoes = origem
         .dimensoes_paginas()
         .map_err(|_| erro(CodigoErro::PdfInvalido))?;
@@ -63,6 +105,7 @@ pub fn ler_pdf(caminho: &str) -> Result<PdfLido, ErroDocumento> {
         origem,
         dimensoes,
         assinado,
+        impressao,
     })
 }
 

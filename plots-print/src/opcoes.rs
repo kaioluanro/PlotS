@@ -4,7 +4,7 @@
 
 use crate::fluxo::{DescreveFalha, LoteDoFluxo};
 use crate::job::{Backend, EstadoEnvio, Passada};
-use plots_core::Pagina;
+use plots_core::{IdentidadeDaPagina, Pagina};
 use std::collections::BTreeMap;
 
 /// Em que idioma a marca sai no papel.
@@ -15,40 +15,45 @@ pub enum IdiomaDaMarca {
 }
 
 impl IdiomaDaMarca {
-    fn texto(self, lote: usize, folha: usize) -> String {
+    fn texto(self, folha: usize) -> String {
         match self {
-            Self::Portugues => format!("Lote {lote} · folha {folha}"),
-            Self::Ingles => format!("Batch {lote} · sheet {folha}"),
+            Self::Portugues => format!("Folha {folha}"),
+            Self::Ingles => format!("Sheet {folha}"),
         }
     }
 }
 
 /// A marca de cada folha de um lote, na face de trás dela: a segunda, a página par ou a branca do
-/// fim. É a que sai na primeira passada e fica à vista na hora de recolocar o maço. A folha é contada
-/// na ordem de leitura do lote, a partir de 1; a ordem e a quantidade de folhas não mudam.
+/// fim. É a que sai na primeira passada e fica à vista na hora de recolocar o maço. `antes` diz quantas
+/// folhas do documento vêm antes deste lote; a ordem e a quantidade de folhas não mudam.
 fn marcas_do_lote(
     item: &LoteDoFluxo,
-    numero: usize,
+    antes: usize,
     idioma: IdiomaDaMarca,
-) -> BTreeMap<Option<usize>, String> {
+) -> BTreeMap<IdentidadeDaPagina, String> {
     item.lote
         .paginas
         .chunks(2)
         .enumerate()
         .map(|(indice, folha)| {
-            let verso = folha.get(1).and_then(|face| face.numero);
-            (verso, idioma.texto(numero, indice.saturating_add(1)))
+            let verso = folha.get(1).map(Pagina::identidade);
+            (
+                verso.unwrap_or_default(),
+                idioma.texto(antes.saturating_add(indice).saturating_add(1)),
+            )
         })
         .collect()
 }
 
 /// Marca os versos dos lotes manuais. Os lotes têm de ser os do documento inteiro, antes de a divisão
-/// repartir: o número no papel é o do lote no documento, em qualquer impressora.
+/// repartir: as folhas são contadas no documento, e o número não se repete entre as impressoras.
 pub fn marcar_lotes(lotes: &mut [LoteDoFluxo], idioma: IdiomaDaMarca) {
-    for (indice, item) in lotes.iter_mut().enumerate() {
+    let mut antes = 0usize;
+    for item in lotes.iter_mut() {
         if !item.lote.duas_faces {
-            item.marcas = marcas_do_lote(item, indice.saturating_add(1), idioma);
+            item.marcas = marcas_do_lote(item, antes, idioma);
         }
+        antes = antes.saturating_add(item.lote.paginas.len().div_ceil(2));
     }
 }
 
@@ -92,6 +97,14 @@ impl<B: Backend> Backend for DriverDeTeste<B> {
     fn cancelar(&mut self) -> Result<(), Self::Erro> {
         self.interno.cancelar()
     }
+
+    fn maco_de_fora(&mut self, indice: usize, frentes: &[Pagina]) -> Result<(), Self::Erro> {
+        if !self.inverte {
+            return self.interno.maco_de_fora(indice, frentes);
+        }
+        let invertidas: Vec<Pagina> = frentes.iter().rev().copied().collect();
+        self.interno.maco_de_fora(indice, &invertidas)
+    }
 }
 
 impl<B: DescreveFalha> DescreveFalha for DriverDeTeste<B> {
@@ -112,7 +125,10 @@ mod testes {
     use crate::fluxo::{lotes_do_plano, Condutor, Espera, Passo, SimGuiado};
     use crate::job::EstadoJob;
     use crate::Mecanica;
-    use plots_core::{plano_lotes_por_papel, DimensoesPagina, ModeloImpressora, OrdemPassadas};
+    use plots_core::{
+        plano_copias_do_intervalo, plano_lotes_por_papel, DimensoesPagina, ModeloImpressora,
+        OrdemPassadas, PerfilImpressora,
+    };
     use std::time::Duration;
 
     const A4: DimensoesPagina = DimensoesPagina::new(210.0, 297.0);
@@ -177,7 +193,7 @@ mod testes {
         assert_eq!(lotes[0].lote.passada1, automatico);
         assert!(lotes[0].marcas.is_empty());
         assert_eq!(lotes[1].lote.passada1, manual);
-        assert_eq!(lotes[1].marcas[&Some(4)], "Batch 2 · sheet 1");
+        assert_eq!(lotes[1].marcas[&(0, Some(4))], "Sheet 2");
     }
 
     /// Conduz todos os lotes na simulada e devolve folhas certas e total de folhas.
@@ -282,7 +298,11 @@ mod testes {
         for (antes, depois) in inteiro.iter().zip(&marcados) {
             assert_eq!(antes.lote, depois.lote);
             assert_eq!(depois.marcas.len(), depois.lote.paginas.len().div_ceil(2));
-            for numero in depois.marcas.keys().flatten() {
+            for numero in depois
+                .marcas
+                .keys()
+                .filter_map(|(_, numero)| numero.as_ref())
+            {
                 assert_eq!(numero % 2, 0, "a página {numero} é a frente da folha");
             }
         }
@@ -300,24 +320,152 @@ mod testes {
             .lote
             .passada1
             .iter()
-            .all(|pagina| lote.marcas.contains_key(&pagina.numero)));
+            .all(|pagina| lote.marcas.contains_key(&pagina.identidade())));
         assert!(lote
             .lote
             .passada2
             .iter()
-            .all(|pagina| !lote.marcas.contains_key(&pagina.numero)));
+            .all(|pagina| !lote.marcas.contains_key(&pagina.identidade())));
     }
 
     #[test]
-    fn a_marca_diz_o_lote_no_documento_a_folha_no_lote_e_acompanha_o_verso_em_branco() {
+    fn a_marca_conta_a_folha_no_documento_e_acompanha_o_verso_em_branco() {
         let mut lotes = plano(&[A4; 7], 2, ModeloImpressora::Laser);
         marcar_lotes(&mut lotes, IdiomaDaMarca::Portugues);
-        assert_eq!(lotes[0].marcas[&Some(2)], "Lote 1 · folha 1");
-        assert_eq!(lotes[0].marcas[&Some(4)], "Lote 1 · folha 2");
-        assert_eq!(lotes[1].marcas[&Some(6)], "Lote 2 · folha 1");
-        assert_eq!(lotes[1].marcas[&None], "Lote 2 · folha 2");
+        assert_eq!(lotes[0].marcas[&(0, Some(2))], "Folha 1");
+        assert_eq!(lotes[0].marcas[&(0, Some(4))], "Folha 2");
+        assert_eq!(lotes[1].marcas[&(0, Some(6))], "Folha 3");
+        assert_eq!(lotes[1].marcas[&(0, None)], "Folha 4");
         marcar_lotes(&mut lotes, IdiomaDaMarca::Ingles);
-        assert_eq!(lotes[1].marcas[&None], "Batch 2 · sheet 2");
+        assert_eq!(lotes[1].marcas[&(0, None)], "Sheet 4");
+    }
+
+    /// Os textos de marca na ordem em que as páginas são enviadas: passada 1 e depois passada 2, lote a lote.
+    fn marcas_enviadas(lotes: &[LoteDoFluxo]) -> Vec<(usize, String)> {
+        let numero = |texto: &String| texto.trim_start_matches("Folha ").parse().unwrap();
+        lotes
+            .iter()
+            .flat_map(|item| {
+                item.lote
+                    .passada1
+                    .iter()
+                    .chain(&item.lote.passada2)
+                    .filter_map(|pagina| item.marcas.get(&pagina.identidade()))
+            })
+            .map(|texto| (numero(texto), texto.clone()))
+            .collect()
+    }
+
+    fn com_copias(
+        paginas: usize,
+        copias: usize,
+        perfil: PerfilImpressora,
+        compensado: bool,
+    ) -> Vec<LoteDoFluxo> {
+        let plano = plano_copias_do_intervalo(
+            &vec![A4; paginas],
+            None,
+            copias,
+            OrdemPassadas::default(),
+            perfil,
+        )
+        .unwrap();
+        let mut lotes = lotes_do_plano(&plano);
+        marcar_lotes(&mut lotes, IdiomaDaMarca::Portugues);
+        if compensado {
+            compensar_driver(&mut lotes);
+        }
+        lotes
+    }
+
+    fn perfis_de_teste() -> [PerfilImpressora; 3] {
+        let sem_inverter = PerfilImpressora {
+            passada1_inversa: false,
+            passada2_inversa: false,
+            verso_girar_180: false,
+            ..ModeloImpressora::Laser.perfil()
+        };
+        [
+            ModeloImpressora::JatoDeTinta.perfil(),
+            ModeloImpressora::Laser.perfil(),
+            sem_inverter,
+        ]
+    }
+
+    #[test]
+    fn com_copias_cada_folha_tem_a_sua_marca_unica_e_continua() {
+        for perfil in perfis_de_teste() {
+            for paginas in [24, 7] {
+                for copias in [1, 3] {
+                    for compensado in [false, true] {
+                        let lotes = com_copias(paginas, copias, perfil, compensado);
+                        let mut numeros: Vec<usize> = marcas_enviadas(&lotes)
+                            .into_iter()
+                            .map(|(numero, _)| numero)
+                            .collect();
+                        numeros.sort_unstable();
+                        let folhas = copias * paginas.div_ceil(2);
+                        assert_eq!(
+                            numeros,
+                            (1..=folhas).collect::<Vec<_>>(),
+                            "{paginas} páginas, {copias} cópias, compensado {compensado}, {perfil:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn com_tres_copias_de_24_paginas_as_marcas_vao_de_folha_1_a_folha_36() {
+        let lotes = com_copias(24, 3, ModeloImpressora::Laser.perfil(), false);
+        let mut textos: Vec<String> = marcas_enviadas(&lotes)
+            .into_iter()
+            .map(|(_, texto)| texto)
+            .collect();
+        textos.sort_by_key(|texto| texto.trim_start_matches("Folha ").parse::<usize>().unwrap());
+        let esperado: Vec<String> = (1..=36).map(|n| format!("Folha {n}")).collect();
+        assert_eq!(textos, esperado);
+    }
+
+    #[test]
+    fn a_ordem_das_marcas_na_pilha_nao_muda_com_copias_nem_com_o_driver_que_inverte() {
+        for perfil in perfis_de_teste() {
+            for paginas in [24, 7] {
+                for copias in [1, 3] {
+                    let sem_driver = com_copias(paginas, copias, perfil, false);
+                    let esperado = marcas_enviadas(&sem_driver);
+                    // O driver inverte cada trabalho: com a compensação ligada o que chega à
+                    // impressora é a mesma ordem de quem não tem driver que inverte.
+                    let compensado = com_copias(paginas, copias, perfil, true);
+                    let mut recebido = Vec::new();
+                    for item in &compensado {
+                        let mut passada1: Vec<_> = item.lote.passada1.iter().rev().collect();
+                        let passada2: Vec<_> = item.lote.passada2.iter().rev().collect();
+                        passada1.extend(passada2);
+                        recebido.extend(
+                            passada1
+                                .iter()
+                                .filter_map(|pagina| item.marcas.get(&pagina.identidade()))
+                                .cloned(),
+                        );
+                    }
+                    let esperado: Vec<String> =
+                        esperado.into_iter().map(|(_, texto)| texto).collect();
+                    assert_eq!(recebido, esperado, "{paginas} páginas, {copias} cópias");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn com_uma_copia_as_marcas_ficam_como_sempre() {
+        let lotes = com_copias(7, 1, ModeloImpressora::Laser.perfil(), false);
+        let item = &lotes[0];
+        assert_eq!(item.marcas[&(0, Some(2))], "Folha 1");
+        assert_eq!(item.marcas[&(0, Some(6))], "Folha 3");
+        assert_eq!(item.marcas[&(0, None)], "Folha 4");
+        assert_eq!(item.marcas.len(), 4);
     }
 
     #[test]
@@ -327,6 +475,6 @@ mod testes {
         let marcas = lotes[0].marcas.clone();
         compensar_driver(&mut lotes);
         assert_eq!(lotes[0].marcas, marcas);
-        assert_eq!(lotes[0].marcas[&Some(2)], "Lote 1 · folha 1");
+        assert_eq!(lotes[0].marcas[&(0, Some(2))], "Folha 1");
     }
 }

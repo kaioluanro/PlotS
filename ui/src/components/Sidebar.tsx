@@ -11,14 +11,14 @@ import {
 } from "lucide-react";
 import { Fragment, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 import {
-  cartaoEmAndamento,
   estadoDoEnvio,
   rodapeCedeAoCartao,
+  tituloDaSecao,
   type Cartao,
   type Comando,
 } from "../cartoes";
-import { envioComDivisao } from "../confirmacao";
-import { idiomaAtual, t, type Chave } from "../i18n";
+import { envioComFace, faceDoEnvio } from "../face-do-envio";
+import { idiomaAtual, t } from "../i18n";
 import {
   envioComIntervalo,
   lerIntervaloDaAba,
@@ -28,26 +28,18 @@ import {
 import { useEsperaDoErro } from "../intervalo-espera";
 import {
   abrirListaPeloTeclado,
-  ATRIBUTO_MENU_DE_CONTEXTO,
   avisosDoTopo,
   caminhoDoAviso,
-  confirmarLote,
-  conteudoAbaixoDoLote,
   eModelo,
   ESPERA_DO_INDICADOR_MS,
   estadoDoSeletor,
   indicaGravacao,
   interpretarEscolha,
-  interpretarLote,
-  limitarAoIntervaloDoLote,
   linhaDaFalha,
-  LOTE_MAXIMO,
-  LOTE_MINIMO,
-  LOTE_PADRAO,
   nomeDeExibicao,
   nomeDoModelo,
   pedeConfirmacao,
-  resumoDoLote,
+  resumoDoDocumento,
   teclaAbreALista,
   textoDoAviso,
   textoDoEstado,
@@ -66,15 +58,14 @@ import {
   type CodigoAvisoDoAjuste,
 } from "../preferencias";
 import { usePreferencias } from "../preferencias-estado";
-import type { Aba } from "../tabs";
+import { copiasDaFace, type Aba } from "../tabs";
 import type { AnaliseDoDocumento } from "../analise-documento";
 import { mostraOpcaoDoDriver } from "../opcoes-envio";
 import { OpcaoInversao } from "./BlocoAjuste";
 import { BlocoIntervalo } from "./BlocoIntervalo";
-import { JuncaoDosMacos } from "./BlocoModo";
-import botoes from "./Botao.module.css";
 import { CartaoImpressao } from "./CartaoImpressao";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { GrupoDeEnvio } from "./GrupoDeEnvio";
 import { LinhaRolagemAdiada } from "./LinhaRolagemAdiada";
 import styles from "./Sidebar.module.css";
 
@@ -95,17 +86,21 @@ interface Props {
   aoAlternar: (impressora: string) => void;
   aoEscolherModelo: (fila: string, modelo: Modelo) => void;
   aoPedirSubstituicao: (fila: string, modelo: Modelo) => void;
-  aoDefinirLote: (tamanho: number) => void;
   aoDefinirIntervalo: (intervalo: RascunhoIntervalo | null) => void;
   aoCalibrar: (impressora: Impressora) => void;
   /** Impressoras com trabalho em andamento em qualquer aba. */
   ocupadas: ReadonlySet<string>;
   aoImprimir: () => void;
   aoComandar: (cartao: Cartao, comando: Comando) => void;
+  aoPedirVerso: (cartao: Cartao) => void;
   aoPedirCancelar: (cartao: Cartao) => void;
   aoDispensar: (cartao: Cartao) => void;
-  blocoModo: ReactNode;
+  blocoGrupos: ReactNode;
   blocoAjuste: ReactNode;
+  blocoFace: ReactNode;
+  campoCopias: ReactNode;
+  /** Falso enquanto a quantidade digitada nao e um numero de 1 a 999: o envio fica parado. */
+  copiasValidas?: boolean;
 }
 
 export function Sidebar({
@@ -120,32 +115,39 @@ export function Sidebar({
   aoAlternar,
   aoEscolherModelo,
   aoPedirSubstituicao,
-  aoDefinirLote,
   aoDefinirIntervalo,
   aoCalibrar,
   ocupadas,
   aoImprimir,
   aoComandar,
+  aoPedirVerso,
   aoPedirCancelar,
   aoDispensar,
-  blocoModo,
+  blocoGrupos,
   blocoAjuste,
+  blocoFace,
+  campoCopias,
+  copiasValidas = true,
 }: Props) {
   const idExplicacao = useId();
   const marcadas = aba?.impressorasMarcadas ?? [];
-  const marcadasNaLista = impressoras.filter((impressora) => marcadas.includes(impressora.id));
+  // O resumo do rodape conta as copias da face que o envio vai usar.
+  const faceDaAbaNaLista =
+    aba === null ? "frente" : faceDoEnvio(aba, impressoras.filter((item) => marcadas.includes(item.id)));
+  const copiasDoResumo = aba === null ? 1 : copiasDaFace(aba, faceDaAbaNaLista);
+  // Com o campo de Verso invalido, o envio de versos de cada cartao espera a correcao, como o rodape.
+  const motivoDoVersoNoCartao = !copiasValidas && faceDaAbaNaLista === "verso" ? t("copias.invalida") : null;
   const espera = useEsperaDoErro(aba);
-  const botao = envioComDivisao(
+  const botao = envioComFace(
     envioComIntervalo(estadoDoEnvio(aba, impressoras, ocupadas), aba, espera.estado),
     aba,
     impressoras,
-    ocupadas,
+    documento,
   );
   const lateralRef = useRef<HTMLElement>(null);
   const botaoEnvio = useRef<HTMLButtonElement>(null);
   const focoNoEnvio = useFocoQuandoOEnvioSai(lateralRef, botaoEnvio, botao.desabilitado);
   const cartoes = aba?.cartoes ?? [];
-  const idBotao = useId();
   const idNotaDoModelo = useId();
   const preferencias = usePreferencias(lendo, impressoras);
   const botaoAtualizar = useRef<HTMLButtonElement>(null);
@@ -162,10 +164,10 @@ export function Sidebar({
       id={ID_LATERAL}
       className={styles.lateral}
       aria-labelledby="titulo-lateral"
-      // Com um cartao na tela, a altura curta esconde a linha de lote e o resumo (ver o CSS).
+      // Com um cartao na tela, a altura curta esconde o resumo (ver o CSS).
       data-com-cartao={cartoes.length > 0 ? "" : undefined}
       // Sem nada que o rodape possa resolver agora, a altura curta o esconde.
-      data-sem-destino={rodapeCedeAoCartao(botao, aba, impressoras, ocupadas) ? "" : undefined}
+      data-sem-destino={rodapeCedeAoCartao(aba, impressoras, ocupadas) ? "" : undefined}
     >
       <div className={styles.cabecalho}>
         <h2 id="titulo-lateral" className={styles.titulo}>
@@ -240,19 +242,20 @@ export function Sidebar({
         {!lendo && impressoras.length === 0 && avisos.length === 0 && (
           <p className={styles.vazia}>{t("lateral.vazia")}</p>
         )}
-        <JuncaoDosMacos aba={aba} />
         {cartoes.length > 0 && (
           <section className={styles.emAndamento} aria-labelledby="titulo-em-andamento">
             <h3 id="titulo-em-andamento" className={styles.tituloSecao}>
-              {cartoes.some(cartaoEmAndamento) ? t("cartao.secao") : t("cartao.secao.encerrados")}
+              {t(tituloDaSecao(cartoes))}
             </h3>
             {cartoes.map((cartao) => (
               <CartaoImpressao
                 key={cartao.impressora}
                 cartao={cartao}
                 aoComandar={aoComandar}
+                aoPedirVerso={aoPedirVerso}
                 aoPedirCancelar={aoPedirCancelar}
                 aoDispensar={aoDispensar}
+                motivoDoVerso={motivoDoVersoNoCartao}
               />
             ))}
           </section>
@@ -305,46 +308,19 @@ export function Sidebar({
             espera={espera}
             aoDefinir={aoDefinirIntervalo}
           />
-          {/* A chave recria o campo: o rascunho digitado em uma aba nao passa para a outra. */}
-          <CampoLote
-            key={aba?.id ?? "sem-aba"}
-            aba={aba}
-            aoDefinir={aoDefinirLote}
-            nota={
-              marcadasNaLista.some((impressora) => impressora.modo === "automatico")
-                ? aba?.modo === "divisao" && marcadas.length >= 2
-                  ? "modo.automatico.loteDivisao"
-                  : "modo.automatico.lote"
-                : null
-            }
-            soAutomaticas={
-              marcadasNaLista.length > 0 &&
-              marcadasNaLista.every((impressora) => impressora.modo === "automatico")
-            }
-            variosPapeis={documento?.variosPapeis === true}
-          />
-          {blocoModo}
+          <ResumoDoDocumento aba={aba} copias={copiasDoResumo} />
+          {blocoGrupos}
           {blocoAjuste}
         </div>
-        <div className={styles.grupoEnvio}>
-          <button
-            ref={botaoEnvio}
-            type="button"
-            onFocus={focoNoEnvio}
-            className={`${botoes.botao} ${botoes.primario} ${styles.imprimir}`}
-            disabled={botao.desabilitado}
-            title={botao.motivo ?? undefined}
-            aria-describedby={botao.motivo === null ? undefined : idBotao}
-            onClick={aoImprimir}
-          >
-            {botao.rotulo}
-          </button>
-          {botao.motivo !== null && (
-            <p id={idBotao} className={styles.dica}>
-              {botao.motivo}
-            </p>
-          )}
-        </div>
+        <GrupoDeEnvio
+          blocoFace={blocoFace}
+          campoCopias={campoCopias}
+          botao={botao}
+          copiasValidas={copiasValidas}
+          botaoRef={botaoEnvio}
+          aoFocarEnvio={focoNoEnvio}
+          aoImprimir={aoImprimir}
+        />
       </div>
       <ConfirmDialog
         conteudo={pedidoDeVolta === null ? null : pedidoDeVolta.semLinha ? conteudoDoApagarAjuste(pedidoDeVolta.nome) : conteudoDoVoltarAoPadrao(pedidoDeVolta.nome)}
@@ -839,115 +815,9 @@ function AvisoTexto({ aviso }: { aviso: Aviso }) {
   );
 }
 
-interface PropsCampo {
-  aba: Aba | null;
-  aoDefinir: (tamanho: number) => void;
-  /** Vale para o que esta marcado agora; sem nada a acrescentar, nao ha nota. */
-  nota: Chave | null;
-  /** Todas as marcadas imprimem sozinhas: o resumo nao fala em lotes. */
-  soAutomaticas: boolean;
-  /** Cada papel reparte os seus lotes: a conta simples estaria errada. */
-  variosPapeis?: boolean;
-}
-
-export function CampoLote({ aba, aoDefinir, nota, soAutomaticas, variosPapeis = false }: PropsCampo) {
-  const valor = aba?.tamanhoLote ?? LOTE_PADRAO;
-  const desabilitado = aba === null;
-  const id = useId();
-  const idDica = useId();
-  const idNota = useId();
-  const [texto, setTexto] = useState(String(valor));
-
-  useEffect(() => setTexto(String(valor)), [valor]);
-
-  const invalido = texto.trim() !== "" && interpretarLote(texto) === null;
-
-  const confirmar = () => {
-    const confirmado = confirmarLote(texto, valor);
-    setTexto(String(confirmado));
-    if (confirmado !== valor) aoDefinir(confirmado);
-  };
-
-  // A nota segue na pagina mesmo escondida na janela curta: o campo continua descrito por ela.
-  const descricoes = [...(invalido ? [idDica] : []), ...(nota === null ? [] : [idNota])];
-
-  const passo = (delta: number) => {
-    const limitado = limitarAoIntervaloDoLote((interpretarLote(texto) ?? valor) + delta);
-    setTexto(String(limitado));
-    if (limitado !== valor) aoDefinir(limitado);
-  };
-
-  return (
-    <div className={styles.lote}>
-      <div className={styles.loteLinha}>
-        <label htmlFor={id} className={styles.rotuloLote}>
-          {t("folhas.rotulo")}
-        </label>
-        <input
-          id={id}
-          className={invalido ? `${styles.campoLote} ${styles.campoInvalido}` : styles.campoLote}
-          type="text"
-          inputMode="numeric"
-          role="spinbutton"
-          autoComplete="off"
-          spellCheck={false}
-          maxLength={6}
-          title={t("folhas.intervalo")}
-          disabled={desabilitado}
-          value={texto}
-          aria-valuemin={LOTE_MINIMO}
-          aria-valuemax={LOTE_MAXIMO}
-          aria-valuenow={valor}
-          aria-invalid={invalido}
-          aria-describedby={descricoes.length > 0 ? descricoes.join(" ") : undefined}
-          {...{ [ATRIBUTO_MENU_DE_CONTEXTO]: "" }}
-          onChange={(evento) => {
-            setTexto(evento.target.value);
-            const lido = interpretarLote(evento.target.value);
-            if (lido !== null && lido !== valor) aoDefinir(lido);
-          }}
-          onBlur={confirmar}
-          onKeyDown={(evento) => {
-            if (evento.key === "Enter") confirmar();
-            if (evento.key === "Escape") setTexto(String(valor));
-            if (evento.key === "ArrowUp" || evento.key === "ArrowDown") {
-              evento.preventDefault();
-              passo(evento.key === "ArrowUp" ? 1 : -1);
-            }
-          }}
-        />
-      </div>
-      <AbaixoDoLote aba={aba} invalido={invalido} idDica={idDica} soAutomaticas={soAutomaticas || variosPapeis} />
-      {nota !== null && (
-        <p id={idNota} className={styles.notaDoLote}>
-          {t(nota)}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function AbaixoDoLote({
-  aba,
-  invalido,
-  idDica,
-  soAutomaticas,
-}: {
-  aba: Aba | null;
-  invalido: boolean;
-  idDica: string;
-  soAutomaticas: boolean;
-}) {
-  const conteudo = conteudoAbaixoDoLote(invalido, aba?.paginas ?? null);
-  if (conteudo === "erro") {
-    return (
-      <p id={idDica} className={styles.erroLote} role="alert">
-        <CircleAlert size={12} aria-hidden="true" />
-        <span>{t("folhas.invalido")}</span>
-      </p>
-    );
-  }
-  if (aba === null || conteudo === "nada") return null;
+/** O tamanho do que vai sair, ou por que ainda nao se sabe. */
+function ResumoDoDocumento({ aba, copias = 1 }: { aba: Aba | null; copias?: number }) {
+  if (aba === null) return null;
   const { paginas } = aba;
   if (paginas.estado === "contando") {
     return <p className={styles.contando}>{t("folhas.contando")}</p>;
@@ -962,5 +832,5 @@ function AbaixoDoLote({
   }
   const contadas = paginasDoResumo(lerIntervaloDaAba(aba));
   if (contadas === null) return null;
-  return <p className={styles.resumo}>{resumoDoLote(contadas, aba.tamanhoLote, idiomaAtual, soAutomaticas)}</p>;
+  return <p className={styles.resumo}>{resumoDoDocumento(contadas, idiomaAtual, copias)}</p>;
 }

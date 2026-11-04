@@ -46,16 +46,15 @@ describe("textos dos grupos", () => {
 });
 
 describe("grupo escolhido na lista", () => {
-  const aplicado = { impressoras: ["a", "b"], modo: "divisao" as const };
+  const aplicado = { impressoras: ["a", "b"] };
 
   it("continua escolhido com a mesma selecao, em qualquer ordem", () => {
-    expect(selecaoCoincide(aplicado, ["b", "a"], "divisao")).toBe(true);
+    expect(selecaoCoincide(aplicado, ["b", "a"])).toBe(true);
   });
 
-  it("volta ao convite se a selecao ou o modo mudarem", () => {
-    expect(selecaoCoincide(aplicado, ["a"], "divisao")).toBe(false);
-    expect(selecaoCoincide(aplicado, ["a", "c"], "divisao")).toBe(false);
-    expect(selecaoCoincide(aplicado, ["a", "b"], "espelho")).toBe(false);
+  it("volta ao convite se a selecao mudar", () => {
+    expect(selecaoCoincide(aplicado, ["a"])).toBe(false);
+    expect(selecaoCoincide(aplicado, ["a", "c"])).toBe(false);
   });
 });
 
@@ -72,7 +71,7 @@ describe("grupos ignorados do arquivo", () => {
 describe("notas da linha de grupos", () => {
   const nota = { texto: "x", aba: 1, impressoras: ["a", "b"] };
   const css = fs
-    .readFileSync(new URL("./components/BlocoModo.module.css", import.meta.url), "utf8")
+    .readFileSync(new URL("./components/BlocoGrupos.module.css", import.meta.url), "utf8")
     .replaceAll("\r\n", "\n");
 
   it("valem na mesma aba e na mesma selecao, em qualquer ordem", () => {
