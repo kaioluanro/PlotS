@@ -64,6 +64,7 @@ Requisitos: OK 52 · PARTIAL 32 · MISSING 6 · BUG 0 · N/A 3 (93). Detalhes em
 | plotsim-suite | `108bede` | concluído; rápida com 42 de 44, 2 sem cobertura, sem papel |
 | calibracao-na-janela | `c410c8c` | concluído no código; simuladas e fila de PDF, sem papel nem leitor de tela real |
 | impressao-sem-lote | `18bb5cc` | concluído no código; simuladas, sem papel |
+| plotsim-janela | `7c47c9e` | concluído; filas virtuais pelo spooler real, sem papel |
 
 **Próximo:**
 
