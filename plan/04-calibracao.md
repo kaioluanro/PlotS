@@ -11,9 +11,11 @@ Medir uma vez como cada impressora se comporta e preencher o perfil a partir de 
 - [x] `ajustar_perfil_por_calibracao` no núcleo, testado contra o simulador
 - [x] `plots gerar-calibracao`, com número grande e seta
 - [x] `plots calibrar X`: gerar o PDF, perguntar e gravar o perfil
-- [ ] Enviar a calibração à impressora pelo próprio PlotS
-- [ ] Detectar a opção de inverter ordem do driver e pedir para desligar
+- [x] Enviar a calibração à impressora pelo próprio PlotS (`c410c8c`), na linha de cada impressora, com figuras
+- [x] A calibração identifica um driver que inverte quando a pessoa repara qual folha saiu primeiro (`c410c8c`)
 - [ ] Confirmar o resultado em impressora real
+
+**Limite conhecido:** um engano na última resposta que faltava pode ser aceito como certo. Nas simulações com um engano, isso ocorreu em 14% dos casos: cerca de 12% com o perfil certo e a instrução de leitura errada, e cerca de 2% com perfil errado gravado. Esse número não é a chance real, que depende de quanto as pessoas se enganam. A tela final mostra as respostas e deixa corrigir uma sem reimprimir. A hipótese de que os selos de certo e errado nas figuras induzem a resposta fica para o teste em papel.
 
 ## Pronto quando
 
