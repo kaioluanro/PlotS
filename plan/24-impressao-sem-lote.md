@@ -1,6 +1,6 @@
 # Impressão sem lote
 
-**Estado:** Em andamento
+**Estado:** Concluído no código (`18bb5cc`), sem papel
 
 ## Objetivo
 
@@ -17,15 +17,16 @@ Decisão do usuário em 2026-11-03: remover "Folhas por lote" da janela e deixar
 - **Maço maior que a bandeja:** acima de 30 folhas, a confirmação avisa. Na frente, a impressora pede papel, e a pessoa coloca mais folhas em branco. No verso, coloca a parte de cima e completa com o resto quando a entrada esvazia, sem mudar a ordem.
 - **O preço da decisão:** um atolamento afeta o trecho inteiro. "Reimprimir" refaz o trecho, com confirmação dizendo quantas folhas.
 - **Fechar o PlotS durante a espera:** a confirmação diz que os versos ainda não foram impressos. Depois, é só abrir o documento, marcar as impressoras e escolher Verso. O PlotS não guarda estado: quem garante que o maço é o certo é a pessoa.
+- **Documento mudou:** quando a aba já imprimiu frentes, o verso compara o arquivo com o que a frente leu, e recusa antes de enviar se ele mudou. Aba sem frente segue livre. Reimprimir na simulada não pede confirmação, como no plano `13`.
 - **O CLI e o núcleo continuam com lotes:** o PlotSim e a suíte dependem disso.
 
 ## Plano de implementação
 
-- [ ] Tirar "Folhas por lote" da janela
-- [ ] Um trecho por papel no envio, com divisão em partes
-- [ ] Cartões e confirmação sem a palavra lote, quando houver um só
-- [ ] Campo "Quantidade" no rodapé, com cópias em frente, verso e automático
-- [ ] Simuladas e PlotSim conferem o maço final
+- [x] Tirar "Folhas por lote" da janela (`18bb5cc`)
+- [x] Um trecho por papel no envio (`18bb5cc`)
+- [x] Cartões e confirmação sem a palavra lote (`18bb5cc`)
+- [x] Campo "Quantidade" no rodapé, com cópias em frente, verso e automático (`18bb5cc`)
+- [x] Simuladas e PlotSim conferem o maço final (`18bb5cc`). O automático com cópias só tem teste de planejamento, porque o PlotSim não modela as duas faces automáticas
 
 ## Pronto quando
 

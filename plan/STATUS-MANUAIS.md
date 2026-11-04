@@ -63,10 +63,11 @@ Requisitos: OK 52 · PARTIAL 32 · MISSING 6 · BUG 0 · N/A 3 (93). Detalhes em
 | laser-verso-girado | `364774d` | concluído; modelo físico e fila de PDF, sem papel |
 | plotsim-suite | `108bede` | concluído; rápida com 42 de 44, 2 sem cobertura, sem papel |
 | calibracao-na-janela | `c410c8c` | concluído no código; simuladas e fila de PDF, sem papel nem leitor de tela real |
+| impressao-sem-lote | `18bb5cc` | concluído no código; simuladas, sem papel |
 
 **Próximo:**
 
-1. Integrar a impressão sem lote (`24-impressao-sem-lote`) e a janela do PlotSim (fase 6 de `23-plotsim`).
+1. Integrar a janela do PlotSim (fase 6 de `23-plotsim`) e repetir a suíte no `master`.
 2. Revisar as linhas desatualizadas de `AUDIT-PlotS.md`, gerar o instalador final e fazer o teste do usuário.
 
 Depois da primeira versão: impressora virtual, Linux e macOS, divisão por velocidade (`15-multiplas-impressoras`) e medir se o Graphify economiza tokens, com 3 perguntas respondidas com e sem ele.
