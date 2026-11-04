@@ -27,6 +27,9 @@ Decisão do usuário em 2026-11-03: remover "Folhas por lote" da janela e deixar
 - [x] Cartões e confirmação sem a palavra lote (`18bb5cc`)
 - [x] Campo "Quantidade" no rodapé, com cópias em frente, verso e automático (`18bb5cc`)
 - [x] Simuladas e PlotSim conferem o maço final (`18bb5cc`). O automático com cópias só tem teste de planejamento, porque o PlotSim não modela as duas faces automáticas
+- [x] Verso em espera sempre pede confirmação, com o gesto, as páginas, o papel e as cópias do trabalho enfileirado, nunca os números da aba (`7b16a4f`)
+- [x] Envio simultâneo não perde trabalho no driver que falha com dois trabalhos juntos: uma fila por vez nesse driver, e o registro do Windows transforma trabalho descartado em erro com Reimprimir (`7b16a4f`)
+- [x] Papel misto mantém o lado do documento; o par de tamanhos diferentes se separa com o verso em branco, avisado na análise (`7b16a4f`)
 
 ## Pronto quando
 

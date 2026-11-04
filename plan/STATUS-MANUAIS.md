@@ -1,6 +1,6 @@
 # STATUS
 
-Requisitos: OK 62 · PARTIAL 25 · MISSING 2 · BUG 0 · N/A 4 (93). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
+Requisitos: OK 68 · PARTIAL 26 · MISSING 2 · BUG 0 · N/A 4 (100). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
 
 | Plano | OK | PARTIAL | MISSING | BUG | N/A | Estado |
 |---|---|---|---|---|---|---|
@@ -9,15 +9,15 @@ Requisitos: OK 62 · PARTIAL 25 · MISSING 2 · BUG 0 · N/A 4 (93). Detalhes em
 | [Geração das passadas em PDF](02-geracao-pdf.md) | 5 | 2 | 0 | 0 | 0 | Em andamento |
 | [Modo simulação](03-simulacao.md) | 9 | 1 | 0 | 0 | 1 | Em andamento |
 | [Calibração](04-calibracao.md) | 2 | 3 | 0 | 0 | 0 | Em andamento |
-| [Tamanhos de papel](05-tamanhos-de-papel.md) | 7 | 1 | 0 | 0 | 0 | Em andamento |
+| [Tamanhos de papel](05-tamanhos-de-papel.md) | 8 | 1 | 0 | 0 | 0 | Em andamento |
 | [Perfis salvos](06-perfis.md) | 1 | 1 | 0 | 0 | 0 | Em andamento |
 | [CLI de impressão](07-cli-impressao.md) | 3 | 2 | 0 | 0 | 0 | Em andamento |
-| [Impressão no Windows](08-impressao-windows.md) | 1 | 7 | 0 | 0 | 0 | Em andamento |
+| [Impressão no Windows](08-impressao-windows.md) | 2 | 7 | 0 | 0 | 0 | Em andamento |
 | [Janela, barra superior e abas](09-janela-e-abas.md) | 4 | 0 | 0 | 0 | 0 | Em andamento |
 | [Tela de abertura](10-splash.md) | 1 | 0 | 0 | 0 | 0 | Concluído |
 | [Barra lateral de impressoras](11-lateral-impressoras.md) | 2 | 0 | 0 | 0 | 1 | Concluído |
 | [Visualizador de PDF](12-visualizador.md) | 3 | 0 | 0 | 0 | 0 | Concluído |
-| [Fluxo de impressão e recolocação](13-fluxo-e-recolocacao.md) | 5 | 1 | 0 | 0 | 0 | Em andamento |
+| [Fluxo de impressão e recolocação](13-fluxo-e-recolocacao.md) | 7 | 1 | 0 | 0 | 0 | Em andamento |
 | [Padrão visual e idiomas](14-padrao-visual-e-idiomas.md) | 3 | 0 | 0 | 0 | 0 | Em andamento |
 | [Múltiplas impressoras](15-multiplas-impressoras.md) | 4 | 3 | 0 | 0 | 1 | Em andamento |
 | [Impressora virtual](16-impressora-virtual.md) | 0 | 0 | 1 | 0 | 0 | Não iniciado |
@@ -29,6 +29,7 @@ Requisitos: OK 62 · PARTIAL 25 · MISSING 2 · BUG 0 · N/A 4 (93). Detalhes em
 | [Opções de envio e histórico](22-opcoes-de-envio-e-historico.md) | — | — | — | — | — | Concluído no código |
 | [PlotSim](23-plotsim.md) | — | — | — | — | — | Em andamento |
 | [Impressão sem lote](24-impressao-sem-lote.md) | — | — | — | — | — | Em andamento |
+| [Avisos no topo](25-avisos-no-topo.md) | 2 | 1 | 0 | 0 | 0 | Concluído no código |
 
 ## Lotes
 
@@ -65,11 +66,14 @@ Requisitos: OK 62 · PARTIAL 25 · MISSING 2 · BUG 0 · N/A 4 (93). Detalhes em
 | calibracao-na-janela | `c410c8c` | concluído no código; simuladas e fila de PDF, sem papel nem leitor de tela real |
 | impressao-sem-lote | `18bb5cc` | concluído no código; simuladas, sem papel |
 | plotsim-janela | `7c47c9e` | concluído; filas virtuais pelo spooler real, sem papel |
+| 1.0.0-alpha | `11bc3e3` | tag local; instalador gerado, não executado |
+| 1.0.0-alpha.2 | `7b16a4f` | concluído no código; avisos no topo, proteção do verso e envio simultâneo; sem papel |
 
 **Próximo:**
 
 1. Feito em 2026-11-04: calibração, impressão sem lote e PlotSim integrados. Suíte rápida no `master` `a34a54e`: 42 de 44, 2 sem cobertura, 0 falhas.
-2. Auditoria revista e instalador final gerado em 2026-11-04, a partir de `b0c7302`. Falta o teste do usuário: papel pela calibração, janela do driver com OK e Cancelar, e instalador em máquina ou conta de teste.
+2. Feito em 2026-11-04: `1.0.0-alpha.2` (`7b16a4f`), com avisos no topo, confirmação do verso com o trabalho enviado, envio simultâneo sem perda e papel misto mantendo o lado. CI verde; suíte rápida 42 de 44, 2 sem cobertura, 0 falhas.
+3. Auditoria revista e instalador final gerado em 2026-11-04, a partir de `b0c7302`. Falta o teste do usuário: papel pela calibração, janela do driver com OK e Cancelar, e instalador em máquina ou conta de teste. O instalador da alpha.2, sem as simuladas, ainda precisa ser gerado.
 
 Depois da primeira versão: impressora virtual, Linux e macOS, divisão por velocidade (`15-multiplas-impressoras`) e medir se o Graphify economiza tokens, com 3 perguntas respondidas com e sem ele.
 

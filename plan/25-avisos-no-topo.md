@@ -1,6 +1,6 @@
 # Avisos no topo
 
-**Estado:** Em andamento
+**Estado:** Concluído no código (`7b16a4f`), sem papel
 
 ## Objetivo
 
@@ -19,10 +19,20 @@ Decisão do usuário em 2026-11-04: os cartões de andamento saem da lista de im
 
 ## Plano de implementação
 
-- [ ] Avisos no topo e painel ao lado do histórico
-- [ ] Tirar os cartões da lista de impressoras
-- [ ] Opção de compilação sem simuladas, usada pelo instalador
-- [ ] Botão Calibrar nas filas
+- [x] Avisos no topo e painel ao lado do histórico (`7b16a4f`)
+- [x] Tirar os cartões da lista de impressoras (`7b16a4f`)
+- [x] Opção de compilação sem simuladas, usada pelo instalador (`78bf299`)
+- [x] Botão Calibrar nas filas (`78bf299`)
+- [x] A faixa fica dentro da área do documento, não cobre a lateral em 640×420, e a fila mantém o nome legível (`7b16a4f`)
+- [x] O verso que espera na fila passa pela confirmação com o gesto e com os números do trabalho enviado (`7b16a4f`)
+
+## Pendências de polimento (não bloqueiam a alpha.2)
+
+- Em 640×420 o estado do aviso pode truncar ("Pronto para o próxim…"); dar `title` ao estado e, nessa largura, deixar o título quebrar em duas linhas ou baixar o teto da fila para 45%.
+- A fronteira da rolagem de "Mais opções" não tem limite visível: 1 px `var(--border)` ou fade de 12 px entre os campos e o bloco de envio.
+- Em 640×420 os três controles de "Mais opções" não cabem juntos (84 px de área para 114 px); em 480 cabem. Registrar como limite do tamanho mínimo.
+- O teste de `planoDoVerso` cobre a função, não o ponto de chamada em `App.tsx`; uma volta do `??` ali não quebraria teste.
+- Quatro avisos em 640×420 não foram exercitados; a faixa não tem teto de altura.
 
 ## Pronto quando
 

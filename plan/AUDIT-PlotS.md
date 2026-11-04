@@ -2,7 +2,7 @@
 
 Data: 2026-11-02. A especificação foi dividida depois em `plan/`, então as linhas de `AGENTS.md` citadas abaixo são da versão anterior. Escopo: especificação em `AGENTS.md` (seções de Fases, Modo simulação, Perfis, Papel, Múltiplas impressoras, Windows e Interface). Nenhum código de produto foi alterado. Nenhum commit. `Cargo.toml`, `Cargo.lock`, `AGENTS.md`, `CLAUDE.md` e `estilo-ui-ux.md` mantêm os mesmos hashes (md5 conferido antes e depois). **Atenção:** o `.gitignore` foi reescrito às 13:56:41, durante a auditoria, por outro processo ou usuário (este agente não o editou). O conteúdo novo acrescenta `/.claude/`, `/.codex/`, `/estilo-ui-ux.md`, `/plan/`, `/AUDIT-*.md` e `/STATUS-MANUAIS.md`, e por isso o `git status` mostra só `AGENTS.md` e `CLAUDE.md`. Não foi revertido; decisão do usuário.
 
-Contagem: **OK 62 · PARTIAL 25 · MISSING 2 · BUG 0 · N/A 4** (93 requisitos)
+Contagem: **OK 68 · PARTIAL 26 · MISSING 2 · BUG 0 · N/A 4** (100 requisitos)
 
 Reauditoria de 2026-11-04, sobre o `master` `b0c7302`. Catorze linhas mudaram de status e seis tiveram a evidência atualizada. As contagens foram recalculadas a partir da tabela: o total anterior (38/33/20/2) não batia com as linhas, que já somavam 52/32/6/3. Não rodei o app nem fiz teste em papel nesta reauditoria; as mudanças vêm de código, testes e commits. Mudanças de status:
 - PS-A014: OK para N/A (lote saiu da janela, `plan/24`).
@@ -10,6 +10,8 @@ Reauditoria de 2026-11-04, sobre o `master` `b0c7302`. Catorze linhas mudaram de
 - PS-A022, PS-A023, PS-A026, PS-A030, PS-A034, PS-A045, PS-A062, PS-A077, PS-A079: PARTIAL para OK.
 - PS-A051: MISSING para PARTIAL (a opção é marcada pela pessoa, sem detecção no driver).
 - PS-A078: MISSING para PARTIAL (exige impressora real e papel, pela regra da auditoria).
+
+Segunda reauditoria, em 2026-11-04 sobre o `7b16a4f`: acrescentei PS-A094 a PS-A100 para o que entrou na alpha.2 (avisos no topo e painel, confirmação do verso com o trabalho enviado, envio simultâneo e registro de impressão, papel misto mantendo o lado, janela mínima). Seis são OK e um é PARTIAL (os três controles de "Mais opções" não cabem juntos em 640×420).
 
 Verificação executada:
 - `cargo test --workspace --locked`: 51 testes passam (9 de integração do CLI, 19 em plots-core, 12 em plots-pdf, 11 em plots-print). Tempo de 30 s.
@@ -125,6 +127,13 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A091 | Texto de uso | Texto de uso lista todos os comandos e aparece só no erro de uso | OK (882ba68) | Ver BUG-3. |
 | PS-A092 | Processo | Uso obrigatório da craft-team e do Graphify | N/A | Processo do desenvolvimento (`AGENTS.md:3-7`, `294-307`). Sem efeito no produto. |
 | PS-A093 | Modo simulação | "Limite: a simulação prova a lógica; só a impressora real confirma o perfil" | N/A | Explicação de limite, sem requisito observável. |
+| PS-A094 | Avisos | Cartões de andamento saem da lista de impressoras; cada mudança vira aviso no topo e no painel ao lado do histórico | OK (`7b16a4f`) | `ui/src/components/AvisosDoTopo.tsx`, `PainelDeAvisos.tsx`, `ui/src/avisos.ts`; lista sem a seção de cartões (`Sidebar.tsx`). Capturas `cap6/` e `cap7/`; dois temas, inglês, 640×420. |
+| PS-A095 | Avisos | Aviso do topo não cobre a barra de título, some em 6 s (erro fica), no máximo 3, pausa em hover e foco, e não cobre a lateral em 640×420 | OK (`7b16a4f`) | `AvisosDoTopo.module.css` dentro da área do documento; medições em `saidas/r7-medicoes.json` e `640x420-clicaveis.txt`. Em 640×420 o estado do aviso pode truncar, anotado em `plan/25`. |
+| PS-A096 | Fluxo | O verso que espera na fila sempre pede confirmação, com gesto, páginas, papel e cópias do trabalho enviado | OK (`7b16a4f`) | `ui/src/face-do-envio.ts:186-193`, `ui/src/App.tsx:520-541`; teste `verso-plano.test.ts` com falha prévia em `saidas/falha-a1b.log`. |
+| PS-A097 | Fluxo | Trabalho anterior em erro avisa, na confirmação do verso, que pode continuar na fila do Windows | OK (`7b16a4f`) | `face.envio.erroAnterior` em `conteudoDoVerso`; teste com falha prévia em `saidas/falha-a2.log`. |
+| PS-A098 | Impressão no Windows | Envio simultâneo não perde trabalho no driver que falha com dois trabalhos: uma fila por vez nesse driver, e erro detectado no registro vira Reimprimir | OK (`7b16a4f`) | `plots-windows/src/vez.rs` (semáforo nomeado) e `registro.rs` (evento 372 por fila e documento); 10 rodadas de 2 filas sem perda e sem evento novo. |
+| PS-A099 | Tamanhos de papel | Papel misto mantém cada página no lado do documento; só o par de tamanhos diferentes se separa, com verso em branco, avisado na análise | OK (`7b16a4f`) | `plots-core/src/lib.rs` (`emparelhar`, `pares_separados_do_intervalo`); aviso em `i18n.ts`; teste `papel_misto_mantem_o_lado_e_so_o_par_diferente_se_separa`. |
+| PS-A100 | Interface | Em 640×420 e 700×500 nada fica inalcançável com "Mais opções"; os três controles cabem juntos | PARTIAL (`7b16a4f`) | "Mais opções" abre e rola, e o botão de envio fica visível. Em 640×420 a área rolável tem 84 px e os três controles somam 114 px: os três só aparecem juntos em 640×480. Registrado em `plan/25`. |
 
 ## Bugs (com passos de reprodução)
 

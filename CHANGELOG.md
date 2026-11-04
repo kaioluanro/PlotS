@@ -4,14 +4,16 @@ O PlotS segue o [versionamento semântico](https://semver.org/lang/pt-BR/). As v
 
 ## 1.0.0-alpha.2
 
-Em desenvolvimento: uso pela janela com várias impressoras, avisos no topo no lugar dos cartões e instalador sem as impressoras simuladas.
+Integrada em 2026-11-04 (`7b16a4f`): uso pela janela com várias impressoras, avisos no topo no lugar dos cartões e instalador sem as impressoras simuladas.
 
 - Trabalho que sai da fila com falha registrada pelo Windows para aquela fila (evento 372 do registro de impressão) vira erro com Reimprimir, em qualquer impressora. Com o driver "Microsoft Print To PDF", as filas enviam uma de cada vez.
-- O verso que espera na fila passa pela confirmação com o gesto, as páginas e a troca de papel antes de sair; o botão do próximo trecho diz "Continuar frentes" e a dica da troca de papel permanece no rodapé.
+- O verso que espera na fila passa pela confirmação com o gesto, as páginas, o papel e as cópias do trabalho que já foi enviado, nunca os números que estiverem na aba; o botão do próximo trecho diz "Continuar frentes" e a dica da troca de papel permanece no rodapé.
+- O aviso de trabalho anterior em erro também aparece na confirmação do verso.
 - O registro do Windows só marca falha quando o nome do documento do evento é o do trabalho (se o Windows o oculta, valem a fila e o tempo).
 - Papel misto mantém cada página no lado do documento: só o par de tamanhos diferentes se separa, com verso em branco para cada uma.
 - Trabalho em erro não trava mais o botão de imprimir; o foco volta ao botão depois de confirmar pelo teclado.
-- Painel de avisos: Cancelar e Reimprimir só na entrada mais recente do trabalho; avisos do topo com o documento e a fila; aviso fixo vencido sai do topo.
+- Painel de avisos: Cancelar e Reimprimir só na entrada mais recente do trabalho; avisos do topo com o documento e a fila; aviso fixo vencido sai do topo. A faixa não cobre a lateral em 640×420 nem esconde o nome da impressora.
+- Cancelar que chega depois do fim diz "Nada para cancelar": nada foi cancelado, e o estado do trabalho não é inventado.
 - Janela pequena: "Mais opções" abre o ajuste ao papel, a folha de controle e os grupos.
 - O PlotSim confere por folha o que não começa da página 1 (trecho, cópias, papel misto), e uma frente nova abre um lote novo.
 ## 1.0.0-alpha
@@ -27,6 +29,6 @@ Primeira versão numerada, gerada em 2026-11-04.
 
 **Problemas conhecidos:**
 
-- A impressão pela janela com impressoras virtuais pode perder os versos ([relato do usuário](plan/25-avisos-no-topo.md), em investigação).
+- A impressão pela janela com impressoras virtuais pode perder os versos ([relato do usuário](plan/25-avisos-no-topo.md), em investigação; corrigido na 1.0.0-alpha.2).
 - Sem teste em papel, em impressora real nem execução do instalador.
 - O instalador ainda mostra as impressoras simuladas.
