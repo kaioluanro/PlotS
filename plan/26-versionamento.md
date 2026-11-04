@@ -1,6 +1,6 @@
 # Versionamento
 
-**Estado:** Em andamento
+**Estado:** Concluído
 
 ## Objetivo
 
@@ -16,8 +16,8 @@ Decisão do usuário em 2026-11-04: numerar as versões. A que acabou de sair é
 ## Plano de implementação
 
 - [x] `scripts/definir-versao.mjs` e `CHANGELOG.md`
-- [ ] Tag `v1.0.0-alpha` e instalador dessa versão
-- [ ] `master` em `1.0.0-alpha.2`
+- [x] Tag `v1.0.0-alpha` e instalador dessa versão
+- [x] `master` em `1.0.0-alpha.2`
 
 ## Pronto quando
 
