@@ -5,6 +5,7 @@
 
 mod ajustes;
 mod armazenamento;
+mod calibracoes;
 mod erro;
 mod formato;
 mod grupos;
@@ -22,6 +23,7 @@ mod testes_historico;
 
 pub use ajustes::{AjusteRecusado, LIMITE_AJUSTE_BYTES};
 pub use armazenamento::{caminho_padrao, carregar, salvar, LIMITE_ARQUIVO_BYTES, NOME_ARQUIVO};
+pub use calibracoes::Calibracao;
 pub use erro::ErroPerfis;
 pub use formato::VERSAO_ATUAL;
 pub use grupos::{ErroGrupo, Grupo, LIMITE_GRUPOS, LIMITE_IMPRESSORAS_GRUPO, LIMITE_NOME_GRUPO};

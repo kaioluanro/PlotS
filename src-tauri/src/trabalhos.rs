@@ -35,7 +35,7 @@ use std::time::Duration;
 /// Maior lote que a interface oferece; um valor de fora nunca chega ao plano.
 const LOTE_MAXIMO: usize = 50;
 /// A simulacao nao tem fila: o intervalo so deixa o estado aparecer antes da confirmacao.
-const ESPERA_SIMULADA: Espera = Espera {
+pub(crate) const ESPERA_SIMULADA: Espera = Espera {
     intervalo: Duration::from_millis(400),
     consultas: 1_800,
 };
@@ -115,7 +115,7 @@ fn codigo_do_aviso(condicao: Option<CondicaoDoAviso>) -> &'static str {
     }
 }
 
-fn motivo_do_job<E: ParaMotivo>(erro: &ErroJob<E>) -> Motivo {
+pub(crate) fn motivo_do_job<E: ParaMotivo>(erro: &ErroJob<E>) -> Motivo {
     match erro {
         ErroJob::Backend(erro) => erro.para_motivo(),
         ErroJob::EnvioFalhou => Motivo::novo("fila", "o spooler informou uma falha"),
@@ -161,12 +161,16 @@ pub struct Recolocar {
 
 impl Recolocar {
     fn da_instrucao(instrucao: Instrucao) -> Self {
+        Self::do_lado_e_virada(instrucao.lado, instrucao.virada)
+    }
+
+    fn do_lado_e_virada(lado: Lado, virada: Virada) -> Self {
         Self {
-            lado: Some(match instrucao.lado {
+            lado: Some(match lado {
                 Lado::Cima => "cima",
                 Lado::Baixo => "baixo",
             }),
-            virada: Some(match instrucao.virada {
+            virada: Some(match virada {
                 Virada::PelaBordaDeCima => "borda_de_cima",
                 Virada::PelaLateral => "lateral",
                 Virada::NaoVirar => "nao_virar",
@@ -174,6 +178,21 @@ impl Recolocar {
             }),
             texto_do_perfil: None,
         }
+    }
+
+    /// O gesto da calibracao guiada: a virada do perfil, e o lado em que a face impressa entra.
+    pub(crate) fn calibrado(perfil: PerfilImpressora, entra_para_cima: bool) -> Self {
+        let lado = if entra_para_cima {
+            Lado::Cima
+        } else {
+            Lado::Baixo
+        };
+        let virada = match perfil.gesto_recolocar.virada {
+            plots_core::ViradaMaco::NaoVirar => Virada::NaoVirar,
+            plots_core::ViradaMaco::PelaLateral => Virada::PelaLateral,
+            plots_core::ViradaMaco::PelaBordaDeCima => Virada::PelaBordaDeCima,
+        };
+        Self::do_lado_e_virada(lado, virada)
     }
 }
 
@@ -1328,13 +1347,31 @@ pub fn preparar_fila(
     backend.definir_marcas(lotes.iter().map(|item| item.marcas.clone()).collect());
     let condutor =
         Condutor::novo(backend, lotes, fluxo::ESPERA_REAL).map_err(|erro| motivo_do_job(&erro))?;
-    let vira_para_ler =
-        entrada.modelo.is_some_and(fluxo::vira_para_ler) && condutor.tem_lote_manual();
+    let (recolocar, vira_para_ler) = gesto_e_leitura(entrada, perfis.calibracao(nome));
+    let vira_para_ler = vira_para_ler && condutor.tem_lote_manual();
     Ok(Preparo {
         condutor,
-        recolocar: recolocar_do_perfil(entrada.modelo, entrada.gesto_texto.clone()),
+        recolocar,
         vira_para_ler,
     })
+}
+
+/// O gesto e se o maco e lido virado. O que a calibracao mediu vale sobre o que o modelo diria.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn gesto_e_leitura(
+    entrada: &plots_perfis::EntradaPerfil,
+    calibracao: Option<plots_perfis::Calibracao>,
+) -> (Recolocar, bool) {
+    match calibracao {
+        Some(calibrada) => (
+            Recolocar::calibrado(entrada.perfil, calibrada.face_impressa_entra_para_cima),
+            calibrada.le_virando,
+        ),
+        None => (
+            recolocar_do_perfil(entrada.modelo, entrada.gesto_texto.clone()),
+            entrada.modelo.is_some_and(fluxo::vira_para_ler),
+        ),
+    }
 }
 
 /// Recusa de fila em um sistema que nao tem spooler.
@@ -1362,7 +1399,7 @@ fn recolocar_do_perfil(modelo: Option<ModeloImpressora>, texto: Option<String>) 
 /// Sem arquivo de saida, uma fila que pergunta o nome do arquivo e recusada: o sistema abriria um
 /// dialogo e o trabalho ficaria parado.
 #[cfg_attr(not(windows), allow(dead_code))]
-fn motivo_da_recusa(nome: &str, recusa: plots_windows::RecusaDeFila) -> Motivo {
+pub(crate) fn motivo_da_recusa(nome: &str, recusa: plots_windows::RecusaDeFila) -> Motivo {
     use plots_windows::RecusaDeFila as R;
     match recusa {
         R::Inexistente => Motivo::novo(

@@ -8,6 +8,53 @@ const PRAZO: Duration = Duration::from_secs(20);
 const A4: DimensoesPagina = DimensoesPagina::new(210.0, 297.0);
 const A5: DimensoesPagina = DimensoesPagina::new(148.0, 210.0);
 
+fn entrada_de_modelo(modelo: ModeloImpressora) -> plots_perfis::EntradaPerfil {
+    plots_perfis::EntradaPerfil {
+        apelido: None,
+        perfil: modelo.perfil(),
+        gesto_texto: None,
+        modelo: Some(modelo),
+        automatico: false,
+        driver_inverte: false,
+    }
+}
+
+#[test]
+fn sem_calibracao_o_envio_usa_o_gesto_e_a_leitura_do_modelo() {
+    for modelo in [ModeloImpressora::JatoDeTinta, ModeloImpressora::Laser] {
+        let (recolocar, le_virando) = gesto_e_leitura(&entrada_de_modelo(modelo), None);
+        assert_eq!(
+            recolocar,
+            Recolocar::da_instrucao(Instrucao::do_modelo(modelo))
+        );
+        assert_eq!(le_virando, fluxo::vira_para_ler(modelo));
+    }
+}
+
+#[test]
+fn com_calibracao_o_envio_segue_o_que_as_respostas_disseram() {
+    // Um modelo que diria o contrario nao pode ganhar da medida, nem para ler nem para recolocar.
+    for modelo in [ModeloImpressora::JatoDeTinta, ModeloImpressora::Laser] {
+        for le_virando in [true, false] {
+            for entra_para_cima in [true, false] {
+                let entrada = entrada_de_modelo(modelo);
+                let (recolocar, lida) = gesto_e_leitura(
+                    &entrada,
+                    Some(plots_perfis::Calibracao {
+                        face_impressa_entra_para_cima: entra_para_cima,
+                        le_virando,
+                    }),
+                );
+                assert_eq!(lida, le_virando);
+                assert_eq!(
+                    recolocar,
+                    Recolocar::calibrado(entrada.perfil, entra_para_cima)
+                );
+            }
+        }
+    }
+}
+
 #[test]
 fn ajustar_papel_planeja_documento_misto_em_um_formato() {
     let dimensoes = [A4, A5, A4, A5];

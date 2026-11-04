@@ -167,6 +167,9 @@ fn vira_para_ler(impressora: &str, perfis: &Result<Perfis, ErroPerfis>) -> Optio
             if entrada.automatico {
                 return None;
             }
+            if let Some(calibrada) = perfis.as_ref().ok()?.calibracao(&nome) {
+                return Some(calibrada.le_virando);
+            }
             entrada.modelo
         }
     };
@@ -402,6 +405,25 @@ mod testes {
         );
         let perfis = Ok(Perfis::new());
         assert_eq!(vira_para_ler("simulada:automatica", &perfis), None);
+    }
+
+    #[test]
+    fn fila_calibrada_le_o_maco_como_as_respostas_disseram() {
+        for le_virando in [true, false] {
+            let mut perfis = Perfis::new();
+            perfis.gravar_calibracao(
+                "Sala",
+                plots_core::calibracao::PerfilEmTeste::do_modelo(
+                    ModeloImpressora::JatoDeTinta,
+                    false,
+                ),
+                plots_perfis::Calibracao {
+                    face_impressa_entra_para_cima: true,
+                    le_virando,
+                },
+            );
+            assert_eq!(vira_para_ler("fila:Sala", &Ok(perfis)), Some(le_virando));
+        }
     }
 
     #[test]

@@ -3,7 +3,7 @@ import type { PaginasDaAba } from "./tabs";
 
 export type Nivel = "pronta" | "ativa" | "atencao" | "problema";
 export type Modelo = "jato" | "laser" | "automatico" | "automatico:jato" | "automatico:laser";
-export type Modo = "jato" | "laser" | "automatico" | "personalizado" | "sem_perfil" | "desconhecido";
+export type Modo = "jato" | "laser" | "automatico" | "personalizado" | "calibrada" | "sem_perfil" | "desconhecido";
 
 export interface CondicaoLida {
   codigo: string;
@@ -24,6 +24,8 @@ export interface Impressora {
   /** A opcao de compensar o driver vale para esta linha. */
   podeInverter?: boolean;
   driverInverte?: boolean;
+  /** A compensacao gravada quando a calibracao foi feita; ausente em arquivo antigo. */
+  driverNaCalibracao?: boolean;
 }
 
 export interface Aviso {
@@ -237,13 +239,17 @@ export function estadoDoSeletor(
     };
   }
   const personalizado = modo === "personalizado";
+  const calibrada = modo === "calibrada";
   return {
     valor: escolhaEmGravacao ?? modo,
-    titulo: traduzir(idioma, personalizado ? "modo.seletor.personalizado" : "modo.seletor.semPerfil"),
+    titulo: traduzir(
+      idioma,
+      calibrada ? "calibracao.seletorTitulo" : personalizado ? "modo.seletor.personalizado" : "modo.seletor.semPerfil",
+    ),
     opcoes: [
       {
         valor: modo,
-        rotulo: traduzir(idioma, personalizado ? "modo.personalizado" : "modo.semPerfil"),
+        rotulo: traduzir(idioma, calibrada ? "calibracao.modo" : personalizado ? "modo.personalizado" : "modo.semPerfil"),
         soEstado: true,
       },
       ...opcoes,
@@ -273,7 +279,7 @@ export function indicaGravacao(gravando: Modelo | undefined, decorridoMs: number
  * andamento nao ha o que confirmar: a escolha seria ignorada.
  */
 export function pedeConfirmacao(modo: Modo, gravando: Modelo | undefined): boolean {
-  return modo === "personalizado" && gravando === undefined;
+  return (modo === "personalizado" || modo === "calibrada") && gravando === undefined;
 }
 
 /** Com a lista fechada, as teclas de andar trocariam o valor a cada passo, e Enter nao faria nada. */

@@ -97,7 +97,7 @@ interface Props {
   aoPedirSubstituicao: (fila: string, modelo: Modelo) => void;
   aoDefinirLote: (tamanho: number) => void;
   aoDefinirIntervalo: (intervalo: RascunhoIntervalo | null) => void;
-  aoCalibrar: (fila: string) => void;
+  aoCalibrar: (impressora: Impressora) => void;
   /** Impressoras com trabalho em andamento em qualquer aba. */
   ocupadas: ReadonlySet<string>;
   aoImprimir: () => void;
@@ -406,7 +406,7 @@ interface PropsLinha {
   aoAlternar: (impressora: string) => void;
   aoEscolherModelo: (fila: string, modelo: Modelo) => void;
   aoPedirSubstituicao: (fila: string, modelo: Modelo) => void;
-  aoCalibrar: (fila: string) => void;
+  aoCalibrar: (impressora: Impressora) => void;
   aoMudarInversao?: () => void;
   temPapelManual?: boolean;
   comAjuste: boolean;
@@ -585,7 +585,7 @@ export function LinhaImpressora({
             // A opcao escolhida some com a lista: o foco volta daqui quando o dialogo fechar.
             if (escolha.acao === "calibrar") {
               evento.target.focus();
-              aoCalibrar(impressora.nome);
+              aoCalibrar(impressora);
             }
             if (escolha.acao !== "gravar") return;
             if (pedeConfirmacao(impressora.modo, gravando)) {
@@ -690,6 +690,19 @@ export function LinhaImpressora({
               }
             />
           </label>
+        )}
+        {impressora.tipo === "simulada" && (
+          // A simulada nao tem seletor: e daqui que ela entra no mesmo fluxo das filas.
+          <div className={styles.fileira}>
+            <button
+              type="button"
+              className={styles.calibrarSimulada}
+              aria-label={t("calibracao.titulo", { nome })}
+              onClick={() => aoCalibrar(impressora)}
+            >
+              {t("modo.calibrar")}
+            </button>
+          </div>
         )}
         <div className={`${styles.fileira} ${styles.fileiraDoEstado}`}>
           <label htmlFor={idCaixa} className={classesDoEstado.join(" ")} title={estado}>

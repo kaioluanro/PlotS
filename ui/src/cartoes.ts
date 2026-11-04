@@ -632,7 +632,18 @@ export function frasesDoGesto(recolocar: Recolocar, idioma: Idioma = idiomaAtual
     if (recolocar.textoDoPerfil && idioma === "pt-BR") frases.push(recolocar.textoDoPerfil);
     return frases;
   }
-  const colocacao = traduzir(idioma, recolocar.lado === "cima" ? "cartao.gesto.cima" : "cartao.gesto.baixo");
+  // Sem gesto de virar, a colocacao vem sem "Depois": a frase nao segue uma negacao.
+  const semGesto = !recolocar.virada || recolocar.virada === "nao_virar";
+  const colocacao = traduzir(
+    idioma,
+    recolocar.lado === "cima"
+      ? semGesto
+        ? "cartao.colocacao.cima"
+        : "cartao.gesto.cima"
+      : semGesto
+        ? "cartao.colocacao.baixo"
+        : "cartao.gesto.baixo",
+  );
   // Na ordem fisica: primeiro o gesto, depois a colocacao na entrada.
   const virada = CHAVES_DE_VIRADA.get(recolocar.virada ?? "");
   return virada ? [traduzir(idioma, virada), colocacao] : [colocacao];

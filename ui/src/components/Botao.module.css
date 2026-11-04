@@ -68,14 +68,16 @@
 }
 
 @media (forced-colors: active) {
-  .botao:hover {
+  .botao:hover:not(:disabled) {
     outline: 2px solid Highlight;
     outline-offset: 1px;
   }
 
+  /* A cor pode ser a mesma do habilitado em cores forcadas: a borda tracejada diz o desabilitado sem depender dela. */
   .botao:disabled {
     color: GrayText;
     border-color: GrayText;
+    border-style: dashed;
     opacity: 1;
   }
 }

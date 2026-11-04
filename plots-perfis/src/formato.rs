@@ -6,6 +6,7 @@ use plots_core::{BordaEntrada, GestoRecolocar, ModeloImpressora, PerfilImpressor
 use serde::{Deserialize, Serialize};
 
 use crate::ajustes;
+use crate::calibracoes;
 use crate::erro::ErroPerfis;
 use crate::grupos::{Grupo, GrupoIgnorado};
 use crate::perfis::{EntradaPerfil, Perfis};
@@ -36,6 +37,9 @@ struct ArquivoPerfis {
     /// Ajuste do driver por fila. Fica como valor solto: um valor ruim não recusa o arquivo.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     ajustes_driver: BTreeMap<String, toml::Value>,
+    /// O que a calibração guiada aprendeu de cada fila. Solto, para um valor ruim não recusar o arquivo.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    calibracoes: BTreeMap<String, toml::Value>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -311,6 +315,7 @@ pub(crate) fn decodificar(texto: &str, caminho: &Path) -> Result<Perfis, ErroPer
     }
     ler_grupos(&mut perfis, arquivo.grupos);
     ajustes::ler_do_arquivo(&mut perfis, arquivo.ajustes_driver);
+    calibracoes::ler_do_arquivo(&mut perfis, arquivo.calibracoes);
     Ok(perfis)
 }
 
@@ -333,6 +338,7 @@ pub(crate) fn codificar(perfis: &Perfis) -> Result<String, ErroPerfis> {
             .collect(),
         grupos: escrever_grupos(perfis)?,
         ajustes_driver: ajustes::para_o_arquivo(perfis),
+        calibracoes: calibracoes::para_o_arquivo(perfis),
     };
     toml::to_string(&arquivo).map_err(|erro| ErroPerfis::Serializacao {
         detalhe: erro.to_string(),

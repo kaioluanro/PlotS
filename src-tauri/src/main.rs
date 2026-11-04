@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod abertura;
+mod calibracao;
 mod comandos_trabalho;
 mod documento;
 mod duas_faces;
@@ -172,6 +173,14 @@ fn main() -> ExitCode {
             preferencias::estado_das_preferencias,
             preferencias::voltar_ao_padrao_da_fila,
             andamento_da_abertura,
+            calibracao::calibracao_avaliar,
+            calibracao::calibracao_conferir_automatica,
+            calibracao::calibracao_encerrar,
+            calibracao::calibracao_enviar,
+            calibracao::calibracao_gravar,
+            calibracao::calibracao_perfil_inicial,
+            calibracao::calibracao_recolocar,
+            calibracao::calibracao_saida_simulada,
             caminhos_iniciais,
             comandos_trabalho::comandar_trabalho,
             contar_paginas,

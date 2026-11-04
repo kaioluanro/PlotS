@@ -3,6 +3,7 @@
 use std::collections::TryReserveError;
 
 pub mod ajuste;
+pub mod calibracao;
 pub mod distribuicao;
 
 /// Maior quantidade de páginas que o planejador aceita em uma chamada.

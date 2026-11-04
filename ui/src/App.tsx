@@ -17,7 +17,7 @@ import {
 import { BlocoModo } from "./components/BlocoModo";
 import { BlocoAjuste } from "./components/BlocoAjuste";
 import { HistoricoDialog } from "./components/HistoricoDialog";
-import { CalibrarDialog } from "./components/CalibrarDialog";
+import { CalibracaoDialog } from "./components/CalibracaoDialog";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { DocumentArea, ID_AREA_DOCUMENTO } from "./components/DocumentArea";
 import { ID_LATERAL, Sidebar } from "./components/Sidebar";
@@ -110,7 +110,7 @@ export function App() {
   const focarDepoisDeFechar = useRef(false);
 
   const confirmacao = conteudoDaConfirmacao(estado);
-  const [filaACalibrar, setFilaACalibrar] = useState<string | null>(null);
+  const [aCalibrar, setACalibrar] = useState<Impressora | null>(null);
   const [lista, setLista] = useState<ListaImpressoras>({ impressoras: [], avisos: [] });
   const [lendoLista, setLendoLista] = useState(true);
   const [gravacoes, setGravacoes] = useState<ReadonlyMap<string, Modelo>>(new Map());
@@ -136,7 +136,7 @@ export function App() {
   // Qualquer dialogo aberto impede que atalhos e arrastos ajam por tras dele.
   const confirmando =
     confirmacao !== null ||
-    filaACalibrar !== null ||
+    aCalibrar !== null ||
     substituicao !== null ||
     pedidoDeEnvio !== null ||
     cartaoACancelar !== null ||
@@ -588,7 +588,7 @@ export function App() {
             aoAlternar={aoAlternarImpressora}
             aoDefinirLote={aoDefinirLote}
             aoDefinirIntervalo={aoDefinirIntervalo}
-            aoCalibrar={setFilaACalibrar}
+            aoCalibrar={setACalibrar}
             ocupadas={ocupadas}
             aoImprimir={aoImprimir}
             aoComandar={aoComandarCartao}
@@ -632,7 +632,13 @@ export function App() {
           aoAbrir={() => void abrirPeloSeletor()}
         />
       </div>
-      <CalibrarDialog fila={filaACalibrar} aoFechar={() => setFilaACalibrar(null)} />
+      <CalibracaoDialog
+        impressora={aCalibrar}
+        aoFechar={(gravou) => {
+          setACalibrar(null);
+          if (gravou) atualizarLista();
+        }}
+      />
       <HistoricoDialog
         aberto={confirmacao === null && historico === "lista"}
         impressoras={lista.impressoras}

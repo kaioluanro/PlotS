@@ -64,7 +64,7 @@ describe("vocabulario da interface", () => {
     const encontrados = Object.entries(traducoes[idioma])
       .filter(
         ([chave, texto]) =>
-          (chave.startsWith("calibrar.") ||
+          (chave.startsWith("calibracao.") ||
             chave.startsWith("aviso.perfis_") ||
             chave === "modo.desconhecido.titulo") &&
           palavra.test(texto),
@@ -104,38 +104,6 @@ describe("PDF protegido", () => {
   });
 });
 
-describe("dialogo de calibrar", () => {
-  it.each([
-    ["pt-BR", /na pasta atual/],
-    ["en", /in the current folder/],
-  ] as const)("%s diz onde o arquivo fica", (idioma, esperado) => {
-    expect(traduzir(idioma, "calibrar.passos")).toMatch(esperado);
-  });
-
-  it.each([
-    ["pt-BR", /No PowerShell, use:$/, /rode-o na pasta do executável plots-cli, gerado ao compilar o projeto\.$/],
-    ["en", /In PowerShell, use:$/, /run it in the folder of the plots-cli executable, created when you build the project\.$/],
-  ] as const)("%s diz onde rodar o comando", (idioma, intro, instalacao) => {
-    expect(traduzir(idioma, "calibrar.intro")).toMatch(intro);
-    expect(traduzir(idioma, "calibrar.instalacao")).toMatch(instalacao);
-  });
-});
-
-describe("impressora sem comando seguro", () => {
-  it.each([
-    [
-      "pt-BR",
-      "O nome desta impressora tem aspas duplas e %, e o PlotS não consegue montar um comando seguro para o PowerShell. Renomeie a impressora nas configurações do Windows e use Atualizar lista.",
-    ],
-    [
-      "en",
-      "This printer's name has double quotes and %, and PlotS cannot build a safe PowerShell command for it. Rename the printer in Windows settings, then use Refresh list.",
-    ],
-  ] as const)("%s manda renomear a impressora", (idioma, esperado) => {
-    expect(traduzir(idioma, "calibrar.semComando")).toBe(esperado);
-  });
-});
-
 describe("dialogo de fechamento", () => {
   it.each([
     ["pt-BR", "na fila de impressão"],
@@ -143,5 +111,71 @@ describe("dialogo de fechamento", () => {
   ] as const)("%s nomeia a fila de impressao no singular e no plural", (idioma, trecho) => {
     expect(traduzir(idioma, "confirmar.consequencia")).toContain(trecho);
     expect(traduzir(idioma, "confirmar.consequenciaVarios")).toContain(trecho);
+  });
+});
+
+describe("textos da tela de calibracao", () => {
+  it.each([
+    ["pt-BR", "calibracao.desistir.pergunta", "Sair sem gravar?"],
+    ["en", "calibracao.desistir.pergunta", "Leave without saving?"],
+    ["pt-BR", "calibracao.desistir.explicacao", "O perfil da impressora fica como estava. Para calibrar depois, será preciso imprimir o teste de novo."],
+    ["en", "calibracao.desistir.explicacao", "The printer's profile stays as it was. To calibrate later, you will need to print the test again."],
+    ["pt-BR", "calibracao.instrucao.leitura", "Sem mudar a ordem, olhe o número de cima. Depois vire o maço inteiro e olhe de novo."],
+    ["pt-BR", "calibracao.pergunta.leitura", "Quando o 1 aparece por cima?"],
+    ["en", "calibracao.instrucao.leitura", "Without changing the order, look at the top number. Then flip the whole stack and look again."],
+    ["en", "calibracao.pergunta.leitura", "When is the 1 on top?"],
+    ["pt-BR", "calibracao.certo.depoisDeGravar", "Depois de gravar, ao imprimir o verso:"],
+    ["en", "calibracao.certo.depoisDeGravar", "After saving, when printing the back:"],
+    ["pt-BR", "calibracao.certo.comEstePerfil", "Com este perfil, ao imprimir o verso:"],
+    ["en", "calibracao.certo.comEstePerfil", "With this profile, when printing the back:"],
+    ["pt-BR", "calibracao.certo.corrigir", "Corrigir uma resposta"],
+    ["en", "calibracao.certo.corrigir", "Change an answer"],
+    ["pt-BR", "calibracao.julgamentoFalhou", "Não foi possível conferir as respostas. Tente de novo."],
+    ["en", "calibracao.julgamentoFalhou", "Could not check the answers. Try again."],
+    ["pt-BR", "calibracao.pedeArquivo", "Esta impressora pede o nome de um arquivo. Escolha uma impressora de papel."],
+    ["en", "calibracao.pedeArquivo", "This printer asks for a file name. Choose a paper printer."],
+    ["pt-BR", "calibracao.driverTrocado", "Esta opção mudou depois da calibração. Se a ordem sair errada, calibre de novo."],
+    ["en", "calibracao.driverTrocado", "This option changed after calibration. If the order comes out wrong, calibrate again."],
+  ] as const)("%s: %s tem o texto definitivo", (idioma, chave, texto) => {
+    expect(traduzir(idioma, chave)).toBe(texto);
+  });
+});
+
+describe("frase de repare depois do verso", () => {
+  it.each([
+    ["pt-BR", "Ao imprimir o verso, repare qual número sai primeiro."],
+    ["en", "When printing the back, notice which number comes out first."],
+  ] as const)("%s nao comeca com Depois", (idioma, texto) => {
+    expect(traduzir(idioma, "calibracao.recolocar.repare")).toBe(texto);
+    expect(traduzir(idioma, "calibracao.recolocar.repare")).not.toMatch(/^(Depois|Then|After)/);
+  });
+});
+
+describe("textos da rodada 4", () => {
+  it.each([
+    ["pt-BR", "calibracao.instrucao.par", "Pegue a folha com o 1 e olhe o outro lado."],
+    ["en", "calibracao.instrucao.par", "Take the sheet with the 1 and look at the other side."],
+    ["pt-BR", "calibracao.pergunta.par", "O que está nele?"],
+    ["en", "calibracao.pergunta.par", "What is on it?"],
+    ["pt-BR", "calibracao.resumo.lado", "Segunda impressão:"],
+    ["en", "calibracao.resumo.lado", "Second print:"],
+    ["pt-BR", "calibracao.resumo.leitura", "1 por cima:"],
+    ["en", "calibracao.resumo.leitura", "1 on top:"],
+    ["pt-BR", "calibracao.resumo.primeira", "Saiu primeiro:"],
+    ["en", "calibracao.resumo.primeira", "Came out first:"],
+    ["pt-BR", "calibracao.resumo.par", "Atrás do 1:"],
+    ["en", "calibracao.resumo.par", "Behind the 1:"],
+    ["pt-BR", "calibracao.resumo.setas", "Setas:"],
+    ["en", "calibracao.resumo.setas", "Arrows:"],
+    ["pt-BR", "calibracao.ocupacao.enviando", "Enviando para a impressora…"],
+    ["en", "calibracao.ocupacao.enviando", "Sending to the printer…"],
+    ["pt-BR", "calibracao.ocupacao.gravando", "Gravando o perfil…"],
+    ["en", "calibracao.ocupacao.gravando", "Saving the profile…"],
+    ["pt-BR", "cartao.colocacao.cima", "Sem mudar a ordem das folhas, coloque na entrada com a face impressa para cima."],
+    ["en", "cartao.colocacao.cima", "Without changing the sheet order, place it in the feed with the printed side facing up."],
+    ["pt-BR", "cartao.colocacao.baixo", "Sem mudar a ordem das folhas, coloque na entrada com a face impressa para baixo."],
+    ["en", "cartao.colocacao.baixo", "Without changing the sheet order, place it in the feed with the printed side facing down."],
+  ] as const)("%s: %s", (idioma, chave, texto) => {
+    expect(traduzir(idioma, chave)).toBe(texto);
   });
 });

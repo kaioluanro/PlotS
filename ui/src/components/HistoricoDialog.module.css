@@ -204,6 +204,17 @@
   color: var(--fg-muted);
 }
 
+/* Aviso de driver trocado: 4px acima da linha, e icone na mesma cor do texto. */
+.avisoDriver {
+  margin-top: 4px;
+}
+
+.iconeAvisoDriver {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--fg);
+}
+
 @media (forced-colors: active) {
   .caixa {
     border-color: CanvasText;

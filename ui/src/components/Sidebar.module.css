@@ -538,6 +538,31 @@
   background: var(--status-offline);
 }
 
+.calibrarSimulada {
+  flex-shrink: 0;
+  min-height: 24px;
+  padding: 0 4px;
+  color: var(--fg-muted);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-decoration: underline;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.calibrarSimulada:hover {
+  color: var(--fg);
+}
+
+.calibrarSimulada:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 1px;
+}
+
 .modoNome {
   flex-shrink: 0;
   padding-top: 3px;

@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use plots_core::{ModeloImpressora, PerfilImpressora};
 
+use crate::calibracoes::Calibracao;
 use crate::grupos::{Grupo, GrupoIgnorado};
 
 /// Perfil salvo para uma fila de impressão.
@@ -30,6 +31,10 @@ pub struct Perfis {
     pub(crate) grupos: BTreeMap<String, Grupo>,
     /// O que estava no arquivo e não vale como grupo: não aparece, e volta igual na próxima gravação.
     pub(crate) grupos_ignorados: BTreeMap<String, GrupoIgnorado>,
+    /// O que a calibração guiada aprendeu de cada fila. Some junto com o perfil que a descrevia.
+    pub(crate) calibracoes: BTreeMap<String, Calibracao>,
+    /// A compensacao do driver que valia quando a calibracao foi feita. So conta junto com ela.
+    pub(crate) drivers_calibrados: BTreeMap<String, bool>,
     pub(crate) ajustes_driver: BTreeMap<String, Vec<u8>>,
     pub(crate) ajustes_ignorados: Vec<String>,
     /// A pessoa pediu para não registrar novos envios. O padrão, e o de arquivo antigo, é registrar.
@@ -49,6 +54,7 @@ impl Perfis {
 
     /// Insere ou substitui o perfil da fila; devolve o anterior, se houver.
     pub fn inserir(&mut self, fila: &str, entrada: EntradaPerfil) -> Option<EntradaPerfil> {
+        self.calibracoes.remove(fila);
         self.filas.insert(fila.to_owned(), entrada)
     }
 
@@ -107,6 +113,7 @@ impl Perfis {
 
     /// Remove o perfil da fila e o devolve, se existir.
     pub fn remover(&mut self, fila: &str) -> Option<EntradaPerfil> {
+        self.calibracoes.remove(fila);
         self.filas.remove(fila)
     }
 

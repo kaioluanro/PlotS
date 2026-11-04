@@ -1,5 +1,6 @@
 import { Check, ChevronDown, CircleAlert, Info } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
+import { trocaPoeCalibracaoEmDuvida } from "../calibracao";
 import { t } from "../i18n";
 import type { Impressora } from "../impressoras";
 import { nomeDoPapelDeAjuste, PAPEIS_DE_AJUSTE } from "../opcoes-envio";
@@ -108,7 +109,15 @@ export function OpcaoInversao({
   const [ligado, setLigado] = useState(gravado);
   const [falhou, setFalhou] = useState(false);
   const idDica = useId();
+  const avisoDaCalibracao = useRef<HTMLParagraphElement>(null);
+  // Compara com o valor gravado na calibracao, e nao com o que a tela lembrava ao abrir: remarcar a
+  // impressora nao pode apagar o aviso.
+  const emDuvida = trocaPoeCalibracaoEmDuvida(impressora.modo, impressora.driverNaCalibracao, ligado);
   useEffect(() => setLigado(gravado), [gravado]);
+  // A linha cresce e a lista rola: o aviso nao pode nascer fora da vista.
+  useEffect(() => {
+    if (emDuvida) avisoDaCalibracao.current?.scrollIntoView?.({ block: "nearest" });
+  }, [emDuvida]);
   return (
     <div>
       <label className={opcoes.linhaInversao} title={t("inversao.titulo")}>
@@ -137,6 +146,12 @@ export function OpcaoInversao({
       <p id={idDica} className={`${opcoes.dicaOpcao} ${opcoes.dicaInversao}`} data-dica-opcao="">
         {t("inversao.dica")}
       </p>
+      {emDuvida && (
+        <p ref={avisoDaCalibracao} role="status" className={`${opcoes.avisoOpcao} ${opcoes.avisoDriver}`}>
+          <CircleAlert size={14} className={opcoes.iconeAvisoDriver} aria-hidden="true" />
+          <span>{t("calibracao.driverTrocado")}</span>
+        </p>
+      )}
       {falhou && <FalhaDaOpcao />}
     </div>
   );

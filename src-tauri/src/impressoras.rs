@@ -46,6 +46,8 @@ pub enum Modo {
     Automatico,
     /// Perfil salvo sem modelo: os valores nao dizem de que tipo a maquina e.
     Personalizado,
+    /// Perfil medido pela calibracao guiada, com o gesto que as respostas deram.
+    Calibrada,
     /// Os perfis foram lidos e nenhum tem o nome exato desta fila.
     SemPerfil,
     /// Os perfis nao puderam ser lidos: nao se sabe se a fila tem perfil.
@@ -93,6 +95,9 @@ pub struct Impressora {
     pub pode_inverter: bool,
     #[serde(rename = "driverInverte")]
     pub driver_inverte: bool,
+    /// A compensacao gravada quando a calibracao foi feita. Sem ela (arquivo antigo), nao ha aviso.
+    #[serde(rename = "driverNaCalibracao", skip_serializing_if = "Option::is_none")]
+    pub driver_na_calibracao: Option<bool>,
 }
 
 /// Por que esta fila nunca recebe da janela, seja qual for o estado dela.
@@ -357,6 +362,7 @@ fn simulada(id: &str, nome: &str, modo: Modo) -> Impressora {
         duas_faces: false,
         pode_inverter: crate::inversao::modo_de_teste() && id != ID_SIMULADA_AUTOMATICA,
         driver_inverte: crate::inversao::simulada_compensa(id),
+        driver_na_calibracao: None,
     }
 }
 
@@ -365,6 +371,7 @@ fn impressora_da_fila(fila: &Fila, perfis: Option<&Perfis>, duas_faces: bool) ->
     let modo = match (perfis, entrada) {
         (None, _) => Modo::Desconhecido,
         (Some(_), None) => Modo::SemPerfil,
+        (Some(perfis), Some(_)) if perfis.calibracao(&fila.nome).is_some() => Modo::Calibrada,
         (Some(_), Some(entrada)) => modo_da_entrada(entrada),
     };
     let gesto_manual = entrada
@@ -390,6 +397,7 @@ fn impressora_da_fila(fila: &Fila, perfis: Option<&Perfis>, duas_faces: bool) ->
         duas_faces,
         pode_inverter: entrada.is_some(),
         driver_inverte: entrada.is_some_and(|entrada| entrada.driver_inverte),
+        driver_na_calibracao: perfis.and_then(|perfis| perfis.driver_da_calibracao(&fila.nome)),
     }
 }
 
@@ -773,6 +781,44 @@ mod testes {
                 .all(|linha| !linha.pode_inverter),
             "fora do modo de teste, as simuladas nao oferecem"
         );
+    }
+
+    #[test]
+    fn o_driver_da_calibracao_segue_na_linha_mesmo_depois_de_trocar_a_opcao() {
+        let mut calibrada = Perfis::new();
+        let teste = plots_core::calibracao::PerfilEmTeste::do_modelo(
+            plots_core::ModeloImpressora::Laser,
+            true,
+        );
+        let calibracao = plots_perfis::Calibracao {
+            face_impressa_entra_para_cima: true,
+            le_virando: true,
+        };
+        calibrada.gravar_calibracao("Cal", teste, calibracao);
+        let antes = montar(
+            Ok(vec![fila("Cal", 0), fila("Sem", 0)]),
+            Ok(calibrada.clone()),
+        );
+        let no_meio = antes
+            .impressoras
+            .iter()
+            .find(|linha| linha.nome == "Cal")
+            .unwrap();
+        assert_eq!(no_meio.driver_na_calibracao, Some(true));
+
+        let mut trocada = calibrada.clone();
+        assert!(trocada.definir_driver_inverte("Cal", false));
+        let depois = montar(Ok(vec![fila("Cal", 0)]), Ok(trocada));
+        let linha = &depois.impressoras[0];
+        assert!(!linha.driver_inverte, "a opcao foi desmarcada");
+        assert_eq!(
+            linha.driver_na_calibracao,
+            Some(true),
+            "o aviso compara com o valor da calibracao"
+        );
+
+        let sem = montar(Ok(vec![fila("Sem", 0)]), Ok(Perfis::new()));
+        assert_eq!(sem.impressoras[0].driver_na_calibracao, None);
     }
 
     #[test]
