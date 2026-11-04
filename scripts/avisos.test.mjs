@@ -206,3 +206,14 @@ test("o arquivo versionado é igual ao que o gerador produz agora", () => {
   const versionado = readFileSync(join(RAIZ, "THIRD-PARTY-NOTICES"), "utf8").split("\r\n").join("\n");
   assert.equal(versionado, avisosDoRepositorio().texto);
 });
+
+test("o instalador compila sem as impressoras simuladas", () => {
+  const empacotador = readFileSync(join(RAIZ, "scripts", "empacotar.mjs"), "utf8");
+  assert.match(empacotador, /"--no-default-features"/);
+});
+
+test("a compilacao padrao do programa liga as simuladas", () => {
+  const manifesto = readFileSync(join(RAIZ, "src-tauri", "Cargo.toml"), "utf8");
+  assert.match(manifesto, /\[features\][\s\S]*default\s*=\s*\["simuladas"\]/);
+  assert.match(manifesto, /simuladas\s*=\s*\[\]/);
+});

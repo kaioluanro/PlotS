@@ -33,7 +33,8 @@ function grupo(mudancas: { copiasValidas?: boolean; botao?: Partial<EstadoDoEnvi
 describe("grupo de envio: quantidade invalida", () => {
   it("desabilita o envio e diz o que corrigir, no rodape, em pt-BR", () => {
     const markup = grupo({ copiasValidas: false });
-    expect(markup).toMatch(/<button[^>]*disabled=""/);
+    expect(markup).toMatch(/<button[^>]*aria-disabled="true"/);
+    expect(markup).not.toMatch(/<button[^>]*\sdisabled=""/);
     expect(markup).toContain(traduzir("pt-BR", "copias.invalida"));
     expect(markup).toContain('role="alert"');
   });
@@ -46,8 +47,19 @@ describe("grupo de envio: quantidade invalida", () => {
 
   it("com a quantidade valida, o envio segue o estado dele e nao mostra erro", () => {
     const markup = grupo({ copiasValidas: true });
-    expect(markup).not.toMatch(/<button[^>]*disabled=""/);
+    expect(markup).not.toMatch(/<button[^>]*aria-disabled/);
     expect(markup).not.toContain('role="alert"');
+  });
+});
+
+describe("grupo de envio: envio em andamento", () => {
+  it("fica inerte mas focavel, para o foco voltar a ele depois de confirmar pelo teclado", () => {
+    const markup = grupo({
+      botao: { desabilitado: true, motivo: traduzir("pt-BR", "cartao.botao.emAndamento") },
+    });
+    expect(markup).toMatch(/<button[^>]*aria-disabled="true"/);
+    expect(markup).not.toMatch(/<button[^>]*\sdisabled=""/);
+    expect(markup).toContain("Em andamento. Veja os avisos.");
   });
 });
 

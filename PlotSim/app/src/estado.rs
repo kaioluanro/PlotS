@@ -439,9 +439,35 @@ fn ao_receber(compartilhado: &Compartilhado, nome: &str, novidade: Novidade) {
     }
 }
 
+/// O PlotS nomeia o trabalho com a face (`PlotS - lote 1 - verso`). Qualquer outro nome nao diz nada.
+fn e_verso_do_plots(documento: &str) -> bool {
+    documento.starts_with("PlotS - lote ") && documento.ends_with(" - verso")
+}
+
+/// O PlotS nomeia a frente do mesmo jeito (`PlotS - lote 1 - frente`).
+fn e_frente_do_plots(documento: &str) -> bool {
+    documento.starts_with("PlotS - lote ") && documento.ends_with(" - frente")
+}
+
 fn ao_receber_evento(compartilhado: &Compartilhado, nome: &str, evento: Evento) {
     match evento {
         Evento::Recebido(trabalho) => {
+            // Um verso do PlotS sem as frentes na bandeja nao e uma frente nova: nao empilha.
+            if e_verso_do_plots(&trabalho.documento) {
+                let mut sem_frente = false;
+                com_bandeja(compartilhado, nome, |b| {
+                    sem_frente = !b.aguardando_verso();
+                    if sem_frente {
+                        b.definir_aviso(Some(Aviso::novo(
+                            "verso_sem_frente",
+                            Some(trabalho.documento.clone()),
+                        )));
+                    }
+                });
+                if sem_frente {
+                    return;
+                }
+            }
             // Ler o PDF pode demorar, e fica fora da trava: a tela segue respondendo.
             match plataforma::ler_marcas(&trabalho.arquivo) {
                 Ok(paginas) => {
@@ -452,7 +478,11 @@ fn ao_receber_evento(compartilhado: &Compartilhado, nome: &str, evento: Evento) 
                         .collect();
                     com_bandeja(compartilhado, nome, |b| {
                         b.definir_aviso(None);
-                        b.receber(trabalho.arquivo.clone(), vistas);
+                        if e_frente_do_plots(&trabalho.documento) {
+                            b.receber_frente(trabalho.arquivo.clone(), vistas);
+                        } else {
+                            b.receber(trabalho.arquivo.clone(), vistas);
+                        }
                     });
                 }
                 Err(erro) => {
@@ -595,6 +625,45 @@ mod testes {
             aviso_de(&compartilhado).map(|a| a.codigo),
             Some("trabalho_sem_arquivo")
         );
+    }
+
+    fn recebido(documento: &str) -> Evento {
+        Evento::Recebido(TrabalhoRecebido {
+            id: Some(1),
+            documento: documento.to_string(),
+            arquivo: PathBuf::from("nao-existe-mesmo.pdf"),
+            bytes: 0,
+        })
+    }
+
+    #[test]
+    fn verso_do_plots_sem_a_frente_na_bandeja_vira_aviso_e_nao_entra_na_pilha() {
+        let compartilhado = compartilhado_com_jato();
+        ao_receber_evento(&compartilhado, "jato", recebido("PlotS - lote 1 - verso"));
+        assert_eq!(
+            aviso_de(&compartilhado),
+            Some(Aviso::novo(
+                "verso_sem_frente",
+                Some("PlotS - lote 1 - verso".to_string())
+            ))
+        );
+        let trava = travar(&compartilhado.bandejas);
+        let tela = trava["jato"].bandeja.tela(Idioma::PtBr);
+        assert!(tela.folhas.is_empty());
+        assert_eq!(tela.paginas_sem_folha, 0);
+    }
+
+    #[test]
+    fn nome_sem_a_face_do_plots_nao_e_tratado_como_verso() {
+        let compartilhado = compartilhado_com_jato();
+        for nome in ["doc - verso", "Verso.pdf", "PlotS - lote 1 - frente"] {
+            ao_receber_evento(&compartilhado, "jato", recebido(nome));
+            assert_ne!(
+                aviso_de(&compartilhado).map(|a| a.codigo),
+                Some("verso_sem_frente"),
+                "{nome}"
+            );
+        }
     }
 
     #[test]

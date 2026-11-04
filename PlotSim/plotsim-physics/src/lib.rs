@@ -8,7 +8,8 @@ mod geometria;
 mod impressora;
 
 pub use conferencia::{
-    conferir, folhas_do_documento, ler_maco, FolhaLida, Idioma, Leitura, MacoLido, Motivo,
+    conferir, conferir_por_folha, folhas_do_documento, ler_maco, FolhaLida, Idioma, Leitura,
+    MacoLido, Motivo,
 };
 pub use geometria::{Giro, Rotacao, Vetor};
 pub use impressora::{

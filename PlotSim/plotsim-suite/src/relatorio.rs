@@ -84,7 +84,8 @@ fn folha_do_motivo(motivo: &Motivo) -> Option<u32> {
         | Motivo::FolhaAoContrario { folha }
         | Motivo::PaginaEstranha { folha, .. }
         | Motivo::FaltaPagina { folha, .. }
-        | Motivo::ImpressaoSobreImpressao { folha } => Some(folha),
+        | Motivo::ImpressaoSobreImpressao { folha }
+        | Motivo::VersoForaDoPar { folha, .. } => Some(folha),
         Motivo::FolhaAMenos { .. } | Motivo::FolhaAMais { .. } => None,
     }
 }

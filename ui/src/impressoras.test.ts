@@ -85,6 +85,13 @@ describe("resumo do documento", () => {
     expect(resumoDoDocumento(1, "en")).toBe("1 page · 1 sheet");
   });
 
+  it("com o plano em maos, o rodape usa as folhas do plano e nao a metade das paginas", () => {
+    // Papel misto: 10 paginas, a 5 de outro tamanho, saem em 6 folhas.
+    expect(resumoDoDocumento(10, "pt-BR", 1, 6)).toBe("10 pág · 6 folhas");
+    expect(resumoDoDocumento(10, "en", 2, 6)).toBe("10 pages × 2 · 12 sheets");
+    expect(resumoDoDocumento(10, "pt-BR")).toBe("10 pág · 5 folhas");
+  });
+
   it("numero sem sentido nao inventa folhas", () => {
     expect(contarFolhas(0)).toBe(0);
     expect(contarFolhas(-3)).toBe(0);

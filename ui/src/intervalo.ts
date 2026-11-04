@@ -92,6 +92,22 @@ export function lerIntervaloDaAba(aba: Aba | null): LeituraIntervalo {
 }
 
 /**
+ * A leitura de um trecho que ja foi enviado. A confirmacao do verso nao herda o que a aba mostra
+ * agora: o lote planejado e que diz de onde saem as paginas.
+ */
+export function leituraDoTrecho(
+  paginas: PaginasDaAba,
+  trecho: TrechoDoEnvio | null,
+): LeituraIntervalo {
+  if (paginas.estado !== "conhecido") return { estado: "indisponivel" };
+  const { total } = paginas;
+  if (trecho === null || (trecho.inicio === 1 && trecho.fim === total)) {
+    return { estado: "inteiro", total };
+  }
+  return { estado: "trecho", inicio: trecho.inicio, fim: trecho.fim, total };
+}
+
+/**
  * Enquanto se digita, o erro espera para nao gritar a cada tecla. `fixado` guarda o erro que ja
  * estava na tela: ele fica como estava, com o mesmo texto e os mesmos campos marcados, ate a
  * digitacao acabar, e os campos nao pulam a cada tecla.

@@ -34,6 +34,7 @@ function bandeja(parcial: Partial<BandejaTela>): BandejaTela {
     semMarca: 0,
     conferidas: 0,
     gerais: [],
+  conferenciaPorFolha: false,
     leitura: null,
     semInstrucao: false,
     operacoes: [],

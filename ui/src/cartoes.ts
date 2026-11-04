@@ -27,6 +27,7 @@ export type EstadoCartao =
     }
   | { tipo: "erro"; motivo: Motivo }
   | { tipo: "concluido" }
+  | { tipo: "cancelando" }
   | { tipo: "cancelado" };
 
 export interface PapelDoCartao {
@@ -115,6 +116,14 @@ export function cartaoEmAndamento(cartao: Cartao): boolean {
   return true;
 }
 
+/**
+ * O cartao segura a impressora no rodape: so o que ainda anda ou espera a pessoa. Erro espera apenas
+ * Reimprimir ou Cancelar, e o backend o substitui quando um novo envio chega; ele nao pode trancar.
+ */
+export function cartaoOcupaAImpressora(cartao: Cartao): boolean {
+  return cartaoEmAndamento(cartao) && cartao.estado.tipo !== "erro";
+}
+
 /** Ainda ha versos por imprimir: fechar perde o cartao, e por isso o fechamento pergunta. */
 export function cartaoSeguraAAba(cartao: Cartao): boolean {
   return cartaoEmAndamento(cartao) || cartao.estado.tipo === "frentes_prontas";
@@ -136,7 +145,7 @@ export function comCartao(cartoes: readonly Cartao[], novo: Cartao): readonly Ca
 export function impressorasOcupadas(abas: readonly Aba[]): ReadonlySet<string> {
   return new Set(
     abas.flatMap((aba) =>
-      aba.cartoes.filter(cartaoEmAndamento).map((cartao) => cartao.impressora),
+      aba.cartoes.filter(cartaoOcupaAImpressora).map((cartao) => cartao.impressora),
     ),
   );
 }
@@ -167,6 +176,20 @@ export function situacaoDaAba(aba: Aba): SituacaoDaAba | null {
 /** A interface perdeu o contato com o trabalho. O que ja foi enviado nao foi tocado. */
 export function cartaoInterrompido(cartao: Cartao): Cartao {
   return { ...cartao, estado: { tipo: "erro", motivo: { codigo: "interrompido", texto: "" } } };
+}
+
+/** O cartao como esta agora: o de um dialogo aberto pode ter ficado para tras. */
+export function cartaoAtual(abas: readonly Aba[], cartao: Cartao): Cartao | null {
+  return (
+    abas.find((aba) => aba.id === cartao.aba)?.cartoes.find((outro) => outro.impressora === cartao.impressora) ?? null
+  );
+}
+
+/** Ha o que cancelar: o trabalho segue na fila e o pedido ainda nao foi feito. */
+export function aindaPodeCancelar(cartao: Cartao | null): boolean {
+  if (cartao === null) return false;
+  const acoes = acoesDoCartao(cartao);
+  return acoes.cancelar && !acoes.cancelando;
 }
 
 function cartaoDaImpressora(aba: number, impressora: Impressora, estado: EstadoCartao): Cartao {
@@ -247,7 +270,7 @@ export function rodapeCedeAoCartao(
   if (aba === null) return false;
   if (!marcadasTodasOcupadas(lista, aba.impressorasMarcadas, ocupadas)) return false;
   const emAndamento = new Set(
-    aba.cartoes.filter(cartaoEmAndamento).map((cartao) => cartao.impressora),
+    aba.cartoes.filter(cartaoOcupaAImpressora).map((cartao) => cartao.impressora),
   );
   return lista
     .filter((impressora) => aba.impressorasMarcadas.includes(impressora.id))
@@ -499,6 +522,7 @@ export function tomDoCartao(cartao: Cartao): TomDoCartao {
   switch (cartao.estado.tipo) {
     case "preparando":
     case "imprimindo":
+    case "cancelando":
       return "ativo";
     case "concluido": {
       // Simulacao que terminou com folha errada nao e um fim verde.
@@ -568,6 +592,7 @@ export function textoDoEstadoDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtu
     aviso: "cartao.estado.aviso",
     erro: "cartao.estado.erro",
     concluido: "cartao.estado.concluido",
+    cancelando: "cartao.estado.cancelando",
     cancelado: "cartao.estado.cancelado",
   };
   return traduzir(idioma, chaves[cartao.estado.tipo]);
@@ -583,6 +608,10 @@ const MOTIVOS_DA_FILA_EM_INGLES: readonly (readonly [string, string])[] = [
   ["o trabalho deu erro", "the job failed"],
   ["o trabalho foi excluído da fila antes de terminar", "the job was deleted before it finished"],
   ["o spooler informou uma falha", "the print queue reported a failure"],
+  [
+    "o registro do Windows indica que a impressão falhou nesta fila. Confira o que saiu antes de reimprimir",
+    "the Windows log indicates that printing failed on this queue. Check what came out before reprinting",
+  ],
 ];
 
 const CHAVES_DE_MOTIVO: ReadonlyMap<string, Chave> = new Map<string, Chave>([
@@ -598,6 +627,7 @@ const CHAVES_DE_MOTIVO: ReadonlyMap<string, Chave> = new Map<string, Chave>([
   ["sem_acompanhamento", "cartao.motivo.semAcompanhamento"],
   ["sem_prazo", "cartao.motivo.semPrazo"],
   ["interrompido", "cartao.motivo.interrompido"],
+  ["fila_removida", "cartao.motivo.filaRemovida"],
   ["fila_inexistente", "cartao.motivo.filaInexistente"],
   ["fila_fax", "cartao.motivo.filaFax"],
   ["fila_pede_arquivo", "cartao.motivo.filaPedeArquivo"],
@@ -876,6 +906,8 @@ export function linhasDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual): Li
       if (cartao.total > (cartao.copias ?? 1)) linhas.push(linha(em("face.juntar"), "contexto"));
       return linhas;
     }
+    case "cancelando":
+      return [linha(em("cartao.cancelando"), "contexto")];
     case "cancelado":
       return [
         linha(em(cartao.simulada ? "cartao.cancelado.simulado" : "cartao.cancelado"), "contexto"),
@@ -901,6 +933,8 @@ export interface AcoesDoCartao {
   reimprimir: boolean;
   continuar: boolean;
   cancelar: boolean;
+  /** O cancelamento ja foi pedido: o botao fica a vista e desabilitado ate o fim. */
+  cancelando: boolean;
   /** Tira o cartao da lista: so para quem ja nao espera nada. */
   dispensar: boolean;
 }
@@ -927,6 +961,7 @@ export function acoesDoCartao(cartao: Cartao): AcoesDoCartao {
     reimprimir: (estado.tipo === "erro" || estado.tipo === "aviso") && cartao.total > 0 && !semTrabalho,
     continuar: estado.tipo === "aviso" && !estado.respondido,
     cancelar: cartaoEmAndamento(cartao) && estado.tipo !== "preparando",
+    cancelando: estado.tipo === "cancelando",
     dispensar: !cartaoEmAndamento(cartao),
   };
 }
@@ -949,6 +984,8 @@ export interface ResumoDoEnvio {
   maiorMaco?: number;
   papeis: PapelDoCartao[];
   paresMistos: [number, number][];
+  /** Pares de tamanhos diferentes: cada pagina sai na sua folha, com o verso em branco. */
+  paresSeparados?: [number, number][];
   assinado: boolean;
   fluxos?: { automatico: boolean; inicio: number; fim: number }[];
   lotesAutomaticos?: number;
@@ -1048,6 +1085,9 @@ export function linhasDoEnvio(
   if (resumo.papeis.length > 1) notas.push(traduzir(idioma, "cartao.envio.variosPapeis"));
   for (const [a, b] of resumo.paresMistos) {
     notas.push(traduzir(idioma, "cartao.envio.misto", { a: String(a), b: String(b) }));
+  }
+  for (const [a, b] of resumo.paresSeparados ?? []) {
+    notas.push(traduzir(idioma, "cartao.envio.separado", { a: String(a), b: String(b) }));
   }
   if (resumo.assinado) notas.push(traduzir(idioma, "cartao.envio.assinado"));
   if (reais.some((impressora) => impressora.modo === "jato" || impressora.modo === "laser")) {

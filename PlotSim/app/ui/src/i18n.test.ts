@@ -56,3 +56,24 @@ describe("textos da janela", () => {
     expect(traduzir("en", "folha.titulo")).toBe("Sheet {n}");
   });
 });
+
+describe("texto sem a palavra cartao", () => {
+  it("nenhum texto da interface cita cartao, nos dois idiomas", () => {
+    for (const idioma of ["pt-BR", "en"] as const) {
+      for (const [chave, texto] of Object.entries(traducoes[idioma])) {
+        expect(texto, `${idioma} ${chave}`).not.toMatch(/cart(ã|a)o|cart(õ|o)es|cards?/i);
+      }
+    }
+  });
+});
+
+describe("conferencia por folha", () => {
+  it("o aviso do trabalho que nao e um documento inteiro tem o texto combinado, nos dois idiomas", () => {
+    expect(traduzir("pt-BR", "centro.porFolha")).toBe(
+      "Conferência por folha: pelas marcas, parece um trecho, cópias ou mais de um lote.",
+    );
+    expect(traduzir("en", "centro.porFolha")).toBe(
+      "Sheet-by-sheet check: from the marks, this looks like a page range, copies or more than one batch.",
+    );
+  });
+});

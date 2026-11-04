@@ -75,6 +75,8 @@ export interface BandejaTela {
   paginasSemFolha: number;
   folhasSemVerso: number;
   aviso: ErroTela | null;
+  /** O trabalho não é um documento inteiro que começa na 1: cada folha se confere sozinha. */
+  conferenciaPorFolha: boolean;
 }
 
 export const PREFIXO_FILA = "PlotSim — ";
@@ -176,6 +178,17 @@ export function resumoDaBandeja(bandeja: BandejaTela | null): string {
     const total = String(quantas);
     const certas = String(bandeja.corretas);
     const semMarca = String(bandeja.semMarca);
+    if (bandeja.conferenciaPorFolha) {
+      // Cada folha foi conferida pelas marcas dela: o maço inteiro, como conjunto, nao foi.
+      if (bandeja.semMarca > 0) {
+        return quantas === 1
+          ? t("rodape.porFolha.um.semMarca", { certas, semMarca })
+          : t("rodape.porFolha.semMarca", { certas, total, semMarca });
+      }
+      return quantas === 1
+        ? t("rodape.porFolha.um", { certas })
+        : t("rodape.porFolha", { certas, total });
+    }
     if (bandeja.semMarca > 0) {
       return quantas === 1
         ? t("rodape.resumo.um.semMarca", { certas, semMarca })

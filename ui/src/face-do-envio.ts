@@ -7,6 +7,7 @@ import {
   listaDeFora,
   textoDasPaginas,
   textoDoTamanhoDoEnvio,
+  type Cartao,
   type EstadoDoEnvio,
   type Recolocar,
   type ResumoDoEnvio,
@@ -15,9 +16,16 @@ import { desenhoDoGesto } from "./cartoes-gesto";
 import { conteudoDoEnvio, type ConteudoConfirmacao } from "./confirmacao";
 import { idiomaAtual, traduzir, type Idioma } from "./i18n";
 import { nomeDeExibicao, type Impressora } from "./impressoras";
-import { linhasComTrecho, type LeituraIntervalo, type TrechoDoEnvio } from "./intervalo";
+import {
+  lerIntervaloDaAba,
+  leituraDoTrecho,
+  linhasComTrecho,
+  trechoDoEnvio,
+  type LeituraIntervalo,
+  type TrechoDoEnvio,
+} from "./intervalo";
 import { passaPelaRotaManual } from "./opcoes-envio";
-import type { Aba, FaceDoEnvio, FrenteEnviada, PapelDeAjuste } from "./tabs";
+import { copiasDaFace, type Aba, type FaceDoEnvio, type FrenteEnviada, type PapelDeAjuste } from "./tabs";
 
 /** O que a lateral sabe do papel deste envio; sem leitura, nada se afirma. */
 interface PapelLido {
@@ -149,9 +157,56 @@ export function mudouDesdeAFrente(
   return frente !== null && (!mesmoTrecho(frente.trecho, trecho) || frente.papel !== papel);
 }
 
+/** O que o verso em espera imprime: o lote planejado na frente, nao a aba como ela esta agora. */
+export interface PlanoDoVerso {
+  trecho: TrechoDoEnvio | null;
+  leitura: LeituraIntervalo;
+  papel: PapelDeAjuste | null;
+  /** Copias do trabalho inteiro: o verso sai com o numero que a frente foi planejada para imprimir. */
+  copias: number;
+}
+
+/**
+ * Le o verso pelo que foi enviado: o trecho e o papel ficam na `frenteEnviada`, e as copias, no
+ * cartao que espera. O comando `enviar_verso` so manda a passada 2 do lote ja planejado, entao a
+ * confirmacao nunca troca os numeros do trabalho pelos da aba. Sem cartao em espera, o envio e
+ * novo e a aba vale.
+ */
+export function planoDoVerso(aba: Aba, espera: readonly Cartao[]): PlanoDoVerso {
+  if (espera.length === 0) {
+    const leitura = lerIntervaloDaAba(aba);
+    return {
+      trecho: trechoDoEnvio(leitura),
+      leitura,
+      papel: aba.papelDeAjuste ?? null,
+      copias: copiasDaFace(aba, "verso"),
+    };
+  }
+  const frente = aba.frenteEnviada;
+  // `null` e o documento inteiro, um valor do envio: nao quer dizer "sem frente".
+  const trecho = frente === null ? trechoDoEnvio(lerIntervaloDaAba(aba)) : frente.trecho;
+  return {
+    trecho,
+    leitura: leituraDoTrecho(aba.paginas, trecho),
+    papel: frente === null ? (aba.papelDeAjuste ?? null) : frente.papel,
+    // Sem o numero no cartao em espera, o trabalho saiu com uma copia: a aba de agora nao manda.
+    copias: espera[0]?.copias ?? 1,
+  };
+}
+
 /** Quem ja entregou as frentes desta aba e vai receber tudo de novo. */
 export function quemJaSaiu(aba: Aba, destinos: readonly Impressora[]): readonly Impressora[] {
   return destinos.filter((destino) => aba.frentesProntas.includes(destino.id));
+}
+
+/** Quem tem nesta aba um trabalho em erro, que o envio novo vai substituir no cartao. */
+export function quemDeuErro(aba: Aba, destinos: readonly Impressora[]): readonly Impressora[] {
+  return destinos.filter((destino) =>
+    aba.cartoes.some(
+      (cartao) =>
+        cartao.aba === aba.id && cartao.impressora === destino.id && cartao.estado.tipo === "erro",
+    ),
+  );
 }
 
 function nomes(impressoras: readonly Impressora[], idioma: Idioma): string {
@@ -180,15 +235,19 @@ export function notasDaFrente(
   idioma: Idioma = idiomaAtual,
 ): { antes: string[]; depois: string[] } {
   const repetidas = quemJaSaiu(aba, destinos);
+  // O trabalho em erro some do cartao, mas pode seguir na fila do Windows e imprimir alem do novo.
+  const comErro = quemDeuErro(aba, destinos);
   const automaticas = destinos.filter((destino) => destino.modo === "automatico");
   const temAutomatico = (resumo.fluxos ?? []).some((fluxo) => fluxo.automatico);
   const manual = destinos.length > automaticas.length;
   const maco = notaDoMaco(resumo, destinos, idioma);
   return {
-    antes:
-      repetidas.length > 0
+    antes: [
+      ...(comErro.length > 0 ? [traduzir(idioma, "face.envio.erroAnterior")] : []),
+      ...(repetidas.length > 0
         ? [traduzir(idioma, "face.envio.jaSaiu", { lista: nomes(repetidas, idioma) })]
-        : [],
+        : []),
+    ],
     depois: [
       ...(manual && automaticas.length > 0 && temAutomatico
         ? [traduzir(idioma, "face.envio.frenteInteira", { lista: nomes(automaticas, idioma) })]
@@ -225,6 +284,7 @@ export function conteudoDoVerso(
   mudou: boolean,
   idioma: Idioma = idiomaAtual,
   copias?: { frente: number; verso: number },
+  erroAnterior = false,
 ): ConteudoConfirmacao {
   const { linhaDoPapel } = linhasDoEnvio(destinos, resumo, idioma, new Set(), { papel: papelAjustado });
   const soSimuladas = destinos.every((destino) => destino.tipo === "simulada");
@@ -256,7 +316,12 @@ export function conteudoDoVerso(
       };
     }),
     notas: [
+      // O trabalho anterior pode seguir na fila do Windows: vale antes da frente e antes do verso.
+      ...(erroAnterior ? [traduzir(idioma, "face.envio.erroAnterior")] : []),
       ...(mudou ? [traduzir(idioma, "face.envio.mudou")] : []),
+      ...(resumo.paresSeparados ?? []).map(([a, b]) =>
+        traduzir(idioma, "cartao.envio.separado", { a: String(a), b: String(b) }),
+      ),
       ...(maisDeUmMaco && primeira !== undefined
         ? [traduzir(idioma, "face.envio.comeca", { paginas: textoDasPaginas(primeira, idioma) })]
         : []),

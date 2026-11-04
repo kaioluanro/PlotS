@@ -1,0 +1,112 @@
+.conteudo {
+  width: min(560px, calc(100vw - 48px));
+}
+
+.lista {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.cabecalho {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.hora {
+  flex-shrink: 0;
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.nome {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.estado {
+  flex-shrink: 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.linha {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.acoes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.semAcao {
+  margin: 0;
+  color: var(--fg-faint);
+  font-size: 11px;
+}
+
+.cabeca {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.icone {
+  flex-shrink: 0;
+  color: var(--fg-muted);
+}
+
+.icone[data-gira] {
+  animation: girar 1s linear infinite;
+}
+
+@keyframes girar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .icone[data-gira] {
+    animation: none;
+  }
+}
+
+/* O documento de cada entrada, depois da hora: uma linha so, com reticencias. */
+.documento {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

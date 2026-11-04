@@ -286,7 +286,6 @@ describe("linha da impressora automatica", () => {
         duasFaces={false}
         janelaAberta={false}
         avisoDoAjuste={null}
-        comCartaoNaTela={false}
         aoAbrirPreferencias={sem}
         aoPedirVolta={sem}
         aoDispensarAviso={sem}

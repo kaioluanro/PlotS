@@ -1,0 +1,185 @@
+/* Zero de altura no fluxo: a faixa flutua sobre o topo do corpo, sem empurrar a lista nem o documento. */
+.faixa {
+  position: relative;
+  height: 0;
+  z-index: 120;
+}
+
+.pilha {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(560px, calc(100% - 24px));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.aviso {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 8px 8px 10px;
+  color: var(--fg);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  pointer-events: auto;
+  animation: entrada var(--anim-fast) var(--ease-out-fluid);
+}
+
+.aviso[data-tom="problema"] {
+  border-color: var(--status-offline);
+}
+
+.icone {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--fg-muted);
+}
+
+.aviso[data-tom="problema"] .icone {
+  color: var(--status-offline-text);
+}
+
+.aviso[data-tom="espera"] .icone {
+  color: var(--status-waiting);
+}
+
+/* Verde de status fica abaixo de 3:1 sobre o claro como icone: aqui o estado e dito pelo texto e pela forma. */
+.aviso[data-tom="ativo"] .icone {
+  color: var(--fg-muted);
+}
+
+.texto {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.titulo {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/*
+ * O documento cede primeiro, ate 48px: ele encolhe bem mais depressa que o estado, para o nome da
+ * fila e o estado do trabalho continuarem legiveis.
+ */
+.documento {
+  flex: 0 20 auto;
+  min-width: 48px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * A fila mede pelo conteudo e cede ate 60%: com um nome maior que isso, o texto termina em
+ * reticencias em vez de empurrar o estado para baixo do x.
+ */
+.fila {
+  flex: 0 0 auto;
+  width: max-content;
+  min-width: 0;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.separador {
+  flex-shrink: 0;
+  margin: 0 -4px;
+  color: var(--fg-muted);
+  font-weight: 500;
+}
+
+/* O estado cede antes do x: em pouco espaco, ele termina em reticencias em vez de vazar. */
+.estado {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-muted);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.frase {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.fechar {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--fg-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.fechar:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.fechar:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.fechar:active {
+  transform: scale(0.97);
+}
+
+@keyframes entrada {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* O circulo gira enquanto o trabalho anda; com movimento reduzido fica parado. */
+.icone[data-gira] {
+  animation: girar 1s linear infinite;
+}
+
+@keyframes girar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Movimento reduzido: o aviso aparece pronto, sem deslocamento, e o circulo nao gira. */
+@media (prefers-reduced-motion: reduce) {
+  .aviso {
+    animation: none;
+  }
+
+  .icone[data-gira] {
+    animation: none;
+  }
+}

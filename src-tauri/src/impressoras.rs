@@ -20,9 +20,12 @@ pub const VARIAVEL_PERFIS: &str = "PLOTS_PERFIS";
 pub const VARIAVEL_ARQUIVO_SAIDA: &str = "PLOTS_ARQUIVO_SAIDA";
 
 /// Nomes iguais aos que a linha de comando reconhece para as impressoras simuladas.
+#[cfg(feature = "simuladas")]
 const NOME_SIMULADA_TRASEIRA: &str = "Simulada — Traseira";
+#[cfg(feature = "simuladas")]
 const NOME_SIMULADA_GAVETA: &str = "Simulada — Gaveta";
 /// So existe na janela: a linha de comando continua com as duas de cima.
+#[cfg(feature = "simuladas")]
 const NOME_SIMULADA_AUTOMATICA: &str = "Simulada — Automática";
 /// O que identifica a simulada que imprime as duas faces sozinha.
 pub const ID_SIMULADA_AUTOMATICA: &str = "simulada:automatica";
@@ -31,6 +34,8 @@ pub const ID_SIMULADA_AUTOMATICA: &str = "simulada:automatica";
 #[serde(rename_all = "snake_case")]
 pub enum Tipo {
     Fila,
+    // Sem a opcao `simuladas` (o instalador), nada constroi esta variante.
+    #[cfg_attr(not(feature = "simuladas"), allow(dead_code))]
     Simulada,
 }
 
@@ -324,31 +329,37 @@ pub fn montar_com(
         .filter(|fila| vistas.insert(fila.nome.as_str()))
         .map(|fila| impressora_da_fila(fila, perfis.as_ref(), declara_duas_faces(fila)))
         .collect();
-    impressoras.push(simulada(
-        "simulada:traseira",
-        NOME_SIMULADA_TRASEIRA,
-        Modo::Jato,
-    ));
-    impressoras.push(simulada(
-        "simulada:gaveta",
-        NOME_SIMULADA_GAVETA,
-        Modo::Laser,
-    ));
-    impressoras.push(Impressora {
-        gesto_manual: Some(ModeloImpressora::JatoDeTinta.codigo()),
-        duas_faces: true,
-        ..simulada(
-            ID_SIMULADA_AUTOMATICA,
-            NOME_SIMULADA_AUTOMATICA,
-            Modo::Automatico,
-        )
-    });
+    impressoras.extend(simuladas_da_lista());
     ListaImpressoras {
         impressoras,
         avisos,
     }
 }
 
+/// As tres simuladas que a lista termina. Sem a opcao de compilacao, a lista nao traz nenhuma.
+#[cfg(feature = "simuladas")]
+fn simuladas_da_lista() -> Vec<Impressora> {
+    vec![
+        simulada("simulada:traseira", NOME_SIMULADA_TRASEIRA, Modo::Jato),
+        simulada("simulada:gaveta", NOME_SIMULADA_GAVETA, Modo::Laser),
+        Impressora {
+            gesto_manual: Some(ModeloImpressora::JatoDeTinta.codigo()),
+            duas_faces: true,
+            ..simulada(
+                ID_SIMULADA_AUTOMATICA,
+                NOME_SIMULADA_AUTOMATICA,
+                Modo::Automatico,
+            )
+        },
+    ]
+}
+
+#[cfg(not(feature = "simuladas"))]
+fn simuladas_da_lista() -> Vec<Impressora> {
+    Vec::new()
+}
+
+#[cfg(feature = "simuladas")]
 fn simulada(id: &str, nome: &str, modo: Modo) -> Impressora {
     Impressora {
         id: id.to_owned(),
@@ -540,6 +551,7 @@ mod testes_de_duas_faces {
     }
 
     #[test]
+    #[cfg(feature = "simuladas")]
     fn automatica_simulada_aparece_com_o_gesto_do_jato() {
         let lista = montar(Ok(Vec::new()), Ok(Perfis::new()));
         let simulada = linha(&lista, ID_SIMULADA_AUTOMATICA);
@@ -592,6 +604,7 @@ mod testes_de_duas_faces {
     }
 
     #[test]
+    #[cfg(feature = "simuladas")]
     fn lista_nao_espera_o_driver_que_nao_responde_nem_pergunta_a_fila_offline() {
         let consulta: &'static ConsultaDeDuasFaces =
             Box::leak(Box::new(ConsultaDeDuasFaces::padrao()));
@@ -656,6 +669,7 @@ mod testes {
         perfis
     }
 
+    #[cfg(feature = "simuladas")]
     fn falha_de_toml() -> ErroPerfis {
         ErroPerfis::TomlInvalido {
             caminho: PathBuf::from("perfis.toml"),
@@ -664,6 +678,7 @@ mod testes {
     }
 
     #[test]
+    #[cfg(feature = "simuladas")]
     fn fila_que_pede_arquivo_e_fax_ficam_recusadas_e_a_pasta_so_libera_o_arquivo() {
         let mut arquivo = fila("Arquivo", 0);
         arquivo.porta = "PORTPROMPT:".to_owned();
@@ -709,6 +724,7 @@ mod testes {
     }
 
     #[test]
+    #[cfg(feature = "simuladas")]
     fn lista_as_filas_fornecidas_e_termina_nas_duas_simuladas() {
         let lista = montar(
             Ok(vec![fila("Laser", 0), fila("Jato", OFFLINE)]),
@@ -733,6 +749,7 @@ mod testes {
     }
 
     #[test]
+    #[cfg(feature = "simuladas")]
     fn simuladas_tem_o_modo_fixo_que_o_nome_diz() {
         let lista = montar(Ok(Vec::new()), Ok(Perfis::new()));
         assert_eq!(lista.impressoras.len(), 3);
@@ -742,6 +759,19 @@ mod testes {
         assert_eq!(lista.impressoras[1].tipo, Tipo::Simulada);
         assert_eq!(lista.impressoras[2].modo, Modo::Automatico);
         assert_eq!(lista.impressoras[2].tipo, Tipo::Simulada);
+    }
+
+    #[test]
+    #[cfg(not(feature = "simuladas"))]
+    fn sem_a_opcao_a_lista_nao_traz_simulada_e_fica_vazia_sem_filas() {
+        let lista = montar(Ok(Vec::new()), Ok(Perfis::new()));
+        assert!(lista.impressoras.is_empty());
+        let com_fila = montar(Ok(vec![fila("Laser", 0)]), Ok(Perfis::new()));
+        assert_eq!(com_fila.impressoras.len(), 1);
+        assert!(com_fila
+            .impressoras
+            .iter()
+            .all(|i| i.tipo != Tipo::Simulada));
     }
 
     #[test]
@@ -963,6 +993,7 @@ mod testes {
     }
 
     #[test]
+    #[cfg(feature = "simuladas")]
     fn falha_de_perfis_vira_aviso_e_nao_diz_que_a_fila_nao_tem_perfil() {
         let lista = montar(Ok(vec![fila("Laser", 0)]), Err(falha_de_toml()));
         assert_eq!(lista.impressoras.len(), 4);
@@ -1013,6 +1044,7 @@ mod testes {
     }
 
     #[test]
+    #[cfg(feature = "simuladas")]
     fn falha_nas_filas_mantem_as_simuladas_e_mostra_o_codigo() {
         let lista = montar(Err(ErroFilas::Sistema(0x8007_06BA)), Ok(Perfis::new()));
         assert_eq!(lista.impressoras.len(), 3);
@@ -1044,6 +1076,7 @@ mod testes {
     }
 
     #[test]
+    #[cfg(feature = "simuladas")]
     fn fora_do_windows_so_as_simuladas_e_sem_aviso() {
         let lista = montar(Err(ErroFilas::NaoSuportado), Ok(Perfis::new()));
         assert_eq!(lista.impressoras.len(), 3);
@@ -1051,6 +1084,7 @@ mod testes {
     }
 
     #[test]
+    #[cfg(feature = "simuladas")]
     fn as_duas_falhas_juntas_nao_derrubam_a_lista() {
         let lista = montar(
             Err(ErroFilas::Resposta("forma estranha")),
@@ -1061,6 +1095,7 @@ mod testes {
     }
 
     #[test]
+    #[cfg(feature = "simuladas")]
     fn leitura_interrompida_mantem_as_simuladas_e_avisa() {
         let lista = sem_leitura();
         assert_eq!(lista.impressoras.len(), 3);
@@ -1068,6 +1103,7 @@ mod testes {
     }
 
     #[test]
+    #[cfg(feature = "simuladas")]
     fn fila_real_com_nome_de_simulada_nao_se_confunde_com_ela() {
         let lista = montar(Ok(vec![fila("Simulada — Gaveta", 0)]), Ok(Perfis::new()));
         let ids: HashSet<&str> = lista.impressoras.iter().map(|i| i.id.as_str()).collect();
@@ -1077,6 +1113,7 @@ mod testes {
     }
 
     #[test]
+    #[cfg(feature = "simuladas")]
     fn nome_repetido_pelo_sistema_aparece_uma_vez() {
         let lista = montar(
             Ok(vec![fila("A", 0), fila("A", OFFLINE)]),

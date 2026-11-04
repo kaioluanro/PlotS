@@ -167,16 +167,18 @@ mod testes {
     #[test]
     fn papeis_mistos_saem_em_um_so_fluxo_e_sem_recusa_de_par() {
         let documento = [A4, A5, CARTA, DimensoesPagina::new(297.0, 210.0), A5, A5];
-        assert!(
-            plano_lotes_do_intervalo(
-                &documento,
-                None,
-                10,
-                OrdemPassadas::default(),
-                PerfilImpressora::default()
-            )
-            .is_err(),
-            "sem a opção, frente e verso de tamanhos diferentes continuam recusados"
+        let sem_ajuste = plano_lotes_do_intervalo(
+            &documento,
+            None,
+            10,
+            OrdemPassadas::default(),
+            PerfilImpressora::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            sem_ajuste.len(),
+            5,
+            "sem a opção, cada papel vizinho vira um trecho, com o verso em branco"
         );
         let ajustadas = papel("a4").dimensoes_no_papel(&documento);
         let lotes = plano_lotes_do_intervalo(

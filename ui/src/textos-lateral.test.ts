@@ -48,6 +48,8 @@ describe("vocabulario da interface", () => {
     // Dizem o que a fila do Windows fez com as frentes, e a fila é o assunto dessas frases.
     "face.estado.frentesProntas",
     "face.envio.jaSaiu",
+    // O trabalho anterior pode seguir na fila do Windows: a fila é o assunto.
+    "face.envio.erroAnterior",
   ]);
 
   // O cartao diz o que a fila confirmou, porque o PlotS nao sabe mais do que isso sobre o papel.

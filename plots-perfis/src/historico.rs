@@ -88,6 +88,17 @@ pub struct RegistroDeEnvio {
     pub lotes_faltando: u64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tempos: Vec<TempoDaImpressora>,
+    /// O que o pedido mandou: só as frentes ou só os versos. Registros antigos não trazem o campo.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub face: Option<FaceDoRegistro>,
+}
+
+/// A face que um envio pediu. Nunca vem de texto livre: quem lê um valor fora destes dois não o aceita.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FaceDoRegistro {
+    Frente,
+    Verso,
 }
 
 impl RegistroDeEnvio {

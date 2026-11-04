@@ -29,6 +29,7 @@
 }
 
 .botaoIcone {
+  position: relative;
   display: grid;
   place-items: center;
   flex-shrink: 0;
@@ -53,6 +54,25 @@
 
 .botaoIcone:active {
   transform: scale(0.97);
+}
+
+/* Contador de avisos nao lidos: texto, nao so a posicao, diz quantos sao. */
+.contagem {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
 }
 
 .abas {

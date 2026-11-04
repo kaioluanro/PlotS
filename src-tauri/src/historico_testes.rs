@@ -21,6 +21,7 @@ fn cabecalho(divisao: bool, lotes: usize) -> CabecalhoDoEnvio {
         intervalo: Some((3, 8)),
         divisao,
         lotes_confirmados: lotes,
+        face: None,
     }
 }
 
@@ -233,7 +234,34 @@ fn medido(impressora: &str, ms: u64, folhas: u64, resultado: ResultadoDoEnvio) -
             resultado,
             automatico: false,
         }],
+        face: None,
     }
+}
+
+#[test]
+fn o_registro_leva_a_face_que_o_pedido_mandou() {
+    use plots_perfis::historico::FaceDoRegistro;
+    let registros: Registros = Arc::default();
+    let copia = Arc::clone(&registros);
+    let gravar: Gravar = Box::new(move |registro| copia.lock().unwrap().push(registro));
+    let mut do_pedido = cabecalho(false, 0);
+    do_pedido.face = Some(FaceDoRegistro::Verso);
+    let diario = Arc::new(Diario::novo(
+        do_pedido,
+        vec!["fila:A".to_owned()],
+        1_700_000_000,
+        gravar,
+    ));
+    Diario::fim_da_parte(&diario, "fila:A", false)(desfecho(
+        ResultadoDoEnvio::Concluido,
+        1,
+        1,
+        30_000,
+        4,
+    ));
+    let gravados = registros.lock().unwrap();
+    assert_eq!(gravados.len(), 1);
+    assert_eq!(gravados[0].face, Some(FaceDoRegistro::Verso));
 }
 
 fn ids(nomes: &[&str]) -> Vec<String> {

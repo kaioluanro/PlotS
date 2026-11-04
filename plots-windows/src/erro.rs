@@ -65,6 +65,8 @@ pub enum ErroEnvio {
     ArquivoNaoGerado(PathBuf),
     /// Não há trabalho enviado para consultar.
     SemTrabalho,
+    /// O sistema recusou uma chamada do envio porque a fila saiu da lista do Windows no meio dele.
+    FilaSaiuDaLista,
 }
 
 impl std::fmt::Display for ErroEnvio {
@@ -167,6 +169,9 @@ impl std::fmt::Display for ErroEnvio {
                 caminho.display()
             ),
             Self::SemTrabalho => f.write_str("não há trabalho enviado para acompanhar"),
+            Self::FilaSaiuDaLista => {
+                f.write_str("a impressora saiu da lista do Windows durante o envio.")
+            }
         }
     }
 }

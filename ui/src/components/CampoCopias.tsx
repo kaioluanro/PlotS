@@ -64,7 +64,6 @@ export function CampoCopias({
           type="text"
           inputMode="numeric"
           autoComplete="off"
-          maxLength={4}
           value={texto}
           aria-invalid={invalido}
           aria-describedby={invalido ? `${idDica} ${ID_ERRO_DA_QUANTIDADE}` : idDica}

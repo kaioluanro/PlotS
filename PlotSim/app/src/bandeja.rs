@@ -10,9 +10,9 @@ use crate::vista::{imagens_da_folha, Quadro};
 use plotsim_core::canal::LeituraPedida;
 use plotsim_core::{FaceDeSaida, ModoFisico, Saida};
 use plotsim_physics::{
-    conferir, folhas_do_documento, ler_maco, Entrada, Envio, ErroGesto, Face, FolhaLida, Gesto,
-    Giro, Idioma, Impressora, Lado, Leitura, MacoLido, ModoImpressora, Motivo, Operacao, Pilha,
-    TopoDaImagem, Vetor,
+    conferir, conferir_por_folha, folhas_do_documento, ler_maco, Entrada, Envio, ErroGesto, Face,
+    FolhaLida, Gesto, Giro, Idioma, Impressora, Lado, Leitura, MacoLido, ModoImpressora, Motivo,
+    Operacao, Pilha, TopoDaImagem, Vetor,
 };
 use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
@@ -78,6 +78,8 @@ struct PaginaGuardada {
 struct Passada {
     arquivo: Arc<PathBuf>,
     paginas: Vec<PaginaVista>,
+    /// É a frente de um lote do PlotS: ela nunca é o verso do lote que está na bandeja.
+    e_frente: bool,
 }
 
 /// Uma camada de imagem em uma folha da tela.
@@ -165,6 +167,8 @@ pub struct BandejaTela {
     pub paginas_sem_folha: usize,
     pub folhas_sem_verso: usize,
     pub aviso: Option<Aviso>,
+    /// O trabalho não é um documento inteiro que começa na página 1: cada folha se confere sozinha.
+    pub conferencia_por_folha: bool,
 }
 
 /// O gesto não foi cumprido; a pilha ficou onde estava.
@@ -215,7 +219,8 @@ fn folha_do_motivo(motivo: Motivo) -> Option<u32> {
         | Motivo::FolhaAoContrario { folha }
         | Motivo::PaginaEstranha { folha, .. }
         | Motivo::FaltaPagina { folha, .. }
-        | Motivo::ImpressaoSobreImpressao { folha } => Some(folha),
+        | Motivo::ImpressaoSobreImpressao { folha }
+        | Motivo::VersoForaDoPar { folha, .. } => Some(folha),
     }
 }
 
@@ -245,6 +250,8 @@ struct Conferencia {
     sem_marca: Vec<bool>,
     gerais: Vec<Motivo>,
     esperadas: u32,
+    /// Cada folha se confere sozinha: o trabalho não é um documento inteiro a partir da página 1.
+    por_folha: bool,
 }
 
 impl Conferencia {
@@ -309,6 +316,10 @@ impl Bandeja {
 
     /// Uma passada chegou. Se o gesto ainda não veio, ela espera: a pilha continua na saída.
     pub fn receber(&mut self, arquivo: PathBuf, paginas: Vec<PaginaVista>) {
+        self.guardar(arquivo, paginas, false);
+    }
+
+    fn guardar(&mut self, arquivo: PathBuf, paginas: Vec<PaginaVista>, e_frente: bool) {
         let esperando: usize = self.pendentes.iter().map(|p| p.paginas.len()).sum();
         let ja_recebidas = self.paginas.len().saturating_add(esperando);
         if ja_recebidas.saturating_add(paginas.len()) > LIMITE_PAGINAS {
@@ -319,11 +330,42 @@ impl Bandeja {
             self.aviso = Some(Aviso::novo("muitos_trabalhos", None));
             return;
         }
+        // A frente de um lote novo, com o anterior sem verso e nada esperando o gesto, fecha o
+        // anterior: não vira o verso dele.
+        if e_frente && self.etapa == Etapa::AguardandoGesto && self.pendentes.is_empty() {
+            self.fechar_lote_sem_verso();
+        }
         self.pendentes.push_back(Passada {
             arquivo: Arc::new(arquivo),
             paginas,
+            e_frente,
         });
         self.andar();
+    }
+
+    /// Chegou a frente de um lote do PlotS (`PlotS - lote N - frente`).
+    pub fn receber_frente(&mut self, arquivo: PathBuf, paginas: Vec<PaginaVista>) {
+        self.guardar(arquivo, paginas, true);
+    }
+
+    /// O lote em andamento não vai receber verso: o que saiu fica no maço como está, e a bandeja
+    /// fica livre para o lote seguinte.
+    fn fechar_lote_sem_verso(&mut self) {
+        let sem_verso = match self.etapa {
+            Etapa::Livre => return,
+            Etapa::AguardandoGesto => {
+                let pacote = self.impressora.retirar_saida();
+                let folhas = pacote.folhas().len();
+                self.pacotes.push(pacote);
+                folhas
+            }
+            // As folhas recolocadas voltam à mão de quem imprimiu: não entram no maço.
+            Etapa::NaEntrada => self.impressora.entrada().len(),
+        };
+        self.folhas_sem_verso = self.folhas_sem_verso.saturating_add(sem_verso);
+        self.impressora = Impressora::nova(self.modo, 0);
+        self.operacoes.clear();
+        self.etapa = Etapa::Livre;
     }
 
     /// Cumpre o gesto, venha da escolha da pessoa na tela ou de um canal com o programa testado.
@@ -353,6 +395,9 @@ impl Bandeja {
             let Some(passada) = self.pendentes.pop_front() else {
                 return;
             };
+            if passada.e_frente {
+                self.fechar_lote_sem_verso();
+            }
             let Some(envios) = self.registrar(&passada) else {
                 self.aviso = Some(Aviso::novo("bandeja_cheia", None));
                 return;
@@ -504,14 +549,44 @@ impl Bandeja {
         (MacoLido { folhas }, sem_marca)
     }
 
+    /// O trabalho não é um documento inteiro que começa na página 1: as marcas não começam na 1,
+    /// repetem-se (cópias) ou há mais de um lote (vários papéis). Com a instrução do `Fim`, o
+    /// PlotS garante que é o documento e vale a conferência do maço de sempre.
+    ///
+    /// Limite conhecido: um documento inteiro sem a folha 1 (ela se perdeu ou não foi lida) cai
+    /// na conferência por folha, mesmo sem instrução do PlotS que diga que o trabalho é parcial.
+    fn conferir_por_folha_vale(&self, maco: &MacoLido) -> bool {
+        if self.leitura_pedida.is_some() {
+            return false;
+        }
+        let mut numeros: Vec<u32> = maco
+            .folhas
+            .iter()
+            .flat_map(|folha| folha.frente.iter().chain(folha.verso.iter()))
+            .filter_map(|pagina| self.numero(*pagina))
+            .collect();
+        if numeros.is_empty() {
+            return false;
+        }
+        numeros.sort_unstable();
+        let repete = numeros.windows(2).any(|par| par[0] == par[1]);
+        self.pacotes.len() > 1 || repete || numeros.first() != Some(&1)
+    }
+
     fn conferir_com(&self, leitura: Leitura) -> Conferencia {
         let lido = self.maco(leitura);
         let total = self.total_do_documento(&lido);
         let (traduzido, sem_marca) = self.traduzir(&lido, total);
+        let por_folha = self.conferir_por_folha_vale(&lido);
         let mut motivos: HashMap<u32, Vec<Motivo>> = HashMap::new();
         let mut gerais = Vec::new();
         let ha_sem_marca = sem_marca.contains(&true);
-        for motivo in conferir(&traduzido, total) {
+        let encontrados = if por_folha {
+            conferir_por_folha(&traduzido)
+        } else {
+            conferir(&traduzido, total)
+        };
+        for motivo in encontrados {
             match folha_do_motivo(motivo) {
                 // O total sai só das páginas lidas: a folha sem marca pode ser uma das que faltam
                 // nessa conta, então não dá para dizer que ela sobra.
@@ -525,12 +600,18 @@ impl Bandeja {
                 }
             }
         }
+        let folhas_lidas = u32_saturado(sem_marca.len());
         Conferencia {
             leitura,
             motivos,
             sem_marca,
             gerais,
-            esperadas: folhas_do_documento(total),
+            esperadas: if por_folha {
+                folhas_lidas
+            } else {
+                folhas_do_documento(total)
+            },
+            por_folha,
         }
     }
 
@@ -688,6 +769,7 @@ impl Bandeja {
             paginas_sem_folha: self.paginas_sem_folha,
             folhas_sem_verso: self.folhas_sem_verso,
             aviso: self.aviso.clone(),
+            conferencia_por_folha: conferencia.as_ref().is_some_and(|c| c.por_folha),
         }
     }
 }
@@ -997,12 +1079,13 @@ mod testes {
 
     #[test]
     fn folha_a_menos_e_acusada_no_maco_inteiro() {
+        // Folhas (1,2) e (5,6): a do meio nao saiu. Ha pagina 1 e uma so copia de cada marca.
         let mut bandeja = bandeja_com(JATO);
-        bandeja.receber("a.pdf".into(), numeradas(&[4, 2], Giro::Nenhum));
+        bandeja.receber("a.pdf".into(), numeradas(&[6, 2], Giro::Nenhum));
         bandeja.recolocar(GESTO_JATO).unwrap();
-        bandeja.receber("b.pdf".into(), numeradas(&[5, 3, 1], Giro::Meia180));
+        bandeja.receber("b.pdf".into(), numeradas(&[5, 1], Giro::Meia180));
         let tela = bandeja.tela(Idioma::PtBr);
-        assert_eq!(tela.paginas_sem_folha, 1);
+        assert!(!tela.conferencia_por_folha, "{tela:?}");
         assert!(tela.corretas < tela.conferidas, "{tela:?}");
         assert!(tela.gerais.iter().any(|m| m.contains("folha a menos")));
     }
@@ -1174,5 +1257,148 @@ mod testes {
         bandeja.receber("c.pdf".into(), numeradas(&[8], Giro::Nenhum));
         let tela = bandeja.tela(Idioma::PtBr);
         assert!(tela.sem_instrucao, "{tela:?}");
+    }
+
+    /// A tela do trabalho que nao e um documento inteiro: confere cada folha por si.
+    fn so_erros_reais(tela: &BandejaTela) -> Vec<(u32, Vec<String>)> {
+        tela.folhas
+            .iter()
+            .filter(|f| f.situacao == SituacaoDaFolha::Errada)
+            .map(|f| (f.numero, f.motivos.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn trecho_que_nao_comeca_na_pagina_1_confere_por_folha_sem_acusar_ordem() {
+        // Paginas 3 a 6 de um documento maior, no jato: folhas (3,4) e (5,6).
+        let mut bandeja = bandeja_com(JATO);
+        bandeja.receber("a.pdf".into(), numeradas(&[6, 4], Giro::Nenhum));
+        bandeja.recolocar(GESTO_JATO).unwrap();
+        bandeja.receber("b.pdf".into(), numeradas(&[5, 3], Giro::Meia180));
+        let tela = bandeja.tela(Idioma::PtBr);
+        assert!(tela.conferencia_por_folha, "{tela:?}");
+        assert_eq!(so_erros_reais(&tela), vec![], "{tela:?}");
+        assert_eq!((tela.corretas, tela.conferidas), (2, 2), "{tela:?}");
+        assert!(tela.gerais.is_empty(), "{tela:?}");
+    }
+
+    #[test]
+    fn copias_repetem_as_marcas_e_cada_folha_se_confere_sozinha() {
+        let mut bandeja = bandeja_com(JATO);
+        bandeja.receber("a.pdf".into(), numeradas(&[4, 2, 4, 2], Giro::Nenhum));
+        bandeja.recolocar(GESTO_JATO).unwrap();
+        bandeja.receber("b.pdf".into(), numeradas(&[3, 1, 3, 1], Giro::Meia180));
+        let tela = bandeja.tela(Idioma::PtBr);
+        assert!(tela.conferencia_por_folha, "{tela:?}");
+        assert_eq!(so_erros_reais(&tela), vec![], "{tela:?}");
+        assert_eq!(tela.corretas, 4, "{tela:?}");
+    }
+
+    #[test]
+    fn papel_misto_em_dois_lotes_nao_acusa_ordem_nem_folha_a_menos() {
+        // Lote A4 com as paginas 1 a 4; lote A5 com a pagina 5 sozinha (verso em branco).
+        let mut bandeja = bandeja_com(JATO);
+        bandeja.receber("a.pdf".into(), numeradas(&[4, 2], Giro::Nenhum));
+        bandeja.recolocar(GESTO_JATO).unwrap();
+        bandeja.receber("b.pdf".into(), numeradas(&[3, 1], Giro::Meia180));
+        bandeja.receber("c.pdf".into(), numeradas(&[5], Giro::Nenhum));
+        bandeja.recolocar(GESTO_JATO).unwrap();
+        bandeja.receber(
+            "d.pdf".into(),
+            vec![PaginaVista {
+                giro: Giro::Meia180,
+                ..em_branco(0)
+            }],
+        );
+        let tela = bandeja.tela(Idioma::PtBr);
+        assert!(tela.conferencia_por_folha, "{tela:?}");
+        assert_eq!(so_erros_reais(&tela), vec![], "{tela:?}");
+        assert_eq!(tela.corretas, 3, "{tela:?}");
+        assert!(tela.gerais.is_empty(), "{tela:?}");
+    }
+
+    #[test]
+    fn erro_real_numa_folha_continua_errada_no_trecho() {
+        // Borda errada na recolocacao: os versos saem de cabeca para baixo.
+        let mut bandeja = bandeja_com(JATO);
+        bandeja.receber("a.pdf".into(), numeradas(&[6, 4], Giro::Nenhum));
+        bandeja
+            .recolocar(Gesto {
+                borda_que_entra: BordaQueEntra::Topo,
+                ..GESTO_JATO
+            })
+            .unwrap();
+        bandeja.receber("b.pdf".into(), numeradas(&[5, 3], Giro::Meia180));
+        let tela = bandeja.tela(Idioma::PtBr);
+        assert!(tela.conferencia_por_folha, "{tela:?}");
+        assert!(!so_erros_reais(&tela).is_empty(), "{tela:?}");
+    }
+
+    #[test]
+    fn verso_que_nao_segue_a_frente_na_mesma_folha_e_erro_mesmo_por_folha() {
+        // A folha com a 3 na frente e a 6 no verso: o par nao bate.
+        let mut bandeja = bandeja_com(JATO);
+        bandeja.receber("a.pdf".into(), numeradas(&[6, 4], Giro::Nenhum));
+        bandeja.recolocar(GESTO_JATO).unwrap();
+        bandeja.receber("b.pdf".into(), numeradas(&[5, 3], Giro::Meia180));
+        let certo = bandeja.tela(Idioma::PtBr);
+        assert_eq!(so_erros_reais(&certo), vec![], "{certo:?}");
+        let mut trocada = bandeja_com(JATO);
+        trocada.receber("a.pdf".into(), numeradas(&[4, 6], Giro::Nenhum));
+        trocada.recolocar(GESTO_JATO).unwrap();
+        trocada.receber("b.pdf".into(), numeradas(&[5, 3], Giro::Meia180));
+        let tela = trocada.tela(Idioma::PtBr);
+        assert!(!so_erros_reais(&tela).is_empty(), "{tela:?}");
+    }
+
+    #[test]
+    fn documento_inteiro_de_um_lote_continua_com_a_conferencia_do_maco() {
+        let tela = jato_certo().tela(Idioma::PtBr);
+        assert!(!tela.conferencia_por_folha, "{tela:?}");
+    }
+
+    #[test]
+    fn com_a_instrucao_do_fim_o_veredito_segue_como_sempre() {
+        let mut bandeja = bandeja_com(JATO);
+        bandeja.receber("a.pdf".into(), numeradas(&[6, 4], Giro::Nenhum));
+        bandeja.recolocar(GESTO_JATO).unwrap();
+        bandeja.receber("b.pdf".into(), numeradas(&[5, 3], Giro::Meia180));
+        bandeja.encerrar(LeituraPedida::ComoSaiu);
+        let tela = bandeja.tela(Idioma::PtBr);
+        assert!(!tela.conferencia_por_folha, "{tela:?}");
+        assert!(!so_erros_reais(&tela).is_empty(), "{tela:?}");
+    }
+
+    #[test]
+    fn frente_que_chega_com_a_bandeja_aguardando_verso_abre_lote_novo() {
+        let mut bandeja = bandeja_com(JATO);
+        bandeja.receber_frente("a.pdf".into(), numeradas(&[4, 2], Giro::Nenhum));
+        bandeja.receber_frente("b.pdf".into(), numeradas(&[8, 6], Giro::Nenhum));
+        let tela = bandeja.tela(Idioma::PtBr);
+        // As duas primeiras folhas ficaram como lote proprio; as outras duas esperam o gesto.
+        assert_eq!(tela.etapa, EtapaTela::AguardandoGesto, "{tela:?}");
+        assert_eq!(tela.folhas.len(), 4, "{tela:?}");
+        let andamento = tela
+            .folhas
+            .iter()
+            .filter(|f| f.situacao == SituacaoDaFolha::EmAndamento)
+            .count();
+        assert_eq!(andamento, 2, "{tela:?}");
+        // Nada virou verso: o gesto agora serve ao lote novo.
+        bandeja.recolocar(GESTO_JATO).unwrap();
+        bandeja.receber("c.pdf".into(), numeradas(&[7, 5], Giro::Meia180));
+        let fim = bandeja.tela(Idioma::PtBr);
+        assert_eq!(fim.etapa, EtapaTela::Conferida, "{fim:?}");
+        assert!(fim.conferencia_por_folha, "{fim:?}");
+    }
+
+    #[test]
+    fn verso_do_plots_continua_sendo_a_segunda_passada_do_lote() {
+        let mut bandeja = bandeja_com(JATO);
+        bandeja.receber_frente("a.pdf".into(), numeradas(&[6, 4, 2], Giro::Nenhum));
+        bandeja.recolocar(GESTO_JATO).unwrap();
+        bandeja.receber("b.pdf".into(), numeradas(&[5, 3, 1], Giro::Meia180));
+        let tela = bandeja.tela(Idioma::PtBr);
+        assert_eq!((tela.corretas, tela.conferidas), (3, 3), "{tela:?}");
     }
 }

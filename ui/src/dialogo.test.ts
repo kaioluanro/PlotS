@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rolarPeloTeclado } from "./dialogo";
+import { origemDoDialogo, rolarPeloTeclado } from "./dialogo";
 
 function corpo(scrollTop: number) {
   return { scrollTop, clientHeight: 100, scrollHeight: 400 };
@@ -39,5 +39,23 @@ describe("rolagem do corpo do dialogo pelo teclado", () => {
     const alvo = { scrollTop: 0, clientHeight: 100, scrollHeight: 100 };
     expect(rolarPeloTeclado("ArrowDown", alvo)).toBe(false);
     expect(rolarPeloTeclado("ArrowDown", null)).toBe(false);
+  });
+});
+
+describe("origem do foco de um dialogo que reabre", () => {
+  const sino = { isConnected: true, nome: "sino" };
+  const corpoDaPagina = { isConnected: true, nome: "corpo" };
+
+  it("mantem a origem da primeira abertura quando o foco ja caiu no corpo", () => {
+    expect(origemDoDialogo(sino, corpoDaPagina)).toBe(sino);
+  });
+
+  it("na primeira abertura, vale quem tem o foco", () => {
+    expect(origemDoDialogo(null, sino)).toBe(sino);
+    expect(origemDoDialogo(null, null)).toBeNull();
+  });
+
+  it("origem que saiu da pagina nao serve: vale quem tem o foco agora", () => {
+    expect(origemDoDialogo({ isConnected: false, nome: "velho" }, sino)).toBe(sino);
   });
 });

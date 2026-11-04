@@ -9,6 +9,7 @@ import {
   listarHistorico,
   nomeDaVelocidade,
   registrosPorData,
+  rotuloDoRegistro,
   textoDaData,
   textoDaVelocidade,
   textoDoResultado,
@@ -235,7 +236,11 @@ export function HistoricoDialog({
                         <span className={styles.data}>{textoDaData(registro.data)}</span>
                       </div>
                       <p className={styles.resultado}>{textoDoResultado(registro)}</p>
-                      <p className={styles.detalhe}>{textoDoTamanho(registro)}</p>
+                      <p className={styles.detalhe}>
+                        {[rotuloDoRegistro(registro), textoDoTamanho(registro)]
+                          .filter((parte) => parte !== null)
+                          .join(" · ")}
+                      </p>
                       {linhasDasImpressoras(registro, impressoras).map((linha, ordem) => (
                         <p key={ordem} className={styles.detalhe}>
                           {linha}

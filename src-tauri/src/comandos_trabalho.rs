@@ -10,6 +10,7 @@ use crate::trabalhos::{
     ResumoDoEnvio,
 };
 use plots_core::{IntervaloPaginas, ModeloImpressora};
+use plots_perfis::historico::FaceDoRegistro;
 use plots_perfis::{ErroPerfis, Perfis};
 use plots_windows::plots_print::job::Alcance;
 use plots_windows::plots_print::opcoes::IdiomaDaMarca;
@@ -234,9 +235,19 @@ impl From<FaceRecebida> for Alcance {
     }
 }
 
+impl From<FaceRecebida> for FaceDoRegistro {
+    fn from(face: FaceRecebida) -> Self {
+        match face {
+            FaceRecebida::Frente => Self::Frente,
+            FaceRecebida::Verso => Self::Verso,
+        }
+    }
+}
+
 /// Inicia um trabalho por impressora, todas com o mesmo pedido. Cada um roda na propria thread e
 /// publica o proprio cartao.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Cada argumento e um campo do pedido que a janela envia.
 pub fn iniciar_impressao(
     app: AppHandle,
     gerente: State<'_, Gerente>,
@@ -260,6 +271,7 @@ pub fn iniciar_impressao(
             intervalo: intervalo.map(|trecho| (trecho.inicio, trecho.fim)),
             divisao: false,
             lotes_confirmados: 0,
+            face: Some(face.into()),
         },
         impressoras.clone(),
     );

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { t, traduzir } from "./i18n";
+import { t, traduzir, traducoes } from "./i18n";
 import {
   acaoLimpar,
   acaoRecolocar,
@@ -60,6 +60,7 @@ const bandeja = (mudancas: Partial<BandejaTela> = {}): BandejaTela => ({
   semMarca: 0,
   conferidas: 0,
   gerais: [],
+  conferenciaPorFolha: false,
   leitura: null,
   semInstrucao: false,
   operacoes: [],
@@ -97,6 +98,35 @@ describe("resumo do rodapé", () => {
     });
     expect(resumoDaBandeja(pronta)).toBe(
       t("rodape.resumo.semMarca", { certas: "1", total: "2", semMarca: "1" }),
+    );
+  });
+
+  it("na conferência por folha, o resumo diz que o maço inteiro não foi conferido", () => {
+    const porFolha = (mudancas: Partial<BandejaTela>) =>
+      bandeja({
+        etapa: "conferida",
+        folhas: [folha(1), folha(2), folha(3)],
+        corretas: 2,
+        conferidas: 3,
+        leitura: "como_saiu",
+        conferenciaPorFolha: true,
+        ...mudancas,
+      });
+    expect(resumoDaBandeja(porFolha({}))).toBe(
+      "2 de 3 folhas certas uma a uma; o maço inteiro não foi conferido",
+    );
+    expect(resumoDaBandeja(porFolha({ folhas: [folha(1)], corretas: 1, conferidas: 1 }))).toBe(
+      "1 de 1 folha certa; o maço inteiro não foi conferido",
+    );
+    expect(resumoDaBandeja(porFolha({ corretas: 1, semMarca: 1 }))).toBe(
+      "1 de 3 folhas certas uma a uma, 1 sem marca; o maço inteiro não foi conferido",
+    );
+    expect(
+      resumoDaBandeja(porFolha({ folhas: [folha(1)], corretas: 0, semMarca: 1, conferidas: 1 })),
+    ).toBe("0 de 1 folha certa, 1 sem marca; o maço inteiro não foi conferido");
+    // Sem a conferência por folha, o resumo segue o de sempre.
+    expect(resumoDaBandeja(porFolha({ conferenciaPorFolha: false }))).toBe(
+      t("rodape.resumo", { certas: "2", total: "3" }),
     );
   });
 
@@ -278,6 +308,20 @@ describe("detalhe técnico e idioma", () => {
   it("texto do próprio Windows e nome do documento aparecem nos dois idiomas", () => {
     expect(textoDoErro({ codigo: "windows_recusou", detalhe: "x" }, "en").detalhe).toBe("x");
     expect(textoDoAviso({ codigo: "trabalho_falhou", detalhe: "doc" }, "en").detalhe).toBe("doc");
+  });
+});
+
+describe("verso sem frente", () => {
+  it("o aviso existe e diz que o verso não entrou na pilha, nos dois idiomas", () => {
+    expect(textoDoAviso({ codigo: "verso_sem_frente", detalhe: null }).texto).not.toBe(
+      textoDoAviso({ codigo: "inexistente", detalhe: null }).texto,
+    );
+    expect(traducoes["pt-BR"]["aviso.verso_sem_frente"]).toBe(
+      "Chegou um verso, mas esta impressora não tem as frentes dele. Ele não entrou na pilha.",
+    );
+    expect(traducoes.en["aviso.verso_sem_frente"]).toBe(
+      "A back arrived, but this printer does not have its fronts. It did not enter the stack.",
+    );
   });
 });
 

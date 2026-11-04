@@ -61,21 +61,29 @@ const CLASSE_DO_PAPEL = {
 
 interface Props {
   cartao: Cartao;
-  aoComandar: (cartao: Cartao, comando: Comando) => void;
-  aoPedirVerso: (cartao: Cartao) => void;
-  aoPedirCancelar: (cartao: Cartao) => void;
-  aoDispensar: (cartao: Cartao) => void;
+  aoComandar?: (cartao: Cartao, comando: Comando) => void;
+  aoPedirVerso?: (cartao: Cartao) => void;
+  aoPedirCancelar?: (cartao: Cartao) => void;
+  aoDispensar?: (cartao: Cartao) => void;
   /** Por que o botao de versos deste cartao nao envia agora: ele fica desabilitado, com o motivo no titulo. */
   motivoDoVerso?: string | null;
+  /**
+   * Registro de um momento do trabalho, no painel de avisos: mostra o mesmo texto e o mesmo gesto, sem
+   * botoes e sem mexer na rolagem de quem le. As acoes ficam com o painel.
+   */
+  registro?: boolean;
 }
+
+const semAcao = () => undefined;
 
 export function CartaoImpressao({
   cartao,
-  aoComandar,
-  aoPedirVerso,
-  aoPedirCancelar,
-  aoDispensar,
+  aoComandar = semAcao,
+  aoPedirVerso = semAcao,
+  aoPedirCancelar = semAcao,
+  aoDispensar = semAcao,
   motivoDoVerso = null,
+  registro = false,
 }: Props) {
   const nome = nomeDoCartao(cartao);
   const acoes = acoesDoCartao(cartao);
@@ -92,14 +100,14 @@ export function CartaoImpressao({
   // nao puxam a lista: senao o ultimo a mudar de estado levaria a rolagem para longe do primeiro.
   useEffect(() => {
     const elemento = raiz.current;
-    if (cartao.estado.tipo !== "frentes_prontas" || !elemento) return;
+    if (registro || cartao.estado.tipo !== "frentes_prontas" || !elemento) return;
     if (elemento.previousElementSibling?.tagName !== "H3") return;
     botaoVerso.current?.scrollIntoView({ block: "nearest" });
   }, [cartao.estado.tipo]);
   // Quando o cartao passa a pedir algo, a lista desce ate ele; o foco de quem usa o teclado fica onde esta.
   useEffect(() => {
     const elemento = raiz.current;
-    if (!pedeAcao || !elemento) return;
+    if (registro || !pedeAcao || !elemento) return;
     const lista = rolagemDoCartao(elemento);
     return rolarAteOCartao(
       lista,
@@ -211,7 +219,7 @@ export function CartaoImpressao({
         </button>
       )}
       {acoes.cancelar && (
-        <button type="button" className={classeDoBotao} onClick={() => aoPedirCancelar(cartao)}>
+        <button type="button" className={classeDoBotao} disabled={acoes.cancelando} onClick={() => aoPedirCancelar(cartao)}>
           {t("cartao.cancelar")}
         </button>
       )}
@@ -235,7 +243,7 @@ export function CartaoImpressao({
         <span className={`${styles.ponto} ${CLASSE_DO_TOM[tomDoCartao(cartao)]}`} aria-hidden="true" />
         <span>{textoDoEstadoDoCartao(cartao)}</span>
       </p>
-      {acoesNoTopo && blocoDeAcoes}
+      {acoesNoTopo && !registro && blocoDeAcoes}
       {dados.length > 0 && <p className={styles.dados}>{dados.join(" · ")}</p>}
       {cartao.ajusteRecusado === true && (
         <p className={styles.ajusteRecusado}>
@@ -271,7 +279,7 @@ export function CartaoImpressao({
         ))}
       </div>
       {resultado !== null && <p className={styles.resultado}>{resultado}</p>}
-      {!acoesNoTopo && blocoDeAcoes}
+      {!acoesNoTopo && !registro && blocoDeAcoes}
       {linhasDepois.length > 0 && (
         <div className={styles.frases}>
           {linhasDepois.map((linha, indice) => (

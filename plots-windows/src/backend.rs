@@ -4,6 +4,7 @@
 //! interface deve chamar a partir de outra thread.
 
 use crate::erro::ErroEnvio;
+use crate::estado::Condicao;
 use crate::papel::{ajuste_do_papel, FacesDoEnvio};
 use crate::passada::{
     caminhos_da_biblioteca, escolher_biblioteca, nome_arquivo_saida, nome_documento,
@@ -17,6 +18,7 @@ use crate::raster::{
 };
 use crate::spooler::{ContextoFila, DocumentoAberto, Impressora};
 use crate::trabalho::{motivo_e_mensagem, trabalho_terminou, traduzir_com_fila};
+use crate::vez::{driver_pede_uma_fila_por_vez, Posse, NOME_DA_VEZ_DO_PDF, PRAZO_DA_VEZ};
 use crate::Fila;
 use pdfium_render::prelude::{
     PdfBitmapFormat, PdfColor, PdfDocument, PdfPageRenderRotation, PdfRenderConfig, Pdfium,
@@ -77,6 +79,14 @@ pub struct BackendWindows {
     mensagem_do_driver: Option<String>,
     /// O trabalho atual foi visto fora da fila.
     saiu_da_fila: bool,
+    /// Quando o envio atual começou, para procurar no registro do Windows a falha dele.
+    enviado_em: Option<std::time::Instant>,
+    /// O nome do documento do trabalho atual na fila, que o evento do registro também traz.
+    nome_do_trabalho: Option<String>,
+    /// Nos testes locais, este driver falhou com dois trabalhos juntos: um de cada vez, entre todos os processos.
+    uma_fila_por_vez: bool,
+    /// A vez de enviar, até o trabalho sair da fila.
+    vez: Option<Posse>,
     /// Ajuste do driver lido ao preparar: mudar a preferência não atinge o trabalho em andamento.
     ajuste_do_driver: Option<Vec<u8>>,
 }
@@ -123,6 +133,10 @@ impl BackendWindows {
             condicao: None,
             mensagem_do_driver: None,
             saiu_da_fila: false,
+            enviado_em: None,
+            nome_do_trabalho: None,
+            uma_fila_por_vez: driver_pede_uma_fila_por_vez(&fila.driver),
+            vez: None,
             ajuste_do_driver,
         })
     }
@@ -178,6 +192,10 @@ impl BackendWindows {
         Ok(Some(arquivo))
     }
 }
+
+/// O que dizer quando o Windows descartou o trabalho. A interface traduz esta frase.
+pub const MOTIVO_TRABALHO_PERDIDO: &str =
+    "o registro do Windows indica que a impressão falhou nesta fila. Confira o que saiu antes de reimprimir";
 
 /// Planeja todas as páginas antes de abrir o documento: um tamanho recusado, ou uma página em
 /// branco que não teria onde receber o ponto, não deixa trabalho pela metade na fila.
@@ -290,10 +308,8 @@ impl DescreveFalha for BackendWindows {
     }
 }
 
-impl Backend for BackendWindows {
-    type Erro = ErroEnvio;
-
-    fn enviar(&mut self, passada: Passada, paginas: &[Pagina]) -> Result<(), ErroEnvio> {
+impl BackendWindows {
+    fn enviar_passada(&mut self, passada: Passada, paginas: &[Pagina]) -> Result<(), ErroEnvio> {
         if passada != Passada::Verso && !self.repetir_lote {
             self.lote = self.lote.saturating_add(1);
         }
@@ -305,6 +321,9 @@ impl Backend for BackendWindows {
         self.condicao = None;
         self.mensagem_do_driver = None;
         self.saiu_da_fila = false;
+        self.enviado_em = None;
+        self.nome_do_trabalho = None;
+        self.vez = None;
 
         let faces = FacesDoEnvio::da_passada(passada);
         // O perfil pode ter sido gravado com outro driver: sem a declaração dele, nada sai.
@@ -349,13 +368,75 @@ impl Backend for BackendWindows {
         }
         let planos = planejar_paginas(&documento, paginas, &self.dimensoes, &dispositivo)?;
 
+        // Só neste ponto: a vez só vale enquanto o trabalho está na fila, e o preparo acima não a segura.
+        let vez = if self.uma_fila_por_vez {
+            Posse::pegar(NOME_DA_VEZ_DO_PDF, PRAZO_DA_VEZ)
+        } else {
+            None
+        };
         let nome = nome_documento(self.lote, passada);
+        self.enviado_em = Some(std::time::Instant::now());
+        self.nome_do_trabalho = Some(nome.clone());
         let mut aberto = contexto.iniciar_documento(&nome, arquivo.as_deref())?;
         desenhar_paginas(&documento, paginas, &planos, &dispositivo, &mut aberto)?;
         let trabalho = aberto.terminar()?;
         self.trabalho = Some(trabalho);
         self.arquivo = arquivo;
+        self.vez = vez;
         Ok(())
+    }
+}
+
+/// Uma chamada do sistema que falha no meio do envio pode ser só a fila que saiu da lista: então a
+/// causa é essa, e o código cru do Windows não ajuda ninguém. `fila_listada` só roda nesse caso.
+fn explicar_falha_do_sistema(erro: ErroEnvio, fila_listada: impl FnOnce() -> bool) -> ErroEnvio {
+    match erro {
+        ErroEnvio::Sistema { .. } if !fila_listada() => ErroEnvio::FilaSaiuDaLista,
+        outro => outro,
+    }
+}
+
+/// A fila continua na lista do Windows. O sistema só tira da lista a fila removida no meio de um
+/// envio depois que ele solta o trabalho, um ou dois segundos depois da falha: por isso se olha a
+/// lista por alguns instantes antes de concluir que ela ficou. Sem conseguir listar, não se afirma
+/// nada.
+fn fila_esta_listada(nome: &str) -> bool {
+    for tentativa in 0..TENTATIVAS_DE_CONFERIR_A_LISTA {
+        if tentativa > 0 {
+            std::thread::sleep(INTERVALO_DA_CONFERENCIA);
+        }
+        match crate::listar_filas() {
+            Ok(filas) if !fila_na_lista(&filas, nome) => return false,
+            Err(_) => return true,
+            Ok(_) => {}
+        }
+    }
+    true
+}
+
+/// Até 5 s olhando a lista, só depois de uma falha do sistema no meio do envio.
+const TENTATIVAS_DE_CONFERIR_A_LISTA: u32 = 20;
+const INTERVALO_DA_CONFERENCIA: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// Uma fila com exclusão pendente ainda aparece na lista enquanto o trabalho dela não acaba, mas já
+/// saiu: o sistema recusa as chamadas dela como se não existisse.
+fn fila_na_lista(filas: &[Fila], nome: &str) -> bool {
+    filas.iter().any(|fila| {
+        fila.nome == nome
+            && !fila
+                .estado
+                .condicoes()
+                .contains(&Condicao::ExclusaoPendente)
+    })
+}
+
+impl Backend for BackendWindows {
+    type Erro = ErroEnvio;
+
+    fn enviar(&mut self, passada: Passada, paginas: &[Pagina]) -> Result<(), ErroEnvio> {
+        let resultado = self.enviar_passada(passada, paginas);
+        let nome = &self.nome_fila;
+        resultado.map_err(|erro| explicar_falha_do_sistema(erro, || fila_esta_listada(nome)))
     }
 
     fn consultar(&mut self) -> Result<EstadoEnvio, ErroEnvio> {
@@ -365,6 +446,17 @@ impl Backend for BackendWindows {
             // conhecido: conta como terminado, salvo se o arquivo pedido não apareceu.
             self.ultimo_status = None;
             self.saiu_da_fila = true;
+            self.vez = None;
+            // O processador de impressão pode descartar o trabalho sem imprimir nada e só deixar o
+            // evento 372 no registro: sumir da fila não prova que saiu papel.
+            if let (Some(desde), Some(documento)) =
+                (self.enviado_em, self.nome_do_trabalho.as_deref())
+            {
+                if crate::registro::trabalho_perdido(&self.nome_fila, documento, desde) {
+                    self.motivo = Some(MOTIVO_TRABALHO_PERDIDO.to_string());
+                    return Ok(EstadoEnvio::Falhou);
+                }
+            }
             if let Some(arquivo) = &self.arquivo {
                 if !arquivo.is_file() {
                     return Err(ErroEnvio::ArquivoNaoGerado(arquivo.clone()));
@@ -374,6 +466,7 @@ impl Backend for BackendWindows {
         };
         self.ultimo_status = Some(leitura.status);
         let fila = if trabalho_terminou(leitura.status) {
+            self.vez = None;
             None
         } else {
             self.impressora.ler_estado()
@@ -389,6 +482,7 @@ impl Backend for BackendWindows {
 
     fn cancelar(&mut self) -> Result<(), ErroEnvio> {
         self.repetir_lote = true;
+        self.vez = None;
         cancelar_trabalho(&mut self.trabalho, |id| self.impressora.cancelar(id))
     }
 

@@ -39,7 +39,7 @@ export interface ListaImpressoras {
   avisos: Aviso[];
 }
 
-/** Cada folha leva duas paginas; pagina impar ocupa uma folha inteira. Mesma conta do plano. */
+/** So a conta de reserva (sem plano lido): duas paginas por folha. Papel misto muda o numero. */
 export function contarFolhas(paginas: number): number {
   return Number.isInteger(paginas) && paginas > 0 ? Math.ceil(paginas / 2) : 0;
 }
@@ -48,11 +48,17 @@ export function contarFolhas(paginas: number): number {
  * A linha que fica acima do botao: o tamanho do que vai sair. Com duas ou mais copias, mostra o numero
  * de copias e as folhas de todas elas; com uma, a linha fica como era.
  */
-export function resumoDoDocumento(paginas: number, idioma: Idioma = idiomaAtual, copias = 1): string {
+export function resumoDoDocumento(
+  paginas: number,
+  idioma: Idioma = idiomaAtual,
+  copias = 1,
+  /** As folhas de uma copia segundo o plano; sem ele, a conta de duas paginas por folha. */
+  folhasDoPlano?: number,
+): string {
   const textoPaginas = traduzir(idioma, paginas === 1 ? "folhas.paginas.um" : "folhas.paginas.varios", {
     n: String(paginas),
   });
-  const folhas = contarFolhas(paginas) * copias;
+  const folhas = (folhasDoPlano ?? contarFolhas(paginas)) * copias;
   const textoFolhas = traduzir(idioma, folhas === 1 ? "face.folhas.um" : "face.folhas.varios", {
     n: String(folhas),
   });

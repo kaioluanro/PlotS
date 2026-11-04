@@ -66,3 +66,13 @@ describe("chaves retiradas", () => {
     expect(Object.keys(traducoes.en)).not.toContain("documento.semVisualizacao");
   });
 });
+
+describe("texto sem a palavra cartao", () => {
+  it("nenhum texto da interface cita cartao, nos dois idiomas", () => {
+    for (const idioma of ["pt-BR", "en"] as const) {
+      for (const [chave, texto] of Object.entries(traducoes[idioma])) {
+        expect(texto, `${idioma} ${chave}`).not.toMatch(/cart(ã|a)o|cart(õ|o)es|cards?/i);
+      }
+    }
+  });
+});

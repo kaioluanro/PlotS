@@ -346,3 +346,40 @@ fn sem_trabalho_guardado_nao_pede_cancelamento() {
     let resultado = cancelar_trabalho(&mut trabalho, |_| Err(ErroEnvio::SemTrabalho));
     assert!(resultado.is_ok());
 }
+
+#[test]
+fn falha_do_sistema_com_a_fila_fora_da_lista_vira_fila_que_saiu() {
+    let endpage = ErroEnvio::Sistema {
+        chamada: "EndPage",
+        codigo: 0x8007_0057,
+    };
+    let explicado = explicar_falha_do_sistema(endpage.clone(), || false);
+    assert_eq!(explicado, ErroEnvio::FilaSaiuDaLista);
+    assert_eq!(
+        explicado.to_string(),
+        "a impressora saiu da lista do Windows durante o envio."
+    );
+    // Com a fila ainda listada, o erro segue como veio; outros erros nem consultam a lista.
+    assert_eq!(explicar_falha_do_sistema(endpage.clone(), || true), endpage);
+    let outro = ErroEnvio::SimplexNaoAceito;
+    assert_eq!(
+        explicar_falha_do_sistema(outro.clone(), || panic!("não devia consultar")),
+        outro
+    );
+}
+
+#[test]
+fn fila_com_exclusao_pendente_ou_ausente_ja_saiu_da_lista() {
+    use crate::estado::Estado;
+    let fila = |nome: &str, bits: u32| Fila {
+        nome: nome.to_string(),
+        driver: String::new(),
+        porta: String::new(),
+        padrao: false,
+        estado: Estado::de_bits(bits),
+    };
+    let filas = [fila("A", 0), fila("B", 0x0000_0004)];
+    assert!(fila_na_lista(&filas, "A"));
+    assert!(!fila_na_lista(&filas, "B"), "exclusão pendente");
+    assert!(!fila_na_lista(&filas, "C"), "ausente");
+}

@@ -136,7 +136,7 @@ impl Estado {
             .fold(0u32, |acumulado, (mascara, _)| acumulado | mascara);
         let mut restantes = bits & !conhecidos;
         while restantes != 0 {
-            let bit = restantes & restantes.wrapping_neg();
+            let bit = restantes.isolate_lowest_one();
             condicoes.push(Condicao::Outro(bit));
             restantes &= restantes - 1;
         }

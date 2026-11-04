@@ -9,6 +9,8 @@ export interface AnaliseDoDocumento {
   temPapelManual: boolean;
   /** Ha papel lido e todo ele sai sem gesto numa impressora automatica. */
   soPapelAutomatico: boolean;
+  /** Folhas de uma copia segundo o plano do backend: e a mesma conta da confirmacao. */
+  folhas?: number;
 }
 
 /**
@@ -42,6 +44,7 @@ export function useAnaliseDoDocumento(aba: Aba | null): AnaliseDoDocumento | nul
           variosPapeis: resumo.papeis.length > 1,
           temPapelManual: fluxos.some((fluxo) => !fluxo.automatico),
           soPapelAutomatico: fluxos.length > 0 && fluxos.every((fluxo) => fluxo.automatico),
+          folhas: resumo.folhas,
         });
       })
       .catch(() => {

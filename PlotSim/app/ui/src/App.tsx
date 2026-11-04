@@ -273,6 +273,7 @@ export function App() {
     if (bandeja.etapa === "na_entrada") notas.push(textoDasOperacoes(bandeja.operacoes));
     if (bandeja.leitura !== null) notas.push(t(`centro.leitura.${bandeja.leitura}`));
     if (bandeja.semInstrucao) notas.push(t("centro.semInstrucao"));
+    if (bandeja.conferenciaPorFolha) notas.push(t("centro.porFolha"));
     if (bandeja.paginasSemFolha > 0) {
       notas.push(
         textoComNumero(bandeja.paginasSemFolha, "centro.paginasSemFolha.um", "centro.paginasSemFolha"),

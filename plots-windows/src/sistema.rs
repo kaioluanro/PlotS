@@ -46,7 +46,7 @@ fn nome_padrao() -> Result<Option<String>, ErroFilas> {
     if tamanho == 0 {
         return Err(ErroFilas::Resposta("tamanho zero para o nome padrão"));
     }
-    let bytes = tamanho.checked_mul(2).unwrap_or(u32::MAX);
+    let bytes = tamanho.saturating_mul(2);
     if bytes > LIMITE_BUFFER_BYTES {
         return Err(ErroFilas::Grande { bytes });
     }

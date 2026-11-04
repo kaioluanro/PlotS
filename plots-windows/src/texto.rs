@@ -8,8 +8,10 @@
 /// Os espaços do início e do fim são preservados, pois o nome da fila é usado como chave.
 pub fn texto_utf16_le(bytes: &[u8]) -> String {
     let unidades: Vec<u16> = bytes
-        .chunks_exact(2)
-        .map(|par| u16::from_le_bytes(par.try_into().unwrap_or_default()))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|&par| u16::from_le_bytes(par))
         .take_while(|&unidade| unidade != 0)
         .collect();
     String::from_utf16_lossy(&unidades)

@@ -14,6 +14,14 @@ import {
   limitarLote,
   listarImpressoras,
 } from "./backend";
+import {
+  cartoesComMudanca,
+  ESTADO_INICIAL_DOS_AVISOS,
+  naoLidos as contarNaoLidos,
+  reduzirAvisos,
+} from "./avisos";
+import { AvisosDoTopo } from "./components/AvisosDoTopo";
+import { PainelDeAvisos } from "./components/PainelDeAvisos";
 import { BlocoAjuste } from "./components/BlocoAjuste";
 import { BlocoFace } from "./components/BlocoFace";
 import { CampoCopias } from "./components/CampoCopias";
@@ -26,6 +34,8 @@ import { DocumentArea, ID_AREA_DOCUMENTO } from "./components/DocumentArea";
 import { ID_LATERAL, Sidebar } from "./components/Sidebar";
 import { focarAbaAtiva, TitleBar } from "./components/TitleBar";
 import {
+  aindaPodeCancelar,
+  cartaoAtual,
   cartaoInterrompido,
   cartaoSemResposta,
   cartoesRecusados,
@@ -43,11 +53,13 @@ import {
   conteudoDaSubstituicao,
   conteudoDoApagarGrupo,
   conteudoDoCancelamento,
+  conteudoDoCancelamentoJaTerminado,
   conteudoDoEnvio,
   type ConteudoConfirmacao,
   type PedidoDeSubstituicao,
 } from "./confirmacao";
 import { mensagemDeErro } from "./erros";
+import { acaoDoEnvio, esperasDoRodape, type EsperaDoRodape } from "./rodape-espera";
 import {
   conteudoDoVerso,
   dicaDaFace,
@@ -56,6 +68,8 @@ import {
   faceDoEnvio,
   mudouDesdeAFrente,
   notasDaFrente,
+  planoDoVerso,
+  quemDeuErro,
   quemJaSaiu,
 } from "./face-do-envio";
 import { useGrupos } from "./grupos-uso";
@@ -119,11 +133,17 @@ export function App() {
     aba: Aba;
     destinos: readonly Impressora[];
     face: FaceDoEnvio;
+    /** O verso que ja espera na fila: confirmado, vai como comando, nao como envio novo. */
+    espera?: readonly EsperaDoRodape[];
   } | null>(null);
   const grupos = useGrupos(despachar);
   const [cartaoACancelar, setCartaoACancelar] = useState<Cartao | null>(null);
   const [cartaoAReimprimir, setCartaoAReimprimir] = useState<Cartao | null>(null);
   const [historico, setHistorico] = useState<"lista" | "apagar" | null>(null);
+  // Avisos da sessao: cada mudanca de estado de um cartao vira um registro, em memoria.
+  const [avisos, despacharAvisos] = useReducer(reduzirAvisos, ESTADO_INICIAL_DOS_AVISOS);
+  const [painelAvisos, setPainelAvisos] = useState(false);
+  const assinaturasDosCartoes = useRef<ReadonlyMap<string, string>>(new Map());
   const [versaoDoHistorico, setVersaoDoHistorico] = useState(0);
   const [falhaAoApagarHistorico, setFalhaAoApagarHistorico] = useState(false);
   const preparandoEnvio = useRef(false);
@@ -140,6 +160,7 @@ export function App() {
     cartaoACancelar !== null ||
     cartaoAReimprimir !== null ||
     historico !== null ||
+    painelAvisos ||
     grupos.aApagar !== null;
   const abaAtiva = estado.abas.find((aba) => aba.id === estado.ativa) ?? null;
   const analiseDoDocumento = useAnaliseDoDocumento(abaAtiva);
@@ -260,6 +281,17 @@ export function App() {
 
   const comandar = useCallback((cartao: Cartao, comando: Comando) => {
     comandarTrabalho(cartao.impressora, comando).catch(() => {
+      if (comando === "cancelar") {
+        // O trabalho pode ter acabado sozinho: o estado que ele publicou e o real. So o que segue
+        // em "Cancelando" depois de a ultima noticia chegar perdeu o acompanhamento.
+        window.setTimeout(() => {
+          const vivo = cartaoAtual(estadoAtual.current.abas, cartao);
+          if (vivo !== null && vivo.estado.tipo === "cancelando") {
+            despachar({ tipo: "cartao", cartao: cartaoInterrompido(vivo) });
+          }
+        }, 800);
+        return;
+      }
       // A thread ja morreu: o cartao encerra sem diálogo e libera a impressora.
       despachar({ tipo: "cartao", cartao: cartaoInterrompido(cartao) });
     });
@@ -277,9 +309,25 @@ export function App() {
     [comandar],
   );
 
-  const dispensar = useCallback((cartao: Cartao) => {
-    despachar({ tipo: "dispensar_cartao", id: cartao.aba, impressora: cartao.impressora });
-  }, []);
+  // Cada mudanca de estado de um cartao vira um aviso, uma vez so; o painel guarda a sessao.
+  useEffect(() => {
+    const { novos, proximo } = cartoesComMudanca(
+      assinaturasDosCartoes.current,
+      estado.abas.flatMap((aba) => aba.cartoes),
+    );
+    assinaturasDosCartoes.current = proximo;
+    const agora = Date.now();
+    for (const cartao of novos) {
+      const documento = estado.abas.find((aba) => aba.id === cartao.aba)?.documento.nome ?? null;
+      despacharAvisos({ tipo: "publicar", cartao, agora, documento });
+    }
+  }, [estado.abas]);
+
+  // Com o painel aberto, o que chega ja foi visto: a contagem de nao lidos zera.
+  const quantidadeDeAvisos = avisos.itens.length;
+  useEffect(() => {
+    if (painelAvisos) despacharAvisos({ tipo: "ler_todos" });
+  }, [painelAvisos, quantidadeDeAvisos]);
 
   // Uma contagem por vez: varios PDFs grandes abertos juntos nao disputam a memoria.
   const abas = estado.abas;
@@ -441,9 +489,21 @@ export function App() {
   const ocupadas = impressorasOcupadas(estado.abas);
 
   // A frente repetida e o verso sempre perguntam: papel gasto a toa ou maco errado nao tem volta.
-  const prepararEnvio = (aba: Aba, destinos: readonly Impressora[], face: FaceDoEnvio) => {
+  const prepararEnvio = (
+    aba: Aba,
+    destinos: readonly Impressora[],
+    face: FaceDoEnvio,
+    espera?: readonly EsperaDoRodape[],
+  ) => {
     const repetida = face === "frente" && quemJaSaiu(aba, destinos).length > 0;
-    if (face === "frente" && !precisaConfirmar(destinos) && !aba.papelDeAjuste && !repetida) {
+    const sobreErro = face === "frente" && quemDeuErro(aba, destinos).length > 0;
+    if (
+      face === "frente" &&
+      !precisaConfirmar(destinos) &&
+      !aba.papelDeAjuste &&
+      !repetida &&
+      !sobreErro
+    ) {
       iniciar(aba, destinos, face);
       return;
     }
@@ -451,15 +511,20 @@ export function App() {
     const leitura = lerIntervaloDaAba(aba);
     const trecho = trechoDoEnvio(leitura);
     const papel = aba.papelDeAjuste ?? null;
+    // O verso em espera manda a passada 2 do lote ja planejado: a confirmacao le o que foi
+    // enviado, nao a aba como ela esta agora.
+    const emEspera = face === "verso" && (espera?.length ?? 0) > 0;
+    const plano = emEspera ? planoDoVerso(aba, (espera ?? []).map((item) => item.cartao)) : null;
     resumoDoEnvio(
       aba.documento.caminho,
-      trecho,
+      // O plano pode trazer `null` de proposito: e o documento inteiro, nao um valor faltando.
+      plano === null ? trecho : plano.trecho,
       destinos.map((destino) => destino.id),
-      papel,
-      copiasDaFace(aba, face),
+      plano === null ? papel : plano.papel,
+      plano === null ? copiasDaFace(aba, face) : plano.copias,
     )
       .then((resumo) => {
-        const papelAjustado = textoDoPapelAjustado(aba.papelDeAjuste, resumo.escalas);
+        const papelAjustado = textoDoPapelAjustado(plano === null ? aba.papelDeAjuste : plano.papel, resumo.escalas);
         if (face === "verso") {
           const marcadas = lista.impressoras.filter((item) => aba.impressorasMarcadas.includes(item.id));
           setPedidoDeEnvio({
@@ -467,15 +532,19 @@ export function App() {
               destinos,
               marcadas.filter((item) => !destinos.includes(item) && item.modo === "automatico"),
               resumo,
-              leitura,
+              plano?.leitura ?? leitura,
               papelAjustado,
               mudouDesdeAFrente(aba.frenteEnviada, trecho, papel),
               idiomaAtual,
-              { frente: copiasDaFace(aba, "frente"), verso: copiasDaFace(aba, "verso") },
+              plano === null
+                ? { frente: copiasDaFace(aba, "frente"), verso: copiasDaFace(aba, "verso") }
+                : { frente: plano.copias, verso: plano.copias },
+              quemDeuErro(aba, destinos).length > 0,
             ),
             aba,
             destinos,
             face,
+            espera,
           });
           return;
         }
@@ -521,9 +590,26 @@ export function App() {
       ? []
       : lista.impressoras.filter((item) => abaAtiva.impressorasMarcadas.includes(item.id));
   const faceDaAbaAtiva = abaAtiva === null ? "frente" : faceDoEnvio(abaAtiva, marcadasDaAbaAtiva);
+  // Quem espera a face escolhida (proximo trecho, ou o maco) recebe o comando pelo mesmo botao.
+  const esperas = esperasDoRodape(abaAtiva, faceDaAbaAtiva, marcadasDaAbaAtiva);
 
   const aoImprimir = () => {
     if (abaAtiva === null || preparandoEnvio.current || !copiasValidas) return;
+    // O portao e uma decisao pura: verso em espera confirma, frente em espera comanda direto.
+    const acao = acaoDoEnvio(esperas);
+    if (acao.tipo === "confirmar") {
+      prepararEnvio(
+        abaAtiva,
+        acao.itens.map((item) => item.impressora),
+        "verso",
+        acao.itens,
+      );
+      return;
+    }
+    if (acao.tipo === "comandar") {
+      for (const item of acao.itens) comandar(item.cartao, item.comando);
+      return;
+    }
     const marcadas = lista.impressoras.filter((item) => abaAtiva.impressorasMarcadas.includes(item.id));
     const { destinos, desabilitado } = envioComFace(
       envioComIntervalo(estadoDoEnvio(abaAtiva, lista.impressoras, ocupadas), abaAtiva),
@@ -533,16 +619,6 @@ export function App() {
     );
     if (desabilitado) return;
     prepararEnvio(abaAtiva, destinos, faceDoEnvio(abaAtiva, marcadas));
-  };
-
-  /** O verso de uma impressora so, pelo cartao dela: o caminho e a confirmacao sao os mesmos do rodape. */
-  const aoPedirVerso = (cartao: Cartao) => {
-    const aba = estado.abas.find((candidata) => candidata.id === cartao.aba);
-    const impressora = lista.impressoras.find((item) => item.id === cartao.impressora);
-    if (aba === undefined || impressora === undefined || preparandoEnvio.current) return;
-    // O verso da tela so espera se o campo da face de verso mostra um numero que nao vale.
-    if (!copiasValidas && faceDaAbaAtiva === "verso") return;
-    prepararEnvio(aba, [impressora], "verso");
   };
 
   const aoAlternarImpressora = (impressora: string) => {
@@ -582,6 +658,8 @@ export function App() {
           setFalhaAoApagarHistorico(false);
           setHistorico("lista");
         }}
+        naoLidos={contarNaoLidos(avisos.itens)}
+        aoAbrirAvisos={() => setPainelAvisos(true)}
         idLateral={ID_LATERAL}
         idPainel={ID_AREA_DOCUMENTO}
       />
@@ -605,10 +683,6 @@ export function App() {
             aoCalibrar={setACalibrar}
             ocupadas={ocupadas}
             aoImprimir={aoImprimir}
-            aoComandar={aoComandarCartao}
-            aoPedirVerso={aoPedirVerso}
-            aoPedirCancelar={setCartaoACancelar}
-            aoDispensar={dispensar}
             documento={analiseDoDocumento}
             blocoAjuste={
               <BlocoAjuste
@@ -642,6 +716,7 @@ export function App() {
               ) : null
             }
             copiasValidas={copiasValidas}
+            esperasDoRodape={esperas}
             blocoFace={
               abaAtiva !== null &&
               faceDisponivel(
@@ -658,15 +733,22 @@ export function App() {
             }
           />
         )}
-        <DocumentArea
-          documento={abaAtiva?.documento ?? null}
-          idAbaAtiva={estado.ativa}
-          erro={erro}
-          recusa={abaAtiva?.paginas.estado === "recusado" ? abaAtiva.paginas.motivo : null}
-          arrastando={arrastando}
-          aoDispensarErro={() => setErro(null)}
-          aoAbrir={() => void abrirPeloSeletor()}
-        />
+        <div className={styles.areaDocumento}>
+          <AvisosDoTopo
+            itens={avisos.itens}
+            oculto={confirmando}
+            aoFechar={(id) => despacharAvisos({ tipo: "fechar", id })}
+          />
+          <DocumentArea
+            documento={abaAtiva?.documento ?? null}
+            idAbaAtiva={estado.ativa}
+            erro={erro}
+            recusa={abaAtiva?.paginas.estado === "recusado" ? abaAtiva.paginas.motivo : null}
+            arrastando={arrastando}
+            aoDispensarErro={() => setErro(null)}
+            aoAbrir={() => void abrirPeloSeletor()}
+          />
+        </div>
       </div>
       <CalibracaoDialog
         impressora={aCalibrar}
@@ -674,6 +756,20 @@ export function App() {
           setACalibrar(null);
           if (gravou) atualizarLista();
         }}
+      />
+      <PainelDeAvisos
+        aberto={
+          painelAvisos &&
+          confirmacao === null &&
+          cartaoACancelar === null &&
+          cartaoAReimprimir === null
+        }
+        itens={avisos.itens}
+        cartoesVivos={estado.abas.flatMap((aba) => aba.cartoes)}
+        aoFechar={() => setPainelAvisos(false)}
+        aoComandar={comandar}
+        aoPedirCancelar={setCartaoACancelar}
+        aoPedirReimprimir={(cartao) => aoComandarCartao(cartao, "reimprimir")}
       />
       <HistoricoDialog
         aberto={confirmacao === null && historico === "lista"}
@@ -716,7 +812,9 @@ export function App() {
         conteudo={confirmacao === null ? (pedidoDeEnvio?.conteudo ?? null) : null}
         aoCancelar={() => setPedidoDeEnvio(null)}
         aoConfirmar={() => {
-          if (pedidoDeEnvio !== null) {
+          if (pedidoDeEnvio?.espera !== undefined) {
+            for (const item of pedidoDeEnvio.espera) comandar(item.cartao, item.comando);
+          } else if (pedidoDeEnvio !== null) {
             iniciar(pedidoDeEnvio.aba, pedidoDeEnvio.destinos, pedidoDeEnvio.face);
           }
           setPedidoDeEnvio(null);
@@ -725,12 +823,21 @@ export function App() {
       <ConfirmDialog
         conteudo={
           confirmacao === null && cartaoACancelar !== null
-            ? conteudoDoCancelamento(nomeDoCartao(cartaoACancelar), cartaoACancelar.simulada)
+            ? aindaPodeCancelar(cartaoAtual(estado.abas, cartaoACancelar))
+              ? conteudoDoCancelamento(nomeDoCartao(cartaoACancelar), cartaoACancelar.simulada)
+              : conteudoDoCancelamentoJaTerminado(nomeDoCartao(cartaoACancelar))
             : null
         }
         aoCancelar={() => setCartaoACancelar(null)}
         aoConfirmar={() => {
-          if (cartaoACancelar !== null) comandar(cartaoACancelar, "cancelar");
+          if (cartaoACancelar !== null) {
+            const vivo = cartaoAtual(estado.abas, cartaoACancelar);
+            // O trabalho pode ter terminado com o dialogo aberto: ai nao ha o que pedir.
+            if (vivo !== null && aindaPodeCancelar(vivo)) {
+              despachar({ tipo: "cartao", cartao: { ...vivo, estado: { tipo: "cancelando" } } });
+              comandar(vivo, "cancelar");
+            }
+          }
           setCartaoACancelar(null);
         }}
       />

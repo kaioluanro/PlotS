@@ -111,23 +111,6 @@
   height: 4px;
 }
 
-.emAndamento {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 4px 4px 10px;
-}
-
-.tituloSecao {
-  margin: 0;
-  padding-left: 4px;
-  color: var(--fg-faint);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
 .ocultoVisual {
   position: absolute;
   width: 1px;
@@ -319,6 +302,11 @@
 .engrenagem:active,
 .voltarAoPadrao:active {
   transform: scale(0.97);
+}
+
+/* O mesmo botao de icone da engrenagem, ao lado dela. */
+.calibrar {
+  composes: engrenagem;
 }
 
 /* A janela do driver esta aberta. A nota abaixo da linha diz isso em palavras. */
@@ -1133,15 +1121,60 @@
     display: none;
   }
 
-  /* Os grupos saem em altura curta com ou sem cartao: a lista de impressoras precisa de espaco. */
-  .lateral [data-bloco-grupos],
-  .lateral[data-com-cartao] [data-opcoes-do-envio],
-  .lateral[data-com-cartao] .resumo {
+  /* Em altura curta, o secundario sai do rodape: grupos, papel de ajuste e folha de controle, e o resumo
+     de paginas e folhas. A lista de impressoras precisa de espaco; Frente/Verso, Quantidade, Paginas e o
+     botao de envio ficam. O botao "Mais opcoes" abre o que saiu, e os campos rolam acima do botao de
+     envio: nada fica inalcancavel. Com a janela mais alta, tudo volta e o botao some. */
+  .lateral:not([data-mais-opcoes]) .corpoMaisOpcoes {
     display: none;
+  }
+
+  .lateral .maisOpcoes {
+    display: inline-flex;
   }
 
   /* Toda marcada com cartao em andamento: o rodape nao resolve nada, e o cartao fica com o espaco. */
   .lateral[data-sem-destino] .rodape {
     display: none;
   }
+}
+
+/* O botao so existe em altura curta (veja a consulta de altura acima): fora dela o corpo e sempre visivel. */
+.maisOpcoes {
+  display: none;
+  flex-shrink: 0;
+  align-items: center;
+  align-self: flex-start;
+  gap: 4px;
+  min-height: 28px;
+  padding: 0 8px 0 4px;
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.maisOpcoes:hover {
+  color: var(--fg);
+}
+
+.maisOpcoes:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.setaMaisOpcoes {
+  transition: transform 120ms ease;
+}
+
+.maisOpcoes[aria-expanded="true"] .setaMaisOpcoes {
+  transform: rotate(180deg);
+}
+
+/* Sem a altura curta o corpo e transparente para o fluxo: os blocos seguem como filhos do rodape. */
+.corpoMaisOpcoes {
+  display: contents;
 }

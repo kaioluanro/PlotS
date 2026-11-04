@@ -59,7 +59,9 @@ fn com_calibracao_o_envio_segue_o_que_as_respostas_disseram() {
 fn ajustar_papel_planeja_documento_misto_em_um_formato() {
     let dimensoes = [A4, A5, A4, A5];
     let pedido = Pedido::novo("documento.pdf".into(), None);
-    assert!(planejar_pedido(&dimensoes, &pedido, PerfilImpressora::default(), false).is_err());
+    let sem_ajuste =
+        planejar_pedido(&dimensoes, &pedido, PerfilImpressora::default(), false).unwrap();
+    assert_eq!(sem_ajuste.len(), 4, "sem ajuste, um trecho por papel");
     let pedido = pedido.com_papel_de_ajuste(plots_core::ajuste::PapelDeAjuste::de_codigo("a4"));
     let lotes = planejar_pedido(&dimensoes, &pedido, PerfilImpressora::default(), false).unwrap();
     assert_eq!(lotes.len(), 1);
@@ -453,6 +455,24 @@ fn aviso_mostra_o_motivo_continuar_nao_toca_na_fila_e_cancelar_tira_de_la() {
 }
 
 #[test]
+fn cancelar_um_trabalho_na_fila_mostra_cancelando_antes_de_tirar_da_fila() {
+    let cena = Cena::nova();
+    let mut leituras = vec![Leitura::Aviso("a impressora está sem papel"); 5_000];
+    leituras.push(Leitura::Estado(EstadoEnvio::Concluido));
+    cena.iniciar("a", &leituras, &[A4; 2]);
+    cena.esperar("a", |estado| matches!(estado, EstadoCartao::Aviso { .. }));
+    cena.comandar("a", Comando::Cancelar);
+    cena.esperar("a", |estado| matches!(estado, EstadoCartao::Cancelado));
+    esperar_fim(&cena, "a");
+    let estados: Vec<EstadoCartao> = cena.cartoes_de("a").into_iter().map(|c| c.estado).collect();
+    let cancelando = estados
+        .iter()
+        .position(|estado| matches!(estado, EstadoCartao::Cancelando))
+        .expect("o cartão devia mostrar Cancelando");
+    assert!(matches!(estados[cancelando + 1], EstadoCartao::Cancelado));
+}
+
+#[test]
 fn aviso_que_se_resolve_sozinho_volta_a_imprimindo() {
     let cena = Cena::nova();
     let mut leituras = vec![Leitura::Aviso("a impressora não responde")];
@@ -564,6 +584,44 @@ fn a_mesma_impressora_nao_recebe_dois_trabalhos_e_volta_a_receber_depois_do_fim(
     cena.comandar("a", Comando::Cancelar);
     esperar_fim(&cena, "a");
     assert!(cena.iniciar_com("a", &[], &[A4; 2], false));
+}
+
+#[test]
+fn trabalho_em_erro_nao_segura_a_impressora_e_o_novo_substitui_o_antigo() {
+    let cena = Cena::nova();
+    assert!(cena.iniciar_com(
+        "a",
+        &[Leitura::Estado(EstadoEnvio::Falhou)],
+        &[A4; 2],
+        false
+    ));
+    cena.esperar("a", |estado| matches!(estado, EstadoCartao::Erro { .. }));
+    // O erro espera Reimprimir ou Cancelar, mas nao pode trancar o envio de um novo trabalho.
+    assert!(
+        cena.iniciar_com("a", &[], &[A4; 2], false),
+        "a impressora com trabalho em erro ficou ocupada"
+    );
+    cena.esperar("a", aguardando);
+    // O comando agora vai para o trabalho novo.
+    cena.comandar("a", Comando::Cancelar);
+    cena.esperar("a", |estado| matches!(estado, EstadoCartao::Cancelado));
+}
+
+#[test]
+fn preparo_recusado_nao_segura_a_impressora() {
+    let cena = Cena::nova();
+    assert!(cena
+        .gerente
+        .iniciar::<Falso, _>(identidade("a"), cena.emissor(), || Err(Motivo::novo(
+            "pdf",
+            "o PDF foi recusado"
+        )),));
+    cena.esperar("a", |estado| matches!(estado, EstadoCartao::Erro { .. }));
+    assert!(
+        cena.iniciar_com("a", &[], &[A4; 2], false),
+        "a impressora com o preparo recusado ficou ocupada"
+    );
+    cena.esperar("a", aguardando);
 }
 
 #[test]
@@ -1106,6 +1164,28 @@ fn resumo_do_envio_cita_a_orientacao_mista_com_o_numero_original() {
     assert!(resumo_do_envio(&pdf.caminho, trecho(5, 6))
         .unwrap()
         .pares_mistos
+        .is_empty());
+}
+
+#[test]
+fn resumo_do_envio_cita_o_par_de_tamanhos_diferentes_com_o_numero_original() {
+    let pdf = PdfDeTeste::novo(
+        "par-separado",
+        &[CAIXA_A4, CAIXA_A4, CAIXA_A4, CAIXA_A5, CAIXA_A5, CAIXA_A5],
+    );
+    assert_eq!(
+        resumo_do_envio(&pdf.caminho, None).unwrap().pares_separados,
+        [(3, 4)]
+    );
+    assert!(resumo_do_envio(&pdf.caminho, trecho(1, 2))
+        .unwrap()
+        .pares_separados
+        .is_empty());
+    // Ajustado ao papel, todas as páginas ficam do mesmo tamanho: nada se separa.
+    let papel = plots_core::ajuste::PapelDeAjuste::de_codigo("a4").unwrap();
+    assert!(resumo_do_envio_com_papel(&pdf.caminho, None, Some(papel))
+        .unwrap()
+        .pares_separados
         .is_empty());
 }
 
@@ -2098,7 +2178,6 @@ fn simulada_automatica_com_gesto_de_laser_nao_pede_virar_o_maco() {
     let pdf = PdfDeTeste::novo("automatica-sem-virar", &[CAIXA_A4; 4]);
     let pedido = Pedido::novo(pdf.caminho.clone(), None);
     let preparo = preparar_simulada_automatica(ModeloImpressora::Laser, &pedido)
-        .ok()
         .expect("a simulada automatica prepara");
     assert!(!preparo.vira_para_ler);
 }

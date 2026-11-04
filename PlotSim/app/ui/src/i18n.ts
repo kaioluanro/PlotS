@@ -51,6 +51,7 @@ const ptBR = {
   "centro.leitura.como_saiu": "Lido como saiu da bandeja.",
   "centro.leitura.virando_o_maco": "Lido virando o maço inteiro.",
   "centro.semInstrucao": "Sem instrução do PlotS: melhor forma de pegar.",
+  "centro.porFolha": "Conferência por folha: pelas marcas, parece um trecho, cópias ou mais de um lote.",
   "centro.canalFechado": "O canal com o PlotS não abriu. O gesto do modo de teste não chega aqui; marque-o à mão em Recolocar. Se houver outro PlotSim aberto, feche-o e abra este de novo.",
   "centro.conferidoPeloModelo": "Conferido pelo modelo do PlotSim; não substitui o teste em papel.",
   "centro.paginasSemFolha": "{n} páginas não acharam folha na entrada.",
@@ -88,6 +89,11 @@ const ptBR = {
   "rodape.resumo.um": "{certas} de 1 folha correta",
   "rodape.resumo.semMarca": "{certas} de {total} folhas corretas, {semMarca} sem marca",
   "rodape.resumo.um.semMarca": "{certas} de 1 folha correta, {semMarca} sem marca",
+  "rodape.porFolha": "{certas} de {total} folhas certas uma a uma; o maço inteiro não foi conferido",
+  "rodape.porFolha.um": "{certas} de 1 folha certa; o maço inteiro não foi conferido",
+  "rodape.porFolha.semMarca":
+    "{certas} de {total} folhas certas uma a uma, {semMarca} sem marca; o maço inteiro não foi conferido",
+  "rodape.porFolha.um.semMarca": "{certas} de 1 folha certa, {semMarca} sem marca; o maço inteiro não foi conferido",
   "rodape.vazia": "Nada na bandeja",
   "rodape.andamento": "{n} folhas, aguardando verso",
   "rodape.andamento.um": "1 folha, aguardando verso",
@@ -134,7 +140,7 @@ const ptBR = {
   "historico.apagando": "Apagando…",
 
   "gesto.titulo": "Recolocar a pilha",
-  "gesto.texto": "Leia o cartão no PlotS e marque aqui o que ele manda fazer. O PlotSim cumpre ao pé da letra.",
+  "gesto.texto": "Siga o que o PlotS pede na confirmação do verso.",
   "gesto.entrada": "Por onde a pilha entra",
   "gesto.entrada.traseira": "Traseira",
   "gesto.entrada.gaveta": "Gaveta",
@@ -195,6 +201,7 @@ const ptBR = {
   "erro.biblioteca_pdf": "A biblioteca de PDF não foi encontrada.",
   "erro.pdf_ilegivel": "O PDF recebido não abre.",
   "erro.interno": "Algo falhou aqui dentro. Tente de novo.",
+  "aviso.verso_sem_frente": "Chegou um verso, mas esta impressora não tem as frentes dele. Ele não entrou na pilha.",
 } as const;
 
 export type Chave = keyof typeof ptBR;
@@ -250,6 +257,7 @@ const en: Record<Chave, string> = {
   "centro.leitura.como_saiu": "Read as it left the tray.",
   "centro.leitura.virando_o_maco": "Read with the whole stack flipped.",
   "centro.semInstrucao": "No instruction from PlotS: best way to hold the stack.",
+  "centro.porFolha": "Sheet-by-sheet check: from the marks, this looks like a page range, copies or more than one batch.",
   "centro.canalFechado": "The channel to PlotS did not open. The test-mode gesture will not arrive here; mark it by hand in Reload. If another PlotSim is open, close it and open this one again.",
   "centro.conferidoPeloModelo": "Checked by the PlotSim model; it does not replace the paper test.",
   "centro.paginasSemFolha": "{n} pages found no sheet in the input.",
@@ -287,6 +295,11 @@ const en: Record<Chave, string> = {
   "rodape.resumo.um": "{certas} of 1 sheet correct",
   "rodape.resumo.semMarca": "{certas} of {total} sheets correct, {semMarca} with no mark",
   "rodape.resumo.um.semMarca": "{certas} of 1 sheet correct, {semMarca} no mark",
+  "rodape.porFolha": "{certas} of {total} sheets correct one by one; the whole stack was not checked",
+  "rodape.porFolha.um": "{certas} of 1 sheet correct; the whole stack was not checked",
+  "rodape.porFolha.semMarca":
+    "{certas} of {total} sheets correct one by one, {semMarca} with no mark; the whole stack was not checked",
+  "rodape.porFolha.um.semMarca": "{certas} of 1 sheet correct, {semMarca} no mark; the whole stack was not checked",
   "rodape.vazia": "Nothing in the tray",
   "rodape.andamento": "{n} sheets, waiting for back side",
   "rodape.andamento.um": "1 sheet, waiting for back side",
@@ -333,7 +346,7 @@ const en: Record<Chave, string> = {
   "historico.apagando": "Deleting…",
 
   "gesto.titulo": "Reload the stack",
-  "gesto.texto": "Read the card in PlotS and mark here what it tells you to do. PlotSim follows it to the letter.",
+  "gesto.texto": "Follow what PlotS asks in the back confirmation.",
   "gesto.entrada": "Where the stack goes in",
   "gesto.entrada.traseira": "Rear",
   "gesto.entrada.gaveta": "Tray",
@@ -394,6 +407,7 @@ const en: Record<Chave, string> = {
   "erro.biblioteca_pdf": "The PDF library was not found.",
   "erro.pdf_ilegivel": "The received PDF does not open.",
   "erro.interno": "Something failed in here. Try again.",
+  "aviso.verso_sem_frente": "A back arrived, but this printer does not have its fronts. It did not enter the stack.",
 };
 
 export const traducoes: Record<Idioma, Record<Chave, string>> = { "pt-BR": ptBR, en };

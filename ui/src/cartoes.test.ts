@@ -3,6 +3,8 @@ import dialogoFonte from "./components/ConfirmDialog.tsx?raw";
 import cartaoFonte from "./components/CartaoImpressao.tsx?raw";
 import {
   acoesDoCartao,
+  aindaPodeCancelar,
+  cartaoAtual,
   cartaoEmAndamento,
   cartaoInterrompido,
   cartaoRecusado,
@@ -168,7 +170,7 @@ describe("botao de enviar a frente", () => {
     const a = fila("A");
     const botao = estadoDoEnvio(abaPronta([a]), [a], new Set([a.id]), "pt-BR");
     expect(botao.desabilitado).toBe(true);
-    expect(botao.motivo).toBe("Em andamento nos cartões acima.");
+    expect(botao.motivo).toBe("Em andamento. Veja os avisos.");
   });
 
   it("fila marcada que saiu da lista nao conta", () => {
@@ -223,6 +225,16 @@ describe("confirmacao do envio", () => {
     expect(notas.join(" ")).toContain("2 ou 3 folhas");
     expect(notas.join(" ")).toContain("simuladas");
     expect(notas.join(" ")).toContain("mais de um papel");
+  });
+
+  it("o par de tamanhos diferentes avisa que cada pagina sai na sua folha, nos dois idiomas", () => {
+    const separado = { ...resumo, paresMistos: [], paresSeparados: [[3, 4]] as [number, number][] };
+    expect(linhasDoEnvio([fila("Sala")], separado, "pt-BR").notas).toContain(
+      "As páginas 3 e 4 têm tamanhos diferentes: cada uma sai na sua folha, com o verso em branco.",
+    );
+    expect(linhasDoEnvio([fila("Sala")], separado, "en").notas).toContain(
+      "Pages 3 and 4 have different sizes: each comes out on its own sheet, with a blank back.",
+    );
   });
 
   it("em ingles, com um so trecho e sem simulada, nao cita lote", () => {
@@ -504,8 +516,41 @@ describe("acoes do cartao", () => {
       reimprimir: false,
       continuar: false,
       cancelar: false,
+      cancelando: false,
       dispensar: true,
     });
+  });
+
+  it("so ha o que cancelar enquanto o trabalho segue na fila e o pedido nao foi feito", () => {
+    expect(aindaPodeCancelar(cartao({ tipo: "imprimindo", passada: "frente" }))).toBe(true);
+    expect(aindaPodeCancelar(cartao({ tipo: "proximo_lote" }))).toBe(true);
+    for (const estado of [
+      { tipo: "frentes_prontas" },
+      { tipo: "concluido" },
+      { tipo: "cancelado" },
+      { tipo: "cancelando" },
+    ] as const) {
+      expect(aindaPodeCancelar(cartao(estado)), estado.tipo).toBe(false);
+    }
+    expect(aindaPodeCancelar(null)).toBe(false);
+  });
+
+  it("o cartao atual vem da aba e da impressora, nao de uma copia velha", () => {
+    const velho = cartao({ tipo: "imprimindo", passada: "frente" });
+    const novo = cartao({ tipo: "frentes_prontas" });
+    const aba = { id: 1, cartoes: [novo] } as unknown as Aba;
+    expect(cartaoAtual([aba], velho)).toBe(novo);
+    expect(aindaPodeCancelar(cartaoAtual([aba], velho))).toBe(false);
+    expect(cartaoAtual([], velho)).toBeNull();
+  });
+
+  it("cancelando mantem o botao a vista e desabilitado, com o estado em palavras", () => {
+    const acoes = acoesDoCartao(cartao({ tipo: "cancelando" }));
+    expect(acoes.cancelar).toBe(true);
+    expect(acoes.cancelando).toBe(true);
+    expect(textoDoEstadoDoCartao(cartao({ tipo: "cancelando" }), "pt-BR")).toBe("Cancelando…");
+    expect(textoDoEstadoDoCartao(cartao({ tipo: "cancelando" }), "en")).toBe("Canceling…");
+    expect(cartaoEmAndamento(cartao({ tipo: "cancelando" }))).toBe(true);
   });
 
   it("com impressora simulada os botoes falam em simular", () => {
@@ -619,6 +664,46 @@ function duasAbas(): { estado: EstadoAbas; a: number; b: number } {
   return { estado, a: a.id, b: b.id };
 }
 
+describe("trabalho em erro, cancelado ou concluido nao tranca o rodape", () => {
+  it("fila removida no envio deixa a impressora livre e o botao de imprimir ativo", () => {
+    const A = fila("A");
+    const erro = cartao({ tipo: "erro", motivo: { codigo: "fila_removida", texto: "" } });
+    const aba = { ...abaPronta([A]), cartoes: [erro] };
+    expect(impressorasOcupadas([aba]).size).toBe(0);
+    const botao = estadoDoEnvio(aba, [A], impressorasOcupadas([aba]), "pt-BR");
+    expect(botao.desabilitado).toBe(false);
+    // Cancelar e Reimprimir seguem no cartao.
+    expect(acoesDoCartao(erro).cancelar).toBe(true);
+  });
+
+  it("os outros erros, o cancelado e o concluido tambem soltam a impressora", () => {
+    for (const estado of [
+      { tipo: "erro", motivo: { codigo: "fila", texto: "o trabalho deu erro" } },
+      { tipo: "erro", motivo: { codigo: "nao_cancelou", texto: "" } },
+      { tipo: "cancelado" },
+      { tipo: "concluido" },
+    ] satisfies EstadoCartao[]) {
+      expect(impressorasOcupadas([abaCom([cartao(estado)])]).size, estado.tipo).toBe(0);
+    }
+  });
+});
+
+describe("trabalho descartado pelo Windows", () => {
+  it("o motivo diz que o registro indica falha, nos dois idiomas, e o cartao oferece reimprimir", () => {
+    const motivo = {
+      codigo: "fila",
+      texto: "o registro do Windows indica que a impressão falhou nesta fila. Confira o que saiu antes de reimprimir",
+    };
+    expect(textoDoMotivo(motivo, "pt-BR")).toBe(
+      "O registro do Windows indica que a impressão falhou nesta fila. Confira o que saiu antes de reimprimir.",
+    );
+    expect(textoDoMotivo(motivo, "en")).toBe(
+      "The Windows log indicates that printing failed on this queue. Check what came out before reprinting.",
+    );
+    expect(acoesDoCartao(cartao({ tipo: "erro", motivo })).reimprimir).toBe(true);
+  });
+});
+
 describe("cartao de thread morta nao ocupa a impressora", () => {
   it("perder o contato libera a impressora e o cartao pode ser dispensado", () => {
     const perdido = cartaoInterrompido(cartao({ tipo: "aguardando" }));
@@ -668,10 +753,10 @@ describe("rotulo e contagem pelos destinos", () => {
     const a = fila("A");
     const ocupadas = new Set([a.id]);
     expect(estadoDoEnvio(abaPronta([a]), [a], ocupadas, "pt-BR").motivo).toBe(
-      "Em andamento nos cartões acima.",
+      "Em andamento. Veja os avisos.",
     );
     expect(estadoDoEnvio(abaPronta([a]), [a], ocupadas, "en").motivo).toBe(
-      "In progress in the cards above.",
+      "In progress. See the notices.",
     );
   });
 });
@@ -760,7 +845,7 @@ describe("frases do cartao nos novos textos", () => {
     expect(frasesDoCartao(sem, "pt-BR")).toEqual([
       "As frentes deste trecho terminaram ou saíram da fila.",
       "Retire as folhas do trecho anterior e coloque papel em branco.",
-      "Depois, clique em Imprimir frente.",
+      "Depois, clique em Continuar frentes.",
     ]);
     const en = frasesDoCartao(sem, "en").join(" ");
     expect(en).toContain("section");

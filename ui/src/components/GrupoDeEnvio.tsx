@@ -32,6 +32,7 @@ export function GrupoDeEnvio({
 }: Props) {
   const idMotivo = useId();
   const erroDeCopias = !copiasValidas;
+  const inerte = botao.desabilitado || erroDeCopias;
   const mensagem = erroDeCopias ? t("copias.invalida") : botao.motivo;
   const idDaMensagem = erroDeCopias ? ID_ERRO_DA_QUANTIDADE : idMotivo;
   return (
@@ -43,11 +44,15 @@ export function GrupoDeEnvio({
         type="button"
         onFocus={aoFocarEnvio}
         className={`${botoes.botao} ${botoes.primario} ${styles.imprimir}`}
-        disabled={botao.desabilitado || erroDeCopias}
+        // `aria-disabled` e nao `disabled`: o botao desabilitado nao recebe foco, e quem confirmou o envio
+        // pelo teclado precisa voltar a ele em vez de cair na pagina.
+        aria-disabled={inerte || undefined}
         title={mensagem ?? undefined}
         aria-label={botao.rotuloAcessivel}
         aria-describedby={mensagem === null ? undefined : idDaMensagem}
-        onClick={aoImprimir}
+        onClick={() => {
+          if (!inerte) aoImprimir();
+        }}
       >
         {botao.rotulo}
       </button>

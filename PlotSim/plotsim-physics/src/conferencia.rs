@@ -82,6 +82,13 @@ pub enum Motivo {
     ImpressaoSobreImpressao {
         folha: u32,
     },
+    /// Só na conferência folha a folha, de um trabalho que não é um documento inteiro: o verso
+    /// não é a página que vem depois da frente.
+    VersoForaDoPar {
+        folha: u32,
+        frente: u32,
+        verso: u32,
+    },
 }
 
 /// Idiomas da interface.
@@ -131,6 +138,13 @@ impl Motivo {
             Motivo::ImpressaoSobreImpressao { folha } => {
                 format!("impressão sobre impressão na folha {folha}")
             }
+            Motivo::VersoForaDoPar {
+                folha,
+                frente,
+                verso,
+            } => format!(
+                "o verso da folha {folha} é a página {verso}, e não a que segue a página {frente}"
+            ),
         }
     }
 
@@ -165,6 +179,13 @@ impl Motivo {
             Motivo::ImpressaoSobreImpressao { folha } => {
                 format!("printed over a printed side on sheet {folha}")
             }
+            Motivo::VersoForaDoPar {
+                folha,
+                frente,
+                verso,
+            } => format!(
+                "the back of sheet {folha} is page {verso}, not the one after page {frente}"
+            ),
         }
     }
 }
@@ -260,6 +281,46 @@ pub fn conferir(maco: &MacoLido, total_paginas: u32) -> Vec<Motivo> {
     for (posicao, folha) in maco.folhas.iter().enumerate() {
         let numero = u32_saturado(posicao).saturating_add(1);
         conferir_folha(numero, folha, total_paginas, &onde_esta, &mut motivos);
+    }
+    motivos
+}
+
+/// Confere cada folha por si, para um trabalho que não é um documento inteiro a partir da página 1
+/// (um trecho, cópias, vários papéis): sem número de folha esperado e sem acusar a ordem do maço.
+/// Vale a mesma física da conferência do maço: orientação, verso de cabeça para baixo, página
+/// deitada, impressão sobre impressão. Só o par é conferido: o verso segue a frente na página.
+pub fn conferir_por_folha(maco: &MacoLido) -> Vec<Motivo> {
+    let mut motivos = Vec::new();
+    for (posicao, folha) in maco.folhas.iter().enumerate() {
+        let numero = u32_saturado(posicao).saturating_add(1);
+        if folha.frente.len() > 1 || folha.verso.len() > 1 {
+            motivos.push(Motivo::ImpressaoSobreImpressao { folha: numero });
+        }
+        if let (Some(frente), Some(verso)) = (folha.frente.first(), folha.verso.first()) {
+            if *verso == frente.saturating_add(1) {
+                // Par certo.
+            } else if *frente == verso.saturating_add(1) {
+                motivos.push(Motivo::FolhaAoContrario { folha: numero });
+            } else {
+                motivos.push(Motivo::VersoForaDoPar {
+                    folha: numero,
+                    frente: *frente,
+                    verso: *verso,
+                });
+            }
+        }
+        if folha.topos_na_mesma_aresta == Some(false) && !folha.verso.is_empty() {
+            motivos.push(Motivo::VersoDeCabecaParaBaixo { folha: numero });
+        }
+        if folha.alinhada_com_a_primeira == Some(false) {
+            motivos.push(Motivo::FolhaDeCabecaParaBaixo { folha: numero });
+        }
+        if let Some(pagina) = folha.pagina_deitada {
+            motivos.push(Motivo::PaginaGirada {
+                folha: numero,
+                pagina,
+            });
+        }
     }
     motivos
 }

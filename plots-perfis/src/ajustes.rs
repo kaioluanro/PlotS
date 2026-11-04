@@ -126,13 +126,12 @@ fn valor_do_sinal(letra: u8) -> Option<u32> {
 pub(crate) fn decodificar_base64(texto: &str) -> Option<Vec<u8>> {
     let sinais = texto.as_bytes();
     let teto = LIMITE_AJUSTE_BYTES.div_ceil(3).saturating_mul(4);
-    if sinais.is_empty() || sinais.len() % 4 != 0 || sinais.len() > teto {
+    if sinais.is_empty() || !sinais.len().is_multiple_of(4) || sinais.len() > teto {
         return None;
     }
     let mut bytes = Vec::with_capacity(sinais.len() / 4 * 3);
     let ultimo = sinais.len() / 4 - 1;
-    for (indice, quarteto) in sinais.chunks_exact(4).enumerate() {
-        let [a, b, c, d] = <[u8; 4]>::try_from(quarteto).ok()?;
+    for (indice, &[a, b, c, d]) in sinais.as_chunks::<4>().0.iter().enumerate() {
         let complemento = u8::try_from(COMPLEMENTO).ok()?;
         let (a, b) = (valor_do_sinal(a)?, valor_do_sinal(b)?);
         match (c == complemento, d == complemento) {

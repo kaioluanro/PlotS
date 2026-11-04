@@ -74,7 +74,6 @@ function lateral(impressoras: readonly Impressora[]): string {
           duasFaces: false,
           janelaAberta: false,
           avisoDoAjuste: null,
-          comCartaoNaTela: false,
           aoAbrirPreferencias: sem,
           aoPedirVolta: sem,
           aoDispensarAviso: sem,

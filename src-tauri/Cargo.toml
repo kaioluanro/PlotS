@@ -4,6 +4,11 @@ version = "1.0.0-alpha.2"
 edition = "2021"
 license = "MIT"
 
+[features]
+# Liga as impressoras simuladas na lista. A compilacao do instalador desliga esta opcao.
+default = ["simuladas"]
+simuladas = []
+
 [build-dependencies]
 tauri-build = { version = "=2.7.4", features = [] }
 

@@ -131,3 +131,20 @@ describe("documento mudou depois das frentes", () => {
     );
   });
 });
+
+describe("campo Quantidade", () => {
+  const html = renderToStaticMarkup(
+    <CampoCopias face="frente" valor={1} aoDefinir={() => undefined} aoMudarValidade={() => undefined} />,
+  );
+
+  it("nao limita os caracteres: digitar 12abc nao pode virar 12ab", () => {
+    expect(html).not.toMatch(/maxlength/i);
+  });
+
+  it("tem rotulo acessivel ligado ao campo", () => {
+    const id = /<input\s(?:[^>]*\s)?id="([^"]+)"/.exec(html)?.[1];
+    expect(id).toBeDefined();
+    expect(html).toContain(`for="${id}"`);
+    expect(html).toMatch(/<label[^>]*>(Quantidade|Quantity)<\/label>/);
+  });
+});

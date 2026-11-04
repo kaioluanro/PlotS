@@ -45,6 +45,7 @@ fn registro(arquivo: &str, data: u64) -> RegistroDeEnvio {
             resultado: ResultadoDoEnvio::Cancelado,
             automatico: false,
         }],
+        face: None,
     }
 }
 
@@ -420,4 +421,32 @@ fn registro_antigo_sem_a_rota_conta_como_manual() {
     let lidos = carregar_historico(&pasta.arquivo()).unwrap().registros();
     assert_eq!(velocidade_da_impressora(&lidos, "a", false), Some(10.0));
     assert_eq!(velocidade_da_impressora(&lidos, "a", true), None);
+}
+
+#[test]
+fn a_face_do_pedido_vai_e_volta_pelo_arquivo() {
+    let pasta = Pasta::nova();
+    let destino = pasta.0.join("historico.toml");
+    let mut verso = registro("contrato.pdf", 1_700_000_000);
+    verso.face = Some(FaceDoRegistro::Verso);
+    let mut frente = registro("contrato.pdf", 1_700_000_001);
+    frente.face = Some(FaceDoRegistro::Frente);
+    acrescentar_ao_historico(&destino, verso.clone()).unwrap();
+    acrescentar_ao_historico(&destino, frente.clone()).unwrap();
+    let lido = carregar_historico(&destino).unwrap().registros();
+    assert_eq!(lido, [verso, frente]);
+}
+
+#[test]
+fn registro_sem_face_nao_grava_o_campo_e_continua_sem_face() {
+    let pasta = Pasta::nova();
+    let destino = pasta.0.join("historico.toml");
+    acrescentar_ao_historico(&destino, registro("antigo.pdf", 1)).unwrap();
+    let texto = std::fs::read_to_string(&destino).unwrap();
+    assert!(
+        !texto.contains("face"),
+        "o campo so aparece quando existe: {texto}"
+    );
+    let lido = carregar_historico(&destino).unwrap().registros();
+    assert_eq!(lido[0].face, None);
 }

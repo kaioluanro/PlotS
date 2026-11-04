@@ -4,7 +4,9 @@
 
 use crate::impressoras::GRAVACAO_DE_PERFIS;
 use crate::trabalhos::{ComparacaoDoResumo, Desfecho, FimDoTrabalho, Gerente};
-use plots_perfis::historico::{self, RegistroDeEnvio, ResultadoDoEnvio, TempoDaImpressora};
+use plots_perfis::historico::{
+    self, FaceDoRegistro, RegistroDeEnvio, ResultadoDoEnvio, TempoDaImpressora,
+};
 use plots_perfis::ErroPerfis;
 use serde::Serialize;
 use std::collections::BTreeSet;
@@ -148,6 +150,8 @@ pub struct CabecalhoDoEnvio {
     pub intervalo: Option<(usize, usize)>,
     pub divisao: bool,
     pub lotes_confirmados: usize,
+    /// O que o pedido mandou; nulo quando o envio não vem de um pedido de frente ou de verso.
+    pub face: Option<FaceDoRegistro>,
 }
 
 struct Parte {
@@ -325,6 +329,7 @@ fn compor_registro(
         resultado: resultado_do_envio(estado),
         lotes_faltando: faltando,
         tempos: tempos_das_partes(&estado.partes),
+        face: cabecalho.face,
     }
 }
 

@@ -14,8 +14,10 @@ mod papel;
 mod passada;
 mod preferencias;
 mod raster;
+mod registro;
 mod texto;
 mod trabalho;
+mod vez;
 
 #[cfg(windows)]
 mod backend;

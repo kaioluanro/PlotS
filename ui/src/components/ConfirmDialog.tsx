@@ -97,6 +97,7 @@ export function ConfirmDialog({ conteudo, aoCancelar, aoConfirmar }: Props) {
                 <Dialog.Close className={`${botoes.botao} ${botoes.secundario}`}>
                   {t(visivel.manter)}
                 </Dialog.Close>
+                {visivel.semConfirmar !== true && (
                 <button
                   type="button"
                   className={`${botoes.botao} ${visivel.confirmaAvancando ? botoes.primario : botoes.perigo}`}
@@ -107,6 +108,7 @@ export function ConfirmDialog({ conteudo, aoCancelar, aoConfirmar }: Props) {
                 >
                   {t(visivel.fechar)}
                 </button>
+                )}
               </div>
             </>
           )}

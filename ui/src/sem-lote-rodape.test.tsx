@@ -243,7 +243,9 @@ describe("janela minima: rodape em altura curta", () => {
       readFileSync(caminho: URL, codificacao: "utf8"): string;
     };
     const folha = fs.readFileSync(new URL("./components/Sidebar.module.css", import.meta.url), "utf8");
-    expect(folha).toMatch(/\.lateral \[data-bloco-grupos\],\s*\n\s*\.lateral\[data-com-cartao\] \[data-opcoes-do-envio\]/);
+    // O secundario (grupos, ajuste, folha de controle, resumo) sai, mas atras do botao Mais opcoes.
+    expect(folha).toMatch(/\.lateral:not\(\[data-mais-opcoes\]\) \.corpoMaisOpcoes\s*\{\s*display: none;/);
+    expect(folha).toMatch(/\.lateral \.maisOpcoes\s*\{\s*display: inline-flex;/);
   });
 });
 

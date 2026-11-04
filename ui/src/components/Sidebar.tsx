@@ -5,18 +5,13 @@ import {
   Info,
   LoaderCircle,
   RefreshCw,
+  Ruler,
   Settings,
   SlidersHorizontal,
   X,
 } from "lucide-react";
 import { Fragment, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
-import {
-  estadoDoEnvio,
-  rodapeCedeAoCartao,
-  tituloDaSecao,
-  type Cartao,
-  type Comando,
-} from "../cartoes";
+import { estadoDoEnvio, rodapeCedeAoCartao } from "../cartoes";
 import { envioComFace, faceDoEnvio } from "../face-do-envio";
 import { idiomaAtual, t } from "../i18n";
 import {
@@ -61,9 +56,9 @@ import { usePreferencias } from "../preferencias-estado";
 import { copiasDaFace, type Aba } from "../tabs";
 import type { AnaliseDoDocumento } from "../analise-documento";
 import { mostraOpcaoDoDriver } from "../opcoes-envio";
+import { envioComEspera, type EsperasDoRodape } from "../rodape-espera";
 import { OpcaoInversao } from "./BlocoAjuste";
 import { BlocoIntervalo } from "./BlocoIntervalo";
-import { CartaoImpressao } from "./CartaoImpressao";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { GrupoDeEnvio } from "./GrupoDeEnvio";
 import { LinhaRolagemAdiada } from "./LinhaRolagemAdiada";
@@ -91,16 +86,14 @@ interface Props {
   /** Impressoras com trabalho em andamento em qualquer aba. */
   ocupadas: ReadonlySet<string>;
   aoImprimir: () => void;
-  aoComandar: (cartao: Cartao, comando: Comando) => void;
-  aoPedirVerso: (cartao: Cartao) => void;
-  aoPedirCancelar: (cartao: Cartao) => void;
-  aoDispensar: (cartao: Cartao) => void;
   blocoGrupos: ReactNode;
   blocoAjuste: ReactNode;
   blocoFace: ReactNode;
   campoCopias: ReactNode;
   /** Falso enquanto a quantidade digitada nao e um numero de 1 a 999: o envio fica parado. */
   copiasValidas?: boolean;
+  /** Trabalhos que esperam a frente do proximo trecho ou o verso: o rodape os alcanca. */
+  esperasDoRodape: EsperasDoRodape;
 }
 
 export function Sidebar({
@@ -119,35 +112,36 @@ export function Sidebar({
   aoCalibrar,
   ocupadas,
   aoImprimir,
-  aoComandar,
-  aoPedirVerso,
-  aoPedirCancelar,
-  aoDispensar,
   blocoGrupos,
   blocoAjuste,
   blocoFace,
   campoCopias,
   copiasValidas = true,
+  esperasDoRodape,
 }: Props) {
   const idExplicacao = useId();
+  const idMaisOpcoes = useId();
+  // Em janela curta o secundario sai do rodape: este botao o abre, e nada fica inalcancavel.
+  const [maisOpcoes, setMaisOpcoes] = useState(false);
   const marcadas = aba?.impressorasMarcadas ?? [];
   // O resumo do rodape conta as copias da face que o envio vai usar.
   const faceDaAbaNaLista =
     aba === null ? "frente" : faceDoEnvio(aba, impressoras.filter((item) => marcadas.includes(item.id)));
   const copiasDoResumo = aba === null ? 1 : copiasDaFace(aba, faceDaAbaNaLista);
-  // Com o campo de Verso invalido, o envio de versos de cada cartao espera a correcao, como o rodape.
-  const motivoDoVersoNoCartao = !copiasValidas && faceDaAbaNaLista === "verso" ? t("copias.invalida") : null;
   const espera = useEsperaDoErro(aba);
-  const botao = envioComFace(
-    envioComIntervalo(estadoDoEnvio(aba, impressoras, ocupadas), aba, espera.estado),
-    aba,
-    impressoras,
-    documento,
+  // Quem espera o proximo trecho ou o maco mantem o botao vivo, mesmo com a impressora ocupada.
+  const botao = envioComEspera(
+    envioComFace(
+      envioComIntervalo(estadoDoEnvio(aba, impressoras, ocupadas), aba, espera.estado),
+      aba,
+      impressoras,
+      documento,
+    ),
+    esperasDoRodape,
   );
   const lateralRef = useRef<HTMLElement>(null);
   const botaoEnvio = useRef<HTMLButtonElement>(null);
   const focoNoEnvio = useFocoQuandoOEnvioSai(lateralRef, botaoEnvio, botao.desabilitado);
-  const cartoes = aba?.cartoes ?? [];
   const idNotaDoModelo = useId();
   const preferencias = usePreferencias(lendo, impressoras);
   const botaoAtualizar = useRef<HTMLButtonElement>(null);
@@ -164,10 +158,11 @@ export function Sidebar({
       id={ID_LATERAL}
       className={styles.lateral}
       aria-labelledby="titulo-lateral"
-      // Com um cartao na tela, a altura curta esconde o resumo (ver o CSS).
-      data-com-cartao={cartoes.length > 0 ? "" : undefined}
       // Sem nada que o rodape possa resolver agora, a altura curta o esconde.
-      data-sem-destino={rodapeCedeAoCartao(aba, impressoras, ocupadas) ? "" : undefined}
+      data-mais-opcoes={maisOpcoes ? "" : undefined}
+      data-sem-destino={
+        esperasDoRodape.itens.length === 0 && rodapeCedeAoCartao(aba, impressoras, ocupadas) ? "" : undefined
+      }
     >
       <div className={styles.cabecalho}>
         <h2 id="titulo-lateral" className={styles.titulo}>
@@ -242,24 +237,6 @@ export function Sidebar({
         {!lendo && impressoras.length === 0 && avisos.length === 0 && (
           <p className={styles.vazia}>{t("lateral.vazia")}</p>
         )}
-        {cartoes.length > 0 && (
-          <section className={styles.emAndamento} aria-labelledby="titulo-em-andamento">
-            <h3 id="titulo-em-andamento" className={styles.tituloSecao}>
-              {t(tituloDaSecao(cartoes))}
-            </h3>
-            {cartoes.map((cartao) => (
-              <CartaoImpressao
-                key={cartao.impressora}
-                cartao={cartao}
-                aoComandar={aoComandar}
-                aoPedirVerso={aoPedirVerso}
-                aoPedirCancelar={aoPedirCancelar}
-                aoDispensar={aoDispensar}
-                motivoDoVerso={motivoDoVersoNoCartao}
-              />
-            ))}
-          </section>
-        )}
         <ul className={styles.lista}>
           {impressoras.map((impressora) => (
             <LinhaImpressora
@@ -283,7 +260,6 @@ export function Sidebar({
               avisoDoAjuste={
                 temPreferencias(impressora) ? (preferencias.avisos.get(impressora.nome) ?? null) : null
               }
-              comCartaoNaTela={cartoes.some((cartao) => cartao.impressora === impressora.id)}
               aoAbrirPreferencias={preferencias.abrir}
               aoPedirVolta={setPedidoDeVolta}
               aoDispensarAviso={preferencias.dispensarAviso}
@@ -308,9 +284,22 @@ export function Sidebar({
             espera={espera}
             aoDefinir={aoDefinirIntervalo}
           />
-          <ResumoDoDocumento aba={aba} copias={copiasDoResumo} />
-          {blocoGrupos}
-          {blocoAjuste}
+          <button
+            type="button"
+            className={styles.maisOpcoes}
+            data-mais-opcoes-botao=""
+            aria-expanded={maisOpcoes}
+            aria-controls={idMaisOpcoes}
+            onClick={() => setMaisOpcoes((aberto) => !aberto)}
+          >
+            <ChevronDown size={12} className={styles.setaMaisOpcoes} aria-hidden="true" />
+            {t(maisOpcoes ? "lateral.menosOpcoes" : "lateral.maisOpcoes")}
+          </button>
+          <div id={idMaisOpcoes} className={styles.corpoMaisOpcoes} data-mais-opcoes-corpo="">
+            <ResumoDoDocumento aba={aba} copias={copiasDoResumo} folhas={documento?.folhas} />
+            {blocoGrupos}
+            {blocoAjuste}
+          </div>
         </div>
         <GrupoDeEnvio
           blocoFace={blocoFace}
@@ -389,7 +378,6 @@ interface PropsLinha {
   duasFaces: boolean;
   janelaAberta: boolean;
   avisoDoAjuste: CodigoAvisoDoAjuste | null;
-  comCartaoNaTela: boolean;
   aoAbrirPreferencias: (fila: string) => void;
   aoPedirVolta: (pedido: PedidoDeVolta) => void;
   aoDispensarAviso: (fila: string) => void;
@@ -476,7 +464,6 @@ export function LinhaImpressora({
   duasFaces,
   janelaAberta,
   avisoDoAjuste,
-  comCartaoNaTela,
   aoAbrirPreferencias,
   aoPedirVolta,
   aoDispensarAviso,
@@ -531,11 +518,10 @@ export function LinhaImpressora({
   useEffect(() => {
     if (falha !== null) linha.current?.scrollIntoView({ block: "nearest" });
   }, [falha]);
-  // Com o cartao da mesma impressora na tela, ele ja conta o que houve: a lista fica onde esta.
-  const avisoQueRola = avisoDoAjuste !== null && !comCartaoNaTela;
+  // O aviso do ajuste fica na propria linha: a lista desce ate ele para quem so le a lista.
   useEffect(() => {
-    if (avisoQueRola) linha.current?.scrollIntoView({ block: "nearest" });
-  }, [avisoQueRola, avisoDoAjuste]);
+    if (avisoDoAjuste !== null) linha.current?.scrollIntoView({ block: "nearest" });
+  }, [avisoDoAjuste]);
 
   const real = temPreferencias(impressora);
   // Fila real tem uma anatomia so: o modo fica sempre na segunda fileira, na mesma largura.
@@ -651,6 +637,18 @@ export function LinhaImpressora({
             </button>
           ) : (
             modoDaLinha
+          )}
+          {/* Calibrar fica a mao, ao lado da engrenagem: a opcao do seletor continua valendo. */}
+          {impressora.tipo === "fila" && seletor !== null && (
+            <button
+              type="button"
+              className={styles.calibrar}
+              aria-label={t("calibracao.titulo", { nome })}
+              title={t("modo.calibrar")}
+              onClick={() => aoCalibrar(impressora)}
+            >
+              <Ruler size={14} aria-hidden="true" />
+            </button>
           )}
         </div>
         {real && <div className={`${styles.fileira} ${styles.fileiraDoModo}`}>{modoDaLinha}</div>}
@@ -816,7 +814,15 @@ function AvisoTexto({ aviso }: { aviso: Aviso }) {
 }
 
 /** O tamanho do que vai sair, ou por que ainda nao se sabe. */
-function ResumoDoDocumento({ aba, copias = 1 }: { aba: Aba | null; copias?: number }) {
+function ResumoDoDocumento({
+  aba,
+  copias = 1,
+  folhas,
+}: {
+  aba: Aba | null;
+  copias?: number;
+  folhas?: number;
+}) {
   if (aba === null) return null;
   const { paginas } = aba;
   if (paginas.estado === "contando") {
@@ -832,5 +838,5 @@ function ResumoDoDocumento({ aba, copias = 1 }: { aba: Aba | null; copias?: numb
   }
   const contadas = paginasDoResumo(lerIntervaloDaAba(aba));
   if (contadas === null) return null;
-  return <p className={styles.resumo}>{resumoDoDocumento(contadas, idiomaAtual, copias)}</p>;
+  return <p className={styles.resumo}>{resumoDoDocumento(contadas, idiomaAtual, copias, folhas)}</p>;
 }

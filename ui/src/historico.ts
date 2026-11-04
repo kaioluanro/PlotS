@@ -23,7 +23,11 @@ export interface RegistroDoHistorico {
   resultado: ResultadoDoRegistro;
   lotes_faltando: number;
   tempos?: TempoDoRegistro[];
+  /** O que o pedido mandou: so frentes ou so versos. Registros antigos nao tem o campo. */
+  face?: FaceDoRegistro;
 }
+
+export type FaceDoRegistro = "frente" | "verso";
 
 export interface VelocidadeDoRegistro {
   impressora: string;
@@ -81,6 +85,21 @@ export function textoDoResultado(
     { n: String(registro.lotes_faltando) },
   );
   return `${resultado} · ${faltando}`;
+}
+
+/**
+ * Frentes, versos ou duas faces. Um pedido de frente que saiu de impressoras automaticas saiu nas duas
+ * faces de uma vez; se algumas delas eram manuais, a linha continua dizendo Frentes. Sem face, nao ha rotulo.
+ */
+export function rotuloDoRegistro(
+  registro: RegistroDoHistorico,
+  idioma: Idioma = idiomaAtual,
+): string | null {
+  if (registro.face === undefined) return null;
+  if (registro.face === "verso") return traduzir(idioma, "historico.face.verso");
+  const tempos = registro.tempos ?? [];
+  const todasAutomaticas = tempos.length > 0 && tempos.every((tempo) => tempo.automatico === true);
+  return traduzir(idioma, todasAutomaticas ? "historico.face.duas" : "historico.face.frente");
 }
 
 /** Paginas, trecho e lotes em uma linha. */

@@ -1,7 +1,8 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Copy, History, Minus, PanelLeftClose, PanelLeftOpen, Plus, Square, X } from "lucide-react";
+import { Bell, Copy, History, Minus, PanelLeftClose, PanelLeftOpen, Plus, Square, X } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import marca from "../../assets/marca.png";
+import { contadorDoSino } from "../avisos";
 import { assinar } from "../backend";
 import { situacaoDaAba } from "../cartoes";
 import { t } from "../i18n";
@@ -34,6 +35,9 @@ interface Props {
   aoFechar: (id: number) => void;
   aoAbrir: () => void;
   aoAbrirHistorico: () => void;
+  /** Avisos da sessao que ainda ninguem abriu o painel para ver. */
+  naoLidos: number;
+  aoAbrirAvisos: () => void;
   idLateral: string;
   idPainel: string;
 }
@@ -47,6 +51,8 @@ export function TitleBar({
   aoFechar,
   aoAbrir,
   aoAbrirHistorico,
+  naoLidos,
+  aoAbrirAvisos,
   idLateral,
   idPainel,
 }: Props) {
@@ -113,6 +119,10 @@ export function TitleBar({
   };
 
   const janela = getCurrentWindow();
+  const rotuloDosAvisos =
+    naoLidos > 0
+      ? `${t("avisos.abrir")}: ${naoLidos === 1 ? t("avisos.naoLidos.um") : t("avisos.naoLidos", { n: String(naoLidos) })}`
+      : t("avisos.abrir");
   const ignorarFalha = (promessa: Promise<void>) => {
     promessa.catch(() => {
       // O sistema recusou a acao; a janela apenas continua como esta.
@@ -211,6 +221,20 @@ export function TitleBar({
         <Plus size={14} />
       </button>
       <div className={styles.arrasto} data-tauri-drag-region />
+      <button
+        type="button"
+        className={styles.botaoIcone}
+        aria-label={rotuloDosAvisos}
+        title={rotuloDosAvisos}
+        onClick={aoAbrirAvisos}
+      >
+        <Bell size={14} aria-hidden="true" />
+        {naoLidos > 0 && (
+          <span className={styles.contagem} aria-hidden="true">
+            {contadorDoSino(naoLidos)}
+          </span>
+        )}
+      </button>
       <button
         type="button"
         className={styles.botaoIcone}

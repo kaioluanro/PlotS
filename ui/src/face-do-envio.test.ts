@@ -23,6 +23,7 @@ import {
   mudouDesdeAFrente,
   notaDoMaco,
   notasDaFrente,
+  quemDeuErro,
   quemJaSaiu,
 } from "./face-do-envio";
 import { traduzir } from "./i18n";
@@ -275,6 +276,24 @@ describe("confirmacao da frente", () => {
     expect(notasDaFrente(aba, [COPA], RESUMO, "en").antes).toEqual([]);
   });
 
+  it("novo envio sobre um trabalho em erro avisa que o antigo pode seguir na fila do Windows", () => {
+    let estado = comAba([SALA, COPA]);
+    estado = reduzirAbas(estado, {
+      tipo: "cartao",
+      cartao: cartao({ tipo: "erro", motivo: { codigo: "fila", texto: "x" } }),
+    });
+    const aba = abaDe(estado);
+    expect(quemDeuErro(aba, [SALA, COPA])).toEqual([SALA]);
+    expect(quemDeuErro(aba, [COPA])).toEqual([]);
+    expect(notasDaFrente(aba, [SALA], RESUMO, "pt-BR").antes).toEqual([
+      "O trabalho anterior deu erro e pode continuar na fila do Windows. Confira a fila antes de enviar de novo, para não imprimir duas vezes.",
+    ]);
+    expect(notasDaFrente(aba, [SALA], RESUMO, "en").antes).toEqual([
+      "The previous job failed and may still be in the Windows queue. Check the queue before sending again, so it does not print twice.",
+    ]);
+    expect(notasDaFrente(aba, [COPA], RESUMO, "pt-BR").antes).toEqual([]);
+  });
+
   it("diz que a automatica imprime as duas faces, se ha papel que ela aceita", () => {
     const aba = abaDe(comAba([SALA, DUAS]));
     const misto: ResumoDoEnvio = {
@@ -309,10 +328,10 @@ describe("confirmacao do verso", () => {
   it("pergunta, com a frase e a figura do gesto de cada impressora", () => {
     const dialogo = conteudo();
     expect(traduzir("pt-BR", dialogo.texto)).toBe(
-      "As frentes já saíram? Coloque o maço na entrada, como manda o cartão.",
+      "As frentes já saíram? Coloque o maço na entrada, como mostrado abaixo.",
     );
     expect(traduzir("en", dialogo.texto)).toBe(
-      "Are the fronts out? Load the stack in the feed, as the card says.",
+      "Are the fronts out? Place the stack in the feed, as shown below.",
     );
     expect(traduzir("pt-BR", dialogo.titulo)).toBe("Imprimir os versos?");
     expect(traduzir("pt-BR", dialogo.fechar)).toBe("Imprimir versos");
@@ -324,6 +343,13 @@ describe("confirmacao do verso", () => {
     ]);
     expect(dialogo.gestos?.[0]?.desenho).not.toBeNull();
     expect(dialogo.linhas).toContain("24 pág · 12 folhas");
+  });
+
+  it("o par de tamanhos diferentes entra nas notas do verso", () => {
+    const dialogo = conteudo({ paresSeparados: [[3, 4]] });
+    expect(dialogo.notas).toContain(
+      "As páginas 3 e 4 têm tamanhos diferentes: cada uma sai na sua folha, com o verso em branco.",
+    );
   });
 
   it("sem gesto da impressora, nao afirma lado nem desenha", () => {
@@ -361,10 +387,19 @@ describe("confirmacao do verso", () => {
     const dialogo = conteudoDoVerso([SALA], [DUAS], RESUMO, null, null, false, "en");
     expect(dialogo.notas).toEqual(["Duas is set to print both sides at once and stays out of the backs."]);
   });
+
+  it("avisa do trabalho anterior em erro tambem antes do verso", () => {
+    const nota =
+      "O trabalho anterior deu erro e pode continuar na fila do Windows. Confira a fila antes de enviar de novo, para não imprimir duas vezes.";
+    const comErro = conteudoDoVerso([SALA], [], RESUMO, null, null, false, "pt-BR", undefined, true);
+    expect(comErro.notas).toContain(nota);
+    const semErro = conteudoDoVerso([SALA], [], RESUMO, null, null, false, "pt-BR", undefined, false);
+    expect(semErro.notas).not.toContain(nota);
+  });
 });
 
 describe("fechar com versos por imprimir", () => {
-  const nota = "Os versos ainda não foram pedidos. Depois, abra o mesmo arquivo, marque as impressoras e escolha Verso. O PlotS não confere se ele mudou.";
+  const nota = "Se fechar agora, o acompanhamento para. Depois, abra o mesmo arquivo e escolha Verso. O PlotS não confere se ele mudou.";
 
   it("a aba e a janela dizem isso, com as frentes prontas ou ainda saindo", () => {
     let estado = comAba([SALA]);

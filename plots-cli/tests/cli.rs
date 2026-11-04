@@ -337,15 +337,15 @@ fn gera_passadas_com_mudanca_de_papel_e_nao_sobrescreve() {
 }
 
 #[test]
-fn rejeita_paginas_de_tamanhos_incompativeis_na_mesma_folha() {
+fn paginas_de_tamanhos_diferentes_nao_dividem_folha_e_saem_em_lotes_proprios() {
     let pasta = Pasta::nova("incompativel");
     let entrada = pasta.caminho().join("entrada.pdf");
     std::fs::write(&entrada, pdf_de_paginas(&[(595, 842), (420, 595)])).unwrap();
     let argumentos = argumentos_gerar(&entrada, pasta.caminho(), "10");
-    assert!(executar(&argumentos)
-        .unwrap_err()
-        .contains("tamanhos incompatíveis"));
-    assert!(!pasta.caminho().join("lote-0001-passada-1.pdf").exists());
+    executar(&argumentos).unwrap();
+    assert!(pasta.caminho().join("lote-0001-passada-1.pdf").is_file());
+    assert!(pasta.caminho().join("lote-0002-passada-1.pdf").is_file());
+    assert!(!pasta.caminho().join("lote-0003-passada-1.pdf").exists());
 }
 
 const AVISO_FOLHA_1_2: &str = "Aviso: a folha das páginas 1 e 2 mistura retrato e paisagem; confira o resultado antes de imprimir.";

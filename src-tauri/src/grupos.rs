@@ -227,6 +227,7 @@ mod testes {
     }
 
     #[test]
+    #[cfg(feature = "simuladas")]
     fn salvar_listar_aplicar_e_apagar_pelo_mesmo_arquivo() {
         let pasta = Pasta::nova();
         let arquivo = pasta.arquivo();
@@ -351,6 +352,7 @@ mod testes {
     }
 
     #[test]
+    #[cfg(feature = "simuladas")]
     fn aplicar_ignora_quem_nao_existe_e_ainda_devolve_o_modo() {
         let grupo = Grupo {
             impressoras: vec![

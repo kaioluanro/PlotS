@@ -93,6 +93,7 @@ impl ParaMotivo for plots_windows::ErroEnvio {
             E::PastaDeSaidaInvalida(_) | E::ArquivoJaExiste(_) | E::ArquivoNaoGerado(_) => {
                 "arquivo_saida"
             }
+            E::FilaSaiuDaLista => "fila_removida",
             E::NaoSuportado
             | E::Sistema { .. }
             | E::Resposta(_)
@@ -259,6 +260,8 @@ pub enum EstadoCartao {
         motivo: Motivo,
     },
     Concluido,
+    /// O pedido de cancelar chegou e a fila ainda tira o trabalho: pode levar segundos.
+    Cancelando,
     Cancelado,
 }
 
@@ -406,6 +409,9 @@ struct Andamento<'a, B: Backend> {
     /// Como terminou, quando terminou: sem isto, o trabalho só parou de ser acompanhado.
     fim: Option<ResultadoDoEnvio>,
     com_erro: bool,
+    /// Verdadeiro enquanto o cartao esta em erro: o trabalho so espera Reimprimir ou Cancelar e nao
+    /// pode trancar o envio de um novo.
+    substituivel: Arc<AtomicBool>,
 }
 
 impl<B> Andamento<'_, B>
@@ -414,6 +420,10 @@ where
     B::Erro: ParaMotivo + Display,
 {
     fn publicar(&self, estado: EstadoCartao) {
+        self.substituivel.store(
+            matches!(estado, EstadoCartao::Erro { .. }),
+            Ordering::SeqCst,
+        );
         let mut cartao = self.identidade.cartao(estado);
         cartao.lote = self.condutor.numero();
         cartao.total = self.condutor.total();
@@ -611,6 +621,8 @@ where
                 | EstadoJob::Erro
         );
         if tem_passada_na_fila {
+            // Tirar o trabalho da fila pode levar segundos: a pessoa ve que o pedido foi aceito.
+            self.publicar(EstadoCartao::Cancelando);
             if let Err(erro) = self.condutor.cancelar() {
                 self.falhou_ao_cancelar(&erro);
                 return Continua::Sim;
@@ -808,6 +820,7 @@ fn conduzir<B>(
     recados: &Receiver<Recado>,
     emitir: &Emissor,
     relogio: &dyn Relogio,
+    substituivel: Arc<AtomicBool>,
 ) -> Desfecho
 where
     B: Backend + DescreveFalha,
@@ -829,6 +842,7 @@ where
         lotes_feitos: 0,
         fim: None,
         com_erro: false,
+        substituivel,
     };
     acompanhar(&mut andamento, recados);
     andamento.desfecho()
@@ -951,6 +965,7 @@ struct Entrada {
     aba: u64,
     recados: Sender<Recado>,
     ativo: Arc<AtomicBool>,
+    substituivel: Arc<AtomicBool>,
 }
 
 /// Os trabalhos em andamento, um por impressora.
@@ -996,14 +1011,20 @@ impl Gerente {
             .trabalhos
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
+        // Trabalho em erro so espera Reimprimir ou Cancelar: quem pede um novo o substitui, e o
+        // antigo acaba quando o recado dele deixa de ter quem o mande.
         let ocupada = trabalhos
             .get(&identidade.impressora)
-            .is_some_and(|entrada| entrada.ativo.load(Ordering::SeqCst));
+            .is_some_and(|entrada| {
+                entrada.ativo.load(Ordering::SeqCst) && !entrada.substituivel.load(Ordering::SeqCst)
+            });
         if ocupada {
             return false;
         }
         let (envia, recebe) = channel();
         let ativo = Arc::new(AtomicBool::new(true));
+        let substituivel = Arc::new(AtomicBool::new(false));
+        let substituivel_da_thread = Arc::clone(&substituivel);
         let guarda = GuardaDaThread {
             identidade: identidade.clone(),
             emitir: Arc::clone(&emitir),
@@ -1020,8 +1041,17 @@ impl Gerente {
             .spawn(move || {
                 let mut guarda = guarda;
                 guarda.desfecho = Some(match preparar() {
-                    Ok(preparo) => conduzir(preparo, &identidade, &recebe, &emitir, &*relogio),
+                    Ok(preparo) => conduzir(
+                        preparo,
+                        &identidade,
+                        &recebe,
+                        &emitir,
+                        &*relogio,
+                        substituivel_da_thread,
+                    ),
                     Err(motivo) => {
+                        // Nada foi enviado: o cartao em erro nao segura a impressora.
+                        substituivel_da_thread.store(true, Ordering::SeqCst);
                         recusado(&identidade, &recebe, &emitir, motivo);
                         Desfecho::sem_envio()
                     }
@@ -1040,6 +1070,7 @@ impl Gerente {
                 aba,
                 recados: envia,
                 ativo,
+                substituivel,
             },
         );
         true
@@ -1525,6 +1556,8 @@ pub struct ResumoDoEnvio {
     pub lotes: usize,
     pub papeis: Vec<PapelDoCartao>,
     pub pares_mistos: Vec<(usize, usize)>,
+    /// Pares de páginas de tamanhos diferentes: cada uma sai na sua folha, com o verso em branco.
+    pub pares_separados: Vec<(usize, usize)>,
     pub assinado: bool,
     /// O gesto de cada impressora, para a confirmacao do verso mostrar antes de enviar.
     pub gestos: Vec<GestoDaImpressora>,
@@ -1623,6 +1656,8 @@ pub fn resumo_do_envio(
     resumo_do_envio_com_papel(caminho, intervalo, None)
 }
 
+// So os testes chamam esta funcao hoje; o comando da janela passa por `resumo_do_envio_com_copias`.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn resumo_do_envio_com_papel(
     caminho: &str,
     intervalo: Option<IntervaloPaginas>,
@@ -1666,6 +1701,8 @@ pub fn resumo_do_envio_com_copias(
     .map_err(|_| falha())?;
     let pares_mistos =
         plots_core::pares_mistos_do_intervalo(&lido.dimensoes, intervalo).map_err(|_| falha())?;
+    let pares_separados =
+        plots_core::pares_separados_do_intervalo(medidas, intervalo).map_err(|_| falha())?;
     let mut papeis: Vec<&Papel> = Vec::new();
     for lote in &lotes {
         if !papeis
@@ -1680,6 +1717,7 @@ pub fn resumo_do_envio_com_copias(
         lotes: lotes.len(),
         papeis: papeis.into_iter().map(papel_do_cartao).collect(),
         pares_mistos,
+        pares_separados,
         assinado: lido.assinado,
         gestos: Vec::new(),
         faixas: faixas_dos_lotes(&lotes),

@@ -111,7 +111,8 @@ delete ambiente.RUSTFLAGS;
 
 const resultado = spawnSync(
   process.execPath,
-  [cli, "build", "--config", arquivoConfiguracao, "--bundles", "nsis", "--", "--locked", "-j", "4"],
+  // A versao final sai sem as impressoras simuladas: a compilacao padrao do programa as mantem.
+  [cli, "build", "--config", arquivoConfiguracao, "--bundles", "nsis", "--", "--locked", "-j", "4", "--no-default-features"],
   { cwd: join(RAIZ, "src-tauri"), env: ambiente, stdio: "inherit" },
 );
 rmSync(preparo, { recursive: true, force: true });

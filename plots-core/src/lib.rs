@@ -265,7 +265,7 @@ pub fn plano_documento(
 
         let (mut pares, mut impares) = (Vec::new(), Vec::new());
         pares
-            .try_reserve((paginas.len() + 1) / 2)
+            .try_reserve(paginas.len().div_ceil(2))
             .map_err(ErroPlano::ReservaFalhou)?;
         impares
             .try_reserve(paginas.len() / 2)
@@ -356,10 +356,6 @@ pub enum ErroPapel {
     DimensaoInvalida {
         pagina: usize,
     },
-    ParIncompativel {
-        frente: usize,
-        verso: usize,
-    },
     LoteZero,
     LimitePaginasExcedido,
     ReservaFalhou,
@@ -385,10 +381,6 @@ impl std::fmt::Display for ErroPapel {
             Self::DimensaoInvalida { pagina } => {
                 write!(f, "dimensões inválidas na página {pagina}")
             }
-            Self::ParIncompativel { frente, verso } => write!(
-                f,
-                "as páginas {frente} e {verso} têm tamanhos incompatíveis para a mesma folha"
-            ),
             Self::LoteZero => f.write_str("o tamanho do lote deve ser positivo"),
             Self::LimitePaginasExcedido => {
                 write!(f, "o documento excede o limite de {LIMITE_PAGINAS} páginas")
@@ -503,8 +495,8 @@ fn orientacao_observada(dimensoes: DimensoesPagina) -> Option<OrientacaoPapel> {
 
 /// Devolve os pares (frente, verso), em números de página começando em 1, cujas
 /// faces têm orientações diferentes, como retrato e paisagem. Páginas quadradas
-/// e a página final sem verso não entram. Os tamanhos não são comparados aqui;
-/// essa verificação continua em `plano_lotes_por_papel`.
+/// e a página sem verso não entram. As folhas são as de `plano_lotes_por_papel`: páginas de
+/// papéis diferentes não formam par.
 pub fn pares_com_orientacao_mista(
     paginas: &[DimensoesPagina],
 ) -> Result<Vec<(usize, usize)>, ErroPapel> {
@@ -525,26 +517,96 @@ pub fn pares_mistos_do_intervalo(
     orientacoes
         .try_reserve(paginas.len())
         .map_err(|_| ErroPapel::ReservaFalhou)?;
+    let mut papeis: Vec<Papel> = Vec::new();
+    papeis
+        .try_reserve(paginas.len())
+        .map_err(|_| ErroPapel::ReservaFalhou)?;
     for (i, dims) in paginas.iter().copied().enumerate() {
-        reconhecer_papel(dims).map_err(|_| ErroPapel::DimensaoInvalida {
-            pagina: antes + i + 1,
-        })?;
+        papeis.push(
+            reconhecer_papel(dims).map_err(|_| ErroPapel::DimensaoInvalida {
+                pagina: antes + i + 1,
+            })?,
+        );
         orientacoes.push(orientacao_observada(dims));
     }
     let mut pares = Vec::new();
     pares
         .try_reserve(paginas.len() / 2)
         .map_err(|_| ErroPapel::ReservaFalhou)?;
-    for i in (0..orientacoes.len()).step_by(2) {
+    for (i, verso) in emparelhar(&papeis) {
+        let Some(verso) = verso else { continue };
         let frente = orientacoes.get(i).copied().flatten();
-        let verso = orientacoes.get(i + 1).copied().flatten();
-        if let (Some(f), Some(v)) = (frente, verso) {
+        let verso_o = orientacoes.get(verso).copied().flatten();
+        if let (Some(f), Some(v)) = (frente, verso_o) {
             if f != v {
-                pares.push((antes + i + 1, antes + i + 2));
+                pares.push((antes + i + 1, antes + verso + 1));
             }
         }
     }
     Ok(pares)
+}
+
+/// Os pares (frente, verso), com os números do documento, cujas páginas não cabem na mesma
+/// folha: cada uma sai na sua, com o verso em branco. Olha só as folhas do trecho.
+pub fn pares_separados_do_intervalo(
+    paginas: &[DimensoesPagina],
+    intervalo: Option<IntervaloPaginas>,
+) -> Result<Vec<(usize, usize)>, ErroPapel> {
+    if paginas.len() > LIMITE_PAGINAS {
+        return Err(ErroPapel::LimitePaginasExcedido);
+    }
+    let (paginas, antes) = recortar_paginas(paginas, intervalo)?;
+    let mut papeis: Vec<Papel> = Vec::new();
+    papeis
+        .try_reserve(paginas.len())
+        .map_err(|_| ErroPapel::ReservaFalhou)?;
+    for (i, dims) in paginas.iter().copied().enumerate() {
+        papeis.push(
+            reconhecer_papel(dims).map_err(|_| ErroPapel::DimensaoInvalida {
+                pagina: antes + i + 1,
+            })?,
+        );
+    }
+    let mut pares = Vec::new();
+    pares
+        .try_reserve(paginas.len() / 2)
+        .map_err(|_| ErroPapel::ReservaFalhou)?;
+    for (k, par) in papeis.chunks(2).enumerate() {
+        if let [a, b] = par {
+            if !cabem_na_mesma_folha(*a, *b) {
+                pares.push((antes + k * 2 + 1, antes + k * 2 + 2));
+            }
+        }
+    }
+    Ok(pares)
+}
+
+/// Duas páginas cabem na mesma folha: o mesmo formato nominal ou a mesma medida dentro da
+/// tolerância. A orientação não conta aqui; ela só gera aviso (`pares_com_orientacao_mista`).
+fn cabem_na_mesma_folha(frente: Papel, verso: Papel) -> bool {
+    (frente.formato != FormatoPapel::Personalizado && frente.formato == verso.formato)
+        || ((frente.largura_mm - verso.largura_mm).abs() <= TOLERANCIA_PAPEL_MM
+            && (frente.altura_mm - verso.altura_mm).abs() <= TOLERANCIA_PAPEL_MM)
+}
+
+/// Monta as folhas como pares (frente, verso) de índices das páginas. Cada página fica no lado em
+/// que o documento foi diagramado: as de posição ímpar são frente, as pares são verso. Só o par
+/// cujas páginas não cabem na mesma folha se separa: cada uma vira frente de uma folha própria,
+/// com o verso em branco. A última página de um total ímpar também fica sem verso.
+fn emparelhar(papeis: &[Papel]) -> Vec<(usize, Option<usize>)> {
+    let mut folhas = Vec::with_capacity(papeis.len().div_ceil(2));
+    for (k, par) in papeis.chunks(2).enumerate() {
+        let i = k * 2;
+        match par {
+            [a, b] if cabem_na_mesma_folha(*a, *b) => folhas.push((i, Some(i + 1))),
+            [_, _] => {
+                folhas.push((i, None));
+                folhas.push((i + 1, None));
+            }
+            _ => folhas.push((i, None)),
+        }
+    }
+    folhas
 }
 
 /// Um conjunto de folhas consecutivas do mesmo papel, limitado ao tamanho
@@ -620,25 +682,15 @@ pub fn plano_lotes_do_intervalo(
     folhas
         .try_reserve(paginas.len().saturating_add(1) / 2)
         .map_err(|_| ErroPapel::ReservaFalhou)?;
-    for i in (0..paginas.len()).step_by(2) {
-        let Some(frente) = papeis.get(i).copied() else {
+    for (frente, verso) in emparelhar(&papeis) {
+        let Some(papel) = papeis.get(frente).copied() else {
             continue;
         };
-        let verso = papeis.get(i + 1).copied();
-        if let Some(v) = verso {
-            let mesmo_formato_nominal =
-                frente.formato != FormatoPapel::Personalizado && frente.formato == v.formato;
-            if !mesmo_formato_nominal
-                && ((frente.largura_mm - v.largura_mm).abs() > TOLERANCIA_PAPEL_MM
-                    || (frente.altura_mm - v.altura_mm).abs() > TOLERANCIA_PAPEL_MM)
-            {
-                return Err(ErroPapel::ParIncompativel {
-                    frente: antes + i + 1,
-                    verso: antes + i + 2,
-                });
-            }
-        }
-        folhas.push((frente, Some(antes + i + 1), verso.map(|_| antes + i + 2)));
+        folhas.push((
+            papel,
+            Some(antes + frente + 1),
+            verso.map(|v| antes + v + 1),
+        ));
     }
     let mut lotes: Vec<LotePapel> = Vec::new();
     for (papel, frente, verso) in folhas {
@@ -1243,22 +1295,11 @@ mod tests {
     }
 
     #[test]
-    fn par_de_papeis_incompativeis_e_recusado_como_no_plano_manual() {
-        let erro = plano_automatico_do_intervalo(
-            &[A4, A5],
-            None,
-            10,
-            OrdemPassadas::default(),
-            PerfilImpressora::default(),
-            RepartoAutomatico::PorLote,
-        );
-        assert!(matches!(
-            erro,
-            Err(ErroPapel::ParIncompativel {
-                frente: 1,
-                verso: 2
-            })
-        ));
+    fn papeis_diferentes_vizinhos_nao_sao_recusados_no_automatico_como_no_plano_manual() {
+        let lotes = automatico(&[A4, A5], None, 10, RepartoAutomatico::PorLote);
+        assert_eq!(lotes.len(), 2);
+        assert_eq!(lotes[0].paginas, vec![Some(1), None]);
+        assert_eq!(lotes[1].paginas, vec![Some(2), None]);
     }
 
     #[test]
@@ -1387,15 +1428,116 @@ mod tests {
     }
 
     #[test]
-    fn par_incompativel_do_trecho_cita_os_numeros_do_documento() {
-        let paginas = [A4, A4, A4, A4, A5, A5, A5, A5];
+    fn papeis_diferentes_em_paginas_vizinhas_viram_trechos_cada_um_com_o_verso_em_branco() {
+        let a4_pe = DimensoesPagina::new(210.0, 297.0);
+        let oficio = DimensoesPagina::new(216.0, 330.0);
+        for (outro, formato) in [
+            (CARTA, FormatoPapel::Carta),
+            (A5, FormatoPapel::A5),
+            (oficio, FormatoPapel::Oficio),
+        ] {
+            let lotes = plano_do_modelo(&[a4_pe, outro], None, ModeloImpressora::Laser)
+                .unwrap_or_else(|erro| panic!("A4 + {formato:?} foi recusado: {erro}"));
+            assert_eq!(lotes.len(), 2, "A4 + {formato:?}: um trecho por papel");
+            assert_eq!(lotes[0].papel.formato, FormatoPapel::A4);
+            assert_eq!(lotes[0].paginas, vec![Some(1), None]);
+            assert_eq!(lotes[1].papel.formato, formato);
+            assert_eq!(lotes[1].paginas, vec![Some(2), None]);
+        }
+        // Cada página fica no lado do documento: o par A4+Carta se separa, as demais seguem.
+        let lotes =
+            plano_do_modelo(&[A4, A4, A4, CARTA, CARTA], None, ModeloImpressora::Laser).unwrap();
+        assert_eq!(lotes[0].paginas, vec![Some(1), Some(2), Some(3), None]);
+        assert_eq!(lotes[1].paginas, vec![Some(4), None, Some(5), None]);
+        // Retrato e paisagem do mesmo formato ficam na mesma folha, com o aviso de orientação.
+        let lotes = plano_do_modelo(&[A4, PAISAGEM], None, ModeloImpressora::Laser).unwrap();
+        assert_eq!(lotes.len(), 1);
         assert_eq!(
-            plano_do_modelo(&paginas, trecho(4, 7), ModeloImpressora::Laser),
-            Err(ErroPapel::ParIncompativel {
-                frente: 4,
-                verso: 5
-            })
+            pares_com_orientacao_mista(&[A4, PAISAGEM]).unwrap(),
+            [(1, 2)]
         );
+        // O aviso de orientação segue as mesmas folhas: A4 + Carta não formam um par.
+        assert!(pares_com_orientacao_mista(&[A4, CARTA]).unwrap().is_empty());
+    }
+
+    /// Documento de 10 páginas com a `pos` (base 1) de outro papel: o par que a contém se separa
+    /// e cada página ganha verso em branco; o resto segue nos lados do documento.
+    fn folhas_de(
+        total: usize,
+        pos: usize,
+        outro: DimensoesPagina,
+        intervalo: Option<IntervaloPaginas>,
+    ) -> Vec<(Option<usize>, Option<usize>)> {
+        let paginas: Vec<_> = (1..=total)
+            .map(|n| if n == pos { outro } else { A4 })
+            .collect();
+        plano_lotes_do_intervalo(
+            &paginas,
+            intervalo,
+            100,
+            OrdemPassadas::ImparesPrimeiro,
+            PerfilImpressora::default(),
+        )
+        .unwrap()
+        .iter()
+        .flat_map(|l| l.paginas.chunks(2).map(|c| (c[0], c[1])))
+        .collect()
+    }
+
+    #[test]
+    fn papel_misto_mantem_o_lado_e_so_o_par_diferente_se_separa() {
+        let s = Some;
+        let oficio = DimensoesPagina::new(216.0, 330.0);
+        for outro in [CARTA, A5, oficio] {
+            // Exemplo do usuário: a 5 de outro tamanho.
+            assert_eq!(
+                folhas_de(10, 5, outro, None),
+                [
+                    (s(1), s(2)),
+                    (s(3), s(4)),
+                    (s(5), None),
+                    (s(6), None),
+                    (s(7), s(8)),
+                    (s(9), s(10))
+                ]
+            );
+            // No início, no verso de um par, no fim.
+            assert_eq!(
+                folhas_de(4, 1, outro, None),
+                [(s(1), None), (s(2), None), (s(3), s(4))]
+            );
+            assert_eq!(
+                folhas_de(4, 4, outro, None),
+                [(s(1), s(2)), (s(3), None), (s(4), None)]
+            );
+            // Total ímpar: a última página, de outro papel, fica sozinha; no meio, separa o par.
+            assert_eq!(
+                folhas_de(5, 5, outro, None),
+                [(s(1), s(2)), (s(3), s(4)), (s(5), None)]
+            );
+            assert_eq!(
+                folhas_de(5, 2, outro, None),
+                [(s(1), None), (s(2), None), (s(3), s(4)), (s(5), None)]
+            );
+            // Com intervalo, os lados contam a partir da primeira página do trecho.
+            assert_eq!(
+                folhas_de(10, 5, outro, trecho(3, 8)),
+                [(s(3), s(4)), (s(5), None), (s(6), None), (s(7), s(8))]
+            );
+            assert_eq!(
+                folhas_de(10, 5, outro, trecho(2, 7)),
+                [(s(2), s(3)), (s(4), None), (s(5), None), (s(6), s(7))]
+            );
+        }
+    }
+
+    #[test]
+    fn trecho_que_corta_o_par_de_papeis_cita_os_numeros_do_documento() {
+        let paginas = [A4, A4, A4, A4, A5, A5, A5, A5];
+        let lotes = plano_do_modelo(&paginas, trecho(4, 7), ModeloImpressora::Laser).unwrap();
+        assert_eq!(lotes.len(), 2);
+        assert_eq!(lotes[0].paginas, vec![Some(4), None]);
+        assert_eq!(lotes[1].paginas, vec![Some(5), None, Some(6), Some(7)]);
     }
 
     #[test]
@@ -1423,6 +1565,33 @@ mod tests {
         assert_eq!(lotes.len(), 2);
         assert_eq!(lotes[0].paginas, [Some(3), Some(4), Some(5), Some(6)]);
         assert_eq!(lotes[1].paginas, [Some(7), Some(8)]);
+    }
+
+    #[test]
+    fn pares_de_tamanhos_diferentes_saem_cada_um_na_sua_folha() {
+        let paginas = [A4, A4, A4, A5, A5, A5, A4];
+        assert_eq!(
+            pares_separados_do_intervalo(&paginas, None),
+            Ok(vec![(3, 4)])
+        );
+        // O trecho refaz as folhas a partir da sua primeira página, com os números do documento.
+        assert_eq!(
+            pares_separados_do_intervalo(&paginas, trecho(3, 6)),
+            Ok(vec![(3, 4)])
+        );
+        assert_eq!(
+            pares_separados_do_intervalo(&paginas, trecho(4, 7)),
+            Ok(vec![(6, 7)])
+        );
+        assert_eq!(
+            pares_separados_do_intervalo(&[A4, A4, A5, A5], None),
+            Ok(vec![])
+        );
+        // Orientação diferente com o mesmo papel cabe na folha: não é par separado.
+        assert_eq!(
+            pares_separados_do_intervalo(&[A4, PAISAGEM], None),
+            Ok(vec![])
+        );
     }
 
     #[test]
@@ -1689,18 +1858,15 @@ mod tests {
     }
 
     #[test]
-    fn detecta_folhas_com_faces_de_tamanhos_incompativeis_e_completa_impar() {
+    fn faces_de_tamanhos_diferentes_nao_dividem_folha_e_o_impar_ganha_verso_em_branco() {
         let incompatible = [
             DimensoesPagina::new(210.0, 297.0),
             DimensoesPagina::new(148.0, 210.0),
         ];
-        assert!(matches!(
-            lotes_por_papel(&incompatible, 10),
-            Err(ErroPapel::ParIncompativel {
-                frente: 1,
-                verso: 2
-            })
-        ));
+        let lotes = lotes_por_papel(&incompatible, 10).unwrap();
+        assert_eq!(lotes.len(), 2);
+        assert_eq!(lotes[0].paginas, vec![Some(1), None]);
+        assert_eq!(lotes[1].paginas, vec![Some(2), None]);
         let odd = [DimensoesPagina::new(210.0, 297.0)];
         assert_eq!(
             lotes_por_papel(&odd, 10).unwrap()[0].paginas,
@@ -1794,7 +1960,8 @@ mod tests {
         ];
         assert_eq!(
             pares_com_orientacao_mista(&quadradas).unwrap(),
-            vec![(5, 6)]
+            vec![(5, 6)],
+            "a página 4 fica no verso da folha 3/4, que se separa por papel; o par com orientação é o 5/6"
         );
         let quadrada_com_paisagem = [
             DimensoesPagina::new(300.0, 300.0),

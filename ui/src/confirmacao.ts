@@ -25,6 +25,8 @@ export interface ConteudoConfirmacao {
   aviso?: string;
   /** O botao de confirmar segue em frente em vez de encerrar algo. */
   confirmaAvancando?: boolean;
+  /** So informa: o dialogo tem apenas o botao de manter, que o fecha. */
+  semConfirmar?: boolean;
 }
 
 export interface GestoNaConfirmacao {
@@ -220,6 +222,21 @@ export function conteudoDoCancelamento(nome: string, simulada: boolean): Conteud
     parametros: { nome },
     ehJanela: false,
     focoNaOrigemAoConfirmar: true,
+  };
+}
+
+/** O trabalho acabou com o dialogo aberto: nao ha o que cancelar, e o estado real fica como esta. */
+export function conteudoDoCancelamentoJaTerminado(nome: string): ConteudoConfirmacao {
+  return {
+    titulo: "cartao.cancelarDialogo.jaTerminou.titulo",
+    texto: "cartao.cancelarDialogo.jaTerminou.texto",
+    consequencia: null,
+    manter: "cartao.cancelarDialogo.jaTerminou.fechar",
+    fechar: "cartao.cancelarDialogo.jaTerminou.fechar",
+    parametros: { nome },
+    ehJanela: false,
+    focoNaOrigemAoConfirmar: true,
+    semConfirmar: true,
   };
 }
 
