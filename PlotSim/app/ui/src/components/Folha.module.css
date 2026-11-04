@@ -1,0 +1,243 @@
+.folha {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  content-visibility: auto;
+  contain-intrinsic-size: 160px 320px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    background-color var(--anim-fast) ease,
+    border-color var(--anim-fast) ease;
+}
+
+.folha:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-strong);
+}
+
+/* Folha errada: a borda diz isso, e a palavra "Errada" também. A seleção, logo abaixo, tem a vez. */
+.errada {
+  border: 1px solid var(--status-offline);
+}
+
+.selecionada {
+  background: var(--surface-card-selected);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* O ponteiro não troca a cor do contorno: a folha errada e a selecionada continuam com a sua. */
+.errada:hover {
+  border-color: var(--status-offline);
+}
+
+.selecionada:hover {
+  border-color: var(--accent);
+}
+
+/* A folha é papel nos dois temas: o branco aqui é o objeto simulado, não uma superfície da janela. */
+.papel {
+  --papel: #ffffff;
+  --papel-texto: #52525b;
+  position: relative;
+  display: block;
+  width: 100%;
+  margin-bottom: 4px;
+  overflow: hidden;
+  background: var(--papel);
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  forced-color-adjust: none;
+}
+
+.camada {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+}
+
+/* Contra a luz: o que está do outro lado do papel. */
+.atras {
+  opacity: 0.3;
+}
+
+/* O branco da página da frente não apaga o que aparece por trás dela. */
+.perto {
+  mix-blend-mode: multiply;
+}
+
+.semDesenho {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--papel-texto);
+  font-size: 11px;
+}
+
+/* Quando a frente também falhou, o aviso do verso fica embaixo, sem cobrir o da frente. */
+.semDesenhoVerso {
+  align-content: end;
+  padding-bottom: 6px;
+}
+
+/* O aviso de falha fica sobre um fundo do papel, como o indicador de desenho, para ler por cima do verso. */
+.textoSemDesenho {
+  padding: 2px 6px;
+  color: var(--papel-texto);
+  font-size: 11px;
+  line-height: 14px;
+  background: var(--papel);
+  border-radius: 2px;
+}
+
+/* Um só indicador por papel, centralizado, enquanto alguma camada visível ainda desenha. */
+.desenhando {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  color: var(--papel-texto);
+  font-size: 11px;
+  line-height: 14px;
+  white-space: nowrap;
+  background: var(--papel);
+  border-radius: 2px;
+  transform: translate(-50%, -50%);
+}
+
+.girando {
+  animation: girar-desenho 1s linear infinite;
+}
+
+@keyframes girar-desenho {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.cabeca {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 16px;
+}
+
+.titulo {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.etiqueta {
+  padding: 0 6px;
+  color: var(--fg-muted);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 14px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+}
+
+.situacao {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.situacao svg {
+  flex-shrink: 0;
+}
+
+.iconeCerta {
+  color: var(--status-working);
+}
+
+.iconeErrada {
+  color: var(--status-offline-text);
+}
+
+.iconeSemMarca {
+  color: var(--status-waiting);
+}
+
+.iconeAndamento {
+  color: var(--fg-muted);
+}
+
+.paginas {
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.motivo {
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 15px;
+  overflow-wrap: anywhere;
+}
+
+@media (forced-colors: active) {
+  .folha {
+    border-color: CanvasText;
+  }
+
+  .folha:hover {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .selecionada {
+    border-width: 2px;
+    border-color: Highlight;
+  }
+
+  .papel {
+    border-color: CanvasText;
+  }
+
+  .iconeCerta,
+  .iconeErrada,
+  .iconeSemMarca,
+  .iconeAndamento {
+    color: CanvasText;
+  }
+
+  .errada {
+    border-width: 2px;
+  }
+
+  .selecionada {
+    box-shadow: inset 0 0 0 1px Highlight;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .folha {
+    transition: none;
+  }
+
+  .girando {
+    animation: none;
+  }
+}

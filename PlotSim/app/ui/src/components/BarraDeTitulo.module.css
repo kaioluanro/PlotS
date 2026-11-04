@@ -1,0 +1,5 @@
+.nome {
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 500;
+}

@@ -197,7 +197,7 @@ test("o simulador de testes e as dependências dele ficam fora da árvore do avi
   });
   const nomes = new Set(arvore.split(/\r?\n/).map((linha) => linha.split(" ")[0]));
   assert.ok(nomes.has("plots-core"), "a árvore veio sem o programa");
-  for (const fora of ["plotsim-core", "plotsim-physics", "plotsim-suite", "notify", "notify-types"]) {
+  for (const fora of ["plotsim-core", "plotsim-physics", "plotsim-suite", "plotsim-app", "notify", "notify-types"]) {
     assert.ok(!nomes.has(fora), `${fora} apareceu na árvore`);
   }
 });

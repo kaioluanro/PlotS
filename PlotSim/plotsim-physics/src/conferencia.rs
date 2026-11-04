@@ -304,7 +304,8 @@ fn conferir_folha(
         contexto.conferir_face(verso, pagina_do_verso, false, motivos);
     }
 
-    if folha.topos_na_mesma_aresta == Some(false) {
+    // Verso em branco não tem topo visível: nada nele pode estar de cabeça para baixo.
+    if folha.topos_na_mesma_aresta == Some(false) && !folha.verso.is_empty() {
         motivos.push(Motivo::VersoDeCabecaParaBaixo { folha: numero });
     }
     if folha.alinhada_com_a_primeira == Some(false) {
@@ -366,5 +367,66 @@ impl Contexto<'_> {
                 pagina,
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod testes_do_verso_em_branco {
+    use super::*;
+
+    fn folha(frente: Vec<u32>, verso: Vec<u32>, topos: Option<bool>) -> FolhaLida {
+        FolhaLida {
+            frente,
+            verso,
+            topos_na_mesma_aresta: topos,
+            alinhada_com_a_primeira: Some(true),
+            pagina_deitada: None,
+        }
+    }
+
+    #[test]
+    fn verso_em_branco_nao_acusa_verso_de_cabeca_para_baixo() {
+        let maco = MacoLido {
+            folhas: vec![folha(vec![1], vec![], Some(false))],
+        };
+        let motivos = conferir(&maco, 1);
+        assert!(
+            !motivos.contains(&Motivo::VersoDeCabecaParaBaixo { folha: 1 }),
+            "{motivos:?}"
+        );
+    }
+
+    #[test]
+    fn verso_com_pagina_continua_acusando_verso_de_cabeca_para_baixo() {
+        let maco = MacoLido {
+            folhas: vec![folha(vec![1], vec![2], Some(false))],
+        };
+        let motivos = conferir(&maco, 2);
+        assert!(
+            motivos.contains(&Motivo::VersoDeCabecaParaBaixo { folha: 1 }),
+            "{motivos:?}"
+        );
+    }
+
+    #[test]
+    fn folha_com_verso_em_branco_ainda_acusa_outros_motivos() {
+        let maco = MacoLido {
+            folhas: vec![FolhaLida {
+                pagina_deitada: Some(1),
+                ..folha(vec![1], vec![], Some(false))
+            }],
+        };
+        let motivos = conferir(&maco, 1);
+        assert!(
+            motivos.contains(&Motivo::PaginaGirada {
+                folha: 1,
+                pagina: 1
+            }),
+            "{motivos:?}"
+        );
+        assert!(
+            !motivos.contains(&Motivo::VersoDeCabecaParaBaixo { folha: 1 }),
+            "{motivos:?}"
+        );
     }
 }

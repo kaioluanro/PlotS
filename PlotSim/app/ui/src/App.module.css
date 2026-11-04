@@ -1,0 +1,488 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.corpo {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.lateral {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 240px;
+  min-height: 0;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+}
+
+.lateralCabecalho {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 4px 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tituloDaSecao {
+  margin: 0;
+  color: var(--fg-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.contador {
+  min-width: 18px;
+  padding: 0 4px;
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 14px;
+  text-align: center;
+  background: var(--bg-sunken);
+  border-radius: 999px;
+}
+
+.botaoIcone {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  padding: 0;
+  color: var(--fg-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--anim-fast) ease,
+    color var(--anim-fast) ease;
+}
+
+.botaoIcone:hover:not(:disabled) {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.botaoIcone:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.lista {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.notaDaLista {
+  margin: 8px;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.erroDaLista {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px;
+}
+
+.itens {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: grid;
+  gap: 1px;
+  width: 100%;
+  min-height: 29px;
+  padding: 6px 8px;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color var(--anim-fast) ease;
+}
+
+.item:hover {
+  background: var(--panel-hover);
+}
+
+.item:focus-visible {
+  outline-offset: -2px;
+}
+
+.itemAtivo {
+  background: var(--panel-hover);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+.itemNome {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemEstado {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.itemModo {
+  overflow: hidden;
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item:hover .itemModo,
+.itemAtivo .itemModo {
+  color: var(--fg-muted);
+}
+
+/* A forma do ponto muda com o estado; o texto vem sempre ao lado. */
+.ponto {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
+}
+
+.vazado {
+  background: transparent;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+
+.cheio {
+  background: currentColor;
+  border-radius: 50%;
+}
+
+.quadrado {
+  background: currentColor;
+  border-radius: 1px;
+}
+
+.discreto {
+  width: 6px;
+  height: 6px;
+  margin-inline: 1px;
+  background: currentColor;
+  border-radius: 50%;
+}
+
+.trabalhando {
+  color: var(--status-working);
+}
+
+.esperando {
+  color: var(--status-waiting);
+}
+
+.problema {
+  color: var(--status-offline-text);
+}
+
+.parado {
+  color: var(--status-stopped);
+}
+
+.lateralRodape {
+  flex-shrink: 0;
+  padding: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.botaoNova {
+  width: 100%;
+}
+
+.centro {
+  container: centro / inline-size;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+}
+
+.cabecalho {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.nomeDaFila {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modoDaFila {
+  flex-shrink: 0;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.acoesDaFila {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.rolagem {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.notas {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.vazio {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  min-height: 140px;
+}
+
+.grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 8px;
+  align-items: start;
+}
+
+.aviso {
+  display: flex;
+  flex-shrink: 0;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--status-offline-soft);
+  border: 1px solid var(--status-offline);
+  border-radius: var(--radius-md);
+}
+
+.avisoIcone {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--status-offline-text);
+}
+
+.avisoTexto {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.avisoTexto p {
+  margin: 0;
+}
+
+.avisoDetalhe {
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.local {
+  flex-shrink: 0;
+  margin: 0;
+  overflow: hidden;
+  padding: 4px 12px;
+  color: var(--fg-muted);
+  font-size: 10px;
+  line-height: 14px;
+  overflow-wrap: anywhere;
+  border-top: 1px solid var(--border);
+}
+
+.caminho {
+  font-family: var(--font-mono);
+}
+
+.rodape {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+
+.resumo {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* Ícone do resumo: a forma diz certo ou errado, a cor só reforça. */
+.iconeCerto {
+  flex-shrink: 0;
+  color: var(--status-working);
+}
+
+.iconeErrado {
+  flex-shrink: 0;
+  color: var(--status-offline-text);
+}
+
+/* Sem a instrução do PlotS, o resumo não tem veredito de cor: o ícone é neutro. */
+.iconeNeutro {
+  flex-shrink: 0;
+  color: var(--fg-muted);
+}
+
+.notaDoModelo {
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.girando {
+  animation: gira 1s linear infinite;
+}
+
+@keyframes gira {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Janela mínima: a lista encolhe e o centro continua com as três ações à vista. */
+@media (max-width: 760px) {
+  .lateral {
+    width: 184px;
+  }
+}
+
+@container centro (max-width: 520px) {
+  .modoDaFila {
+    display: none;
+  }
+
+  .acoes button {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
+  .grade {
+    grid-template-columns: repeat(auto-fill, minmax(116px, 1fr));
+  }
+}
+
+@media (max-height: 520px) {
+  .local {
+    display: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .aviso {
+    border-color: CanvasText;
+  }
+
+  .item:hover {
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
+
+  .itemAtivo {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .ponto {
+    forced-color-adjust: none;
+    color: CanvasText;
+  }
+
+  .botaoIcone:hover:not(:disabled) {
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
+
+  .avisoIcone {
+    color: CanvasText;
+  }
+
+  .iconeCerto,
+  .iconeErrado {
+    color: CanvasText;
+  }
+
+  .iconeNeutro {
+    color: CanvasText;
+  }
+}

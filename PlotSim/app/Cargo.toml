@@ -1,0 +1,20 @@
+[package]
+name = "plotsim-app"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[build-dependencies]
+tauri-build = { version = "=2.7.4", features = [] }
+
+[dependencies]
+plotsim-core = { path = "../plotsim-core" }
+plotsim-physics = { path = "../plotsim-physics" }
+serde = { version = "=1.0.229", features = ["derive"] }
+tauri = { version = "=2.12.5", features = [] }
+
+[target.'cfg(windows)'.dependencies]
+pdfium-render = { version = "=0.9.5", default-features = false, features = ["pdfium_8125", "thread_safe"] }
+
+[dev-dependencies]
+plotsim-suite = { path = "../plotsim-suite" }

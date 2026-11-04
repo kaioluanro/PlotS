@@ -2684,6 +2684,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "plotsim-app"
+version = "0.1.0"
+dependencies = [
+ "pdfium-render",
+ "plotsim-core",
+ "plotsim-physics",
+ "plotsim-suite",
+ "serde",
+ "tauri",
+ "tauri-build",
+]
+
+[[package]]
 name = "plotsim-core"
 version = "0.1.0"
 dependencies = [

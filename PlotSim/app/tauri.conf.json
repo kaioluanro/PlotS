@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "PlotSim",
+  "version": "0.1.0",
+  "identifier": "io.github.kaioluanro.plotsim",
+  "build": {
+    "frontendDist": "ui/dist",
+    "beforeBuildCommand": "npm --prefix ui run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "visible": false,
+        "title": "PlotSim",
+        "width": 1180,
+        "height": 760,
+        "minWidth": 640,
+        "minHeight": 420,
+        "decorations": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self' 'unsafe-inline'",
+      "dangerousDisableAssetCspModification": ["style-src"]
+    }
+  },
+  "bundle": {
+    "active": false,
+    "icon": ["../../src-tauri/icons/icon.ico"]
+  }
+}
