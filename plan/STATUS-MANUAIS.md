@@ -68,7 +68,7 @@ Requisitos: OK 52 · PARTIAL 32 · MISSING 6 · BUG 0 · N/A 3 (93). Detalhes em
 
 **Próximo:**
 
-1. Integrar a janela do PlotSim (fase 6 de `23-plotsim`) e repetir a suíte no `master`.
+1. Feito em 2026-11-04: calibração, impressão sem lote e PlotSim integrados. Suíte rápida no `master` `a34a54e`: 42 de 44, 2 sem cobertura, 0 falhas.
 2. Revisar as linhas desatualizadas de `AUDIT-PlotS.md`, gerar o instalador final e fazer o teste do usuário.
 
 Depois da primeira versão: impressora virtual, Linux e macOS, divisão por velocidade (`15-multiplas-impressoras`) e medir se o Graphify economiza tokens, com 3 perguntas respondidas com e sem ele.
