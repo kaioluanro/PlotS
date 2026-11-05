@@ -2616,7 +2616,7 @@ dependencies = [
 
 [[package]]
 name = "plots-app"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "plots-core",
  "plots-pdf",
@@ -2630,7 +2630,7 @@ dependencies = [
 
 [[package]]
 name = "plots-cli"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "lopdf",
  "plots-core",
@@ -2642,11 +2642,11 @@ dependencies = [
 
 [[package]]
 name = "plots-core"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 
 [[package]]
 name = "plots-pdf"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "lopdf",
  "plots-core",
@@ -2654,7 +2654,7 @@ dependencies = [
 
 [[package]]
 name = "plots-perfis"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "directories",
  "plots-core",
@@ -2665,7 +2665,7 @@ dependencies = [
 
 [[package]]
 name = "plots-print"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "plots-core",
  "proptest",
@@ -2673,7 +2673,7 @@ dependencies = [
 
 [[package]]
 name = "plots-windows"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "lopdf",
  "pdfium-render",
@@ -2685,7 +2685,7 @@ dependencies = [
 
 [[package]]
 name = "plotsim-app"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "pdfium-render",
  "plotsim-core",
@@ -2698,7 +2698,7 @@ dependencies = [
 
 [[package]]
 name = "plotsim-core"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "lopdf",
  "notify",
@@ -2713,7 +2713,7 @@ dependencies = [
 
 [[package]]
 name = "plotsim-physics"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "plots-core",
  "plots-print",
@@ -2722,7 +2722,7 @@ dependencies = [
 
 [[package]]
 name = "plotsim-suite"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "plotsim-core",
  "plotsim-physics",
