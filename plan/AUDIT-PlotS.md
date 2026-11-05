@@ -2,7 +2,7 @@
 
 Data: 2026-11-02. A especificação foi dividida depois em `plan/`, então as linhas de `AGENTS.md` citadas abaixo são da versão anterior. Escopo: especificação em `AGENTS.md` (seções de Fases, Modo simulação, Perfis, Papel, Múltiplas impressoras, Windows e Interface). Nenhum código de produto foi alterado. Nenhum commit. `Cargo.toml`, `Cargo.lock`, `AGENTS.md`, `CLAUDE.md` e `estilo-ui-ux.md` mantêm os mesmos hashes (md5 conferido antes e depois). **Atenção:** o `.gitignore` foi reescrito às 13:56:41, durante a auditoria, por outro processo ou usuário (este agente não o editou). O conteúdo novo acrescenta `/.claude/`, `/.codex/`, `/estilo-ui-ux.md`, `/plan/`, `/AUDIT-*.md` e `/STATUS-MANUAIS.md`, e por isso o `git status` mostra só `AGENTS.md` e `CLAUDE.md`. Não foi revertido; decisão do usuário.
 
-Contagem: **OK 70 · PARTIAL 26 · MISSING 2 · BUG 0 · N/A 4** (102 requisitos)
+Contagem: **OK 71 · PARTIAL 26 · MISSING 2 · BUG 0 · N/A 4** (103 requisitos)
 
 Reauditoria de 2026-11-04, sobre o `master` `b0c7302`. Catorze linhas mudaram de status e seis tiveram a evidência atualizada. As contagens foram recalculadas a partir da tabela: o total anterior (38/33/20/2) não batia com as linhas, que já somavam 52/32/6/3. Não rodei o app nem fiz teste em papel nesta reauditoria; as mudanças vêm de código, testes e commits. Mudanças de status:
 - PS-A014: OK para N/A (lote saiu da janela, `plan/24`).
@@ -14,6 +14,8 @@ Reauditoria de 2026-11-04, sobre o `master` `b0c7302`. Catorze linhas mudaram de
 Segunda reauditoria, em 2026-11-04 sobre o `7b16a4f`: acrescentei PS-A094 a PS-A100 para o que entrou na alpha.2 (avisos no topo e painel, confirmação do verso com o trabalho enviado, envio simultâneo e registro de impressão, papel misto mantendo o lado, janela mínima). Seis são OK e um é PARTIAL (os três controles de "Mais opções" não cabem juntos em 640×420).
 
 Terceira reauditoria, em 2026-11-05 sobre o `c248cf8`: acrescentei PS-A101 e PS-A102 para o que entrou na alpha.3 no PlotS (tema cinza neutro no lugar do branco e alerta no título da confirmação do verso). Os dois são OK; o CI, as capturas e as três revisões estão em `%LOCALAPPDATA%\plots-build\cinza-indesign`.
+
+Quarta reauditoria, em 2026-11-05 sobre o `97643ec`: acrescentei PS-A103 para o perfil na versão portátil (ao lado do executável, com migração única de `%APPDATA%` e o instalado sem marcador intacto). É OK; o CI e o uso real estão em `%LOCALAPPDATA%\plots-build\perfil-portatil`.
 
 Verificação executada:
 - `cargo test --workspace --locked`: 51 testes passam (9 de integração do CLI, 19 em plots-core, 12 em plots-pdf, 11 em plots-print). Tempo de 30 s.
@@ -138,6 +140,7 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A100 | Interface | Em 640×420 e 700×500 nada fica inalcançável com "Mais opções"; os três controles cabem juntos | PARTIAL (`7b16a4f`) | "Mais opções" abre e rola, e o botão de envio fica visível. Em 640×420 a área rolável tem 84 px e os três controles somam 114 px: os três só aparecem juntos em 640×480. Registrado em `plan/25`. |
 | PS-A101 | Interface | O tema claro do PlotS usa o cinza neutro dos painéis, com a mesma hierarquia de superfícies, o tema escuro intacto e a página do PDF branca | OK (`c248cf8`) | `ui/src/theme.css` (`[data-theme='gray']`, `--icon-warning` nos dois temas), `ui/src/theme.ts` (`Tema = "dark" \| "gray"`); `theme.test.ts` e `theme-estilos.test.ts` com falha prévia `saidas/falha-antes.log` (8 falhas). Capturas `cz-01/02/03/07/08/10/14`; contraste em `saidas/contraste.log`; as três revisões aprovaram. |
 | PS-A102 | Interface | A confirmação "Imprimir os versos?" leva um triângulo de alerta amarelo antes do título, só nela, com o nome acessível só pelo texto | OK (`c248cf8`) | `ui/src/confirmacao.ts` (`atencao`), `ui/src/face-do-envio.ts` (`conteudoDoVerso`), `ui/src/components/ConfirmDialog.tsx/.module.css`; `titulo-do-dialogo.test.tsx` e `face-do-envio.test.ts`; capturas `cz-04/05/06/14c`. |
+| PS-A103 | Portabilidade | Com `PLOTS-PORTATIL.txt` ao lado do executável, o `perfis.toml` fica na pasta do programa e a primeira abertura traz o de `%APPDATA%` sem sobrescrever; sem o marcador, o instalado continua em `%APPDATA%` | OK (`97643ec`) | `plots-perfis/src/armazenamento.rs` (`caminho_para`, `migrar_para_portatil`), `src-tauri/src/main.rs`; testes em `plots-perfis/src/testes.rs`; CI em `%LOCALAPPDATA%\plots-build\perfil-portatil\saidas\ci.log`; uso real com SHA-256 do perfil local e do `%APPDATA%` no relatório do lote. |
 
 ## Bugs (com passos de reprodução)
 

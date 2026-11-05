@@ -1,6 +1,6 @@
 # STATUS
 
-Requisitos: OK 70 · PARTIAL 26 · MISSING 2 · BUG 0 · N/A 4 (102). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
+Requisitos: OK 71 · PARTIAL 26 · MISSING 2 · BUG 0 · N/A 4 (103). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
 
 | Plano | OK | PARTIAL | MISSING | BUG | N/A | Estado |
 |---|---|---|---|---|---|---|
@@ -30,6 +30,7 @@ Requisitos: OK 70 · PARTIAL 26 · MISSING 2 · BUG 0 · N/A 4 (102). Detalhes e
 | [PlotSim](23-plotsim.md) | — | — | — | — | — | Em andamento |
 | [Impressão sem lote](24-impressao-sem-lote.md) | — | — | — | — | — | Em andamento |
 | [Avisos no topo](25-avisos-no-topo.md) | 2 | 1 | 0 | 0 | 0 | Concluído no código |
+| [Versionamento](26-versionamento.md) | 1 | 0 | 0 | 0 | 0 | Concluído |
 
 ## Lotes
 
@@ -69,6 +70,7 @@ Requisitos: OK 70 · PARTIAL 26 · MISSING 2 · BUG 0 · N/A 4 (102). Detalhes e
 | 1.0.0-alpha | `11bc3e3` | tag local; instalador gerado, não executado |
 | 1.0.0-alpha.2 | `7b16a4f` | concluído no código; avisos no topo, proteção do verso e envio simultâneo; sem papel |
 | 1.0.0-alpha.3 | `c248cf8` | concluído no código; PlotSim com "Verso recebido" e "Ver o outro lado"; PlotS com tema cinza neutro e alerta no verso; portátil em `.zip`, sem instalador |
+| 1.0.0-alpha.4 | `97643ec` | concluído no código; perfil portátil ao lado do exe; portátil em `.zip` |
 
 **Próximo:**
 
@@ -77,6 +79,7 @@ Requisitos: OK 70 · PARTIAL 26 · MISSING 2 · BUG 0 · N/A 4 (102). Detalhes e
 3. Auditoria revista e instalador final gerado em 2026-11-04, a partir de `b0c7302`. Falta o teste do usuário: papel pela calibração, janela do driver com OK e Cancelar, e instalador em máquina ou conta de teste. O instalador da alpha.2, sem as simuladas, foi gerado (`PlotS_1.0.0-alpha.2_x64-setup.exe`) e ainda não foi executado.
 4. Feito em 2026-11-04: PlotSim avisa quando o verso chegou e separa a vista do gesto (`ade950c`). Próximo: testar o fluxo frente → verso com o PDF marcado, olhando o estado "Verso recebido" na janela real.
 5. Feito em 2026-11-05: `1.0.0-alpha.3` (`c248cf8`), com o cinza neutro no lugar do branco e o alerta no diálogo do verso. CI verde; portátil em `PlotS_1.0.0-alpha.3_x64_portatil.zip`, aberto e fechado sem erro. Falta o teste do usuário com papel e com o PDF marcado.
+6. Feito em 2026-11-05: `1.0.0-alpha.4` (`97643ec`), com o `perfis.toml` ao lado do `PlotS.exe` no portátil e a importação única de `%APPDATA%`; o instalado não muda. CI verde; portátil em `PlotS` com `PLOTS-PORTATIL.txt` e sem o perfil dentro do zip. Falta mover a pasta para outro computador e conferir o perfil na prática.
 
 Depois da primeira versão: impressora virtual, Linux e macOS, divisão por velocidade (`15-multiplas-impressoras`) e medir se o Graphify economiza tokens, com 3 perguntas respondidas com e sem ele.
 

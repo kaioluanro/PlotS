@@ -2,6 +2,13 @@
 
 O PlotS segue o [versionamento semântico](https://semver.org/lang/pt-BR/). As versões alfa ainda não têm teste em papel.
 
+## 1.0.0-alpha.4
+
+Gerada em 2026-11-05 (`97643ec`).
+
+- PlotS portátil: com `PLOTS-PORTATIL.txt` ao lado do `PlotS.exe`, o `perfis.toml` fica nessa pasta e viaja com o programa; na primeira abertura ele traz o perfil de `%APPDATA%` sem apagar o original. O programa instalado continua em `%APPDATA%`.
+- PlotS: entregue em portátil `.zip` com a pasta fixa `PlotS\`, sem instalador.
+
 ## 1.0.0-alpha.3
 
 Gerada em 2026-11-05 (`c248cf8`).
