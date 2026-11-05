@@ -146,6 +146,9 @@ fn main() -> ExitCode {
         .manage(historico::Diarios::default())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            // O perfil do portátil acompanha a pasta do executável; a primeira abertura traz o
+            // atual. Uma falha aqui não impede a janela de abrir.
+            let _ = plots_perfis::migrar_para_portatil();
             if let Some(principal) = app.get_webview_window("main") {
                 janela::ajustar_minimo(&principal.as_ref().window());
             }

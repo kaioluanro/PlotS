@@ -5,7 +5,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use plots_core::{BordaEntrada, GestoRecolocar, ModeloImpressora, PerfilImpressora, ViradaMaco};
 
 use crate::armazenamento::{
-    caminho_padrao, carregar, salvar, FALHA_NA_GRAVACAO, LIMITE_ARQUIVO_BYTES,
+    caminho_padrao, caminho_para, carregar, migrar, salvar, FALHA_NA_GRAVACAO,
+    LIMITE_ARQUIVO_BYTES, MARCADOR_PORTATIL, NOME_ARQUIVO,
 };
 use crate::erro::ErroPerfis;
 use crate::{EntradaPerfil, Perfis};
@@ -453,6 +454,108 @@ fn caminho_padrao_termina_em_plots_perfis_toml() {
             .and_then(|nome| nome.to_str()),
         Some("plots")
     );
+}
+
+fn perfis_de_teste() -> Perfis {
+    let mut perfis = Perfis::new();
+    perfis.inserir("Laser do escritório 1020", entrada_completa());
+    perfis
+}
+
+#[test]
+fn marcador_ao_lado_do_executavel_leva_o_arquivo_para_a_pasta_do_executavel() {
+    let exe = Pasta::nova("portatil-exe");
+    let config = Pasta::nova("portatil-config");
+    fs::write(exe.0.join(MARCADOR_PORTATIL), b"").expect("marcador");
+
+    assert_eq!(
+        caminho_para(Some(&exe.0), &config.0),
+        exe.0.join(NOME_ARQUIVO)
+    );
+}
+
+#[test]
+fn sem_marcador_o_arquivo_fica_na_pasta_de_configuracao() {
+    let exe = Pasta::nova("comum-exe");
+    let config = Pasta::nova("comum-config");
+
+    assert_eq!(
+        caminho_para(Some(&exe.0), &config.0),
+        config.0.join("plots").join(NOME_ARQUIVO)
+    );
+}
+
+#[test]
+fn marcador_como_diretorio_nao_liga_o_modo_portatil() {
+    let exe = Pasta::nova("marcador-dir-exe");
+    let config = Pasta::nova("marcador-dir-config");
+    fs::create_dir(exe.0.join(MARCADOR_PORTATIL)).expect("pasta com o nome do marcador");
+
+    assert_eq!(
+        caminho_para(Some(&exe.0), &config.0),
+        config.0.join("plots").join(NOME_ARQUIVO)
+    );
+}
+
+#[test]
+fn migracao_cria_o_perfil_local_com_o_mesmo_conteudo_e_preserva_a_origem() {
+    let config = Pasta::nova("migracao-config");
+    let exe = Pasta::nova("migracao-exe");
+    let origem = config.arquivo();
+    let destino = exe.arquivo();
+    salvar(&origem, &perfis_de_teste()).expect("gravação da origem");
+    let antes = bytes_do_arquivo(&origem);
+
+    migrar(&origem, &destino).expect("migração");
+
+    assert_eq!(bytes_do_arquivo(&destino), antes);
+    assert_eq!(bytes_do_arquivo(&origem), antes);
+    assert_eq!(
+        carregar(&destino).expect("leitura do destino"),
+        perfis_de_teste()
+    );
+}
+
+#[test]
+fn migracao_nao_sobrescreve_o_perfil_que_ja_esta_na_pasta() {
+    let config = Pasta::nova("migracao-existente-config");
+    let exe = Pasta::nova("migracao-existente-exe");
+    let origem = config.arquivo();
+    let destino = exe.arquivo();
+    salvar(&origem, &perfis_de_teste()).expect("gravação da origem");
+    let mut local = Perfis::new();
+    local.inserir("Fila local", EntradaPerfil::default());
+    salvar(&destino, &local).expect("gravação do perfil local");
+    let antes = bytes_do_arquivo(&destino);
+
+    migrar(&origem, &destino).expect("migração");
+
+    assert_eq!(bytes_do_arquivo(&destino), antes);
+    assert_eq!(carregar(&destino).expect("leitura do destino"), local);
+}
+
+#[test]
+fn migracao_sem_origem_nao_cria_nada() {
+    let config = Pasta::nova("migracao-sem-origem-config");
+    let exe = Pasta::nova("migracao-sem-origem-exe");
+
+    migrar(&config.arquivo(), &exe.arquivo()).expect("sem origem não é falha");
+
+    assert!(!exe.arquivo().exists());
+    assert!(nomes_na_pasta(&exe).is_empty());
+}
+
+#[test]
+fn migracao_com_origem_invalida_falha_e_nao_cria_o_destino() {
+    let config = Pasta::nova("migracao-invalida-config");
+    let exe = Pasta::nova("migracao-invalida-exe");
+    let origem = config.arquivo();
+    let destino = exe.arquivo();
+    fs::write(&origem, b"versao = [").expect("origem inválida");
+
+    assert!(migrar(&origem, &destino).is_err());
+    assert!(!destino.exists());
+    assert!(nomes_na_pasta(&exe).is_empty());
 }
 
 const SEM_CAMPOS_NOVOS: &str = "versao = 1\n\n[filas.\"x\"]\npassada1_inversa = true\npassada2_inversa = false\nverso_girar_180 = false\nvirar_maco = true\nborda_primeiro = \"curta\"\n";

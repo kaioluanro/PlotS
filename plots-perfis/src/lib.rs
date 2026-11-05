@@ -22,7 +22,10 @@ mod testes_grupos;
 mod testes_historico;
 
 pub use ajustes::{AjusteRecusado, LIMITE_AJUSTE_BYTES};
-pub use armazenamento::{caminho_padrao, carregar, salvar, LIMITE_ARQUIVO_BYTES, NOME_ARQUIVO};
+pub use armazenamento::{
+    caminho_padrao, caminho_para, carregar, migrar_para_portatil, salvar, LIMITE_ARQUIVO_BYTES,
+    MARCADOR_PORTATIL, NOME_ARQUIVO,
+};
 pub use calibracoes::Calibracao;
 pub use erro::ErroPerfis;
 pub use formato::VERSAO_ATUAL;

@@ -12,6 +12,9 @@ use crate::perfis::Perfis;
 /// Nome do arquivo de perfis dentro da pasta de configurações do PlotS.
 pub const NOME_ARQUIVO: &str = "perfis.toml";
 
+/// Arquivo que marca a versão portátil: ao lado do executável, guarda o perfil na mesma pasta.
+pub const MARCADOR_PORTATIL: &str = "PLOTS-PORTATIL.txt";
+
 /// Tamanho máximo aceito para ler ou gravar o arquivo de perfis (1 MiB).
 pub const LIMITE_ARQUIVO_BYTES: u64 = 1024 * 1024;
 
@@ -24,12 +27,72 @@ thread_local! {
     pub(crate) static FALHA_NA_GRAVACAO: Cell<bool> = const { Cell::new(false) };
 }
 
-/// Caminho de `perfis.toml` na pasta de configurações do usuário.
+/// Caminho de `perfis.toml`: ao lado do executável quando o marcador da versão portátil está
+/// ali, ou na pasta de configurações do usuário nos outros casos.
 ///
 /// Apenas calcula o caminho: não cria pasta nem arquivo.
 pub fn caminho_padrao() -> Result<PathBuf, ErroPerfis> {
-    let pastas = directories::BaseDirs::new().ok_or(ErroPerfis::PastaUsuarioIndisponivel)?;
-    Ok(pastas.config_dir().join(NOME_PASTA).join(NOME_ARQUIVO))
+    let pasta_exe = pasta_do_executavel();
+    if let Some(pasta) = pasta_exe.as_deref().filter(|pasta| tem_marcador(pasta)) {
+        return Ok(pasta.join(NOME_ARQUIVO));
+    }
+    let pasta_de_configuracao = pasta_de_configuracao()?;
+    Ok(caminho_para(None, &pasta_de_configuracao))
+}
+
+/// Caminho do arquivo de perfis para uma pasta de executável e uma de configuração.
+///
+/// A pasta do executável só vence quando o marcador da versão portátil é um arquivo ali.
+/// Apenas calcula o caminho: não cria pasta nem arquivo.
+pub fn caminho_para(pasta_do_exe: Option<&Path>, pasta_de_configuracao: &Path) -> PathBuf {
+    match pasta_do_exe.filter(|pasta| tem_marcador(pasta)) {
+        Some(pasta) => pasta.join(NOME_ARQUIVO),
+        None => pasta_de_configuracao.join(NOME_PASTA).join(NOME_ARQUIVO),
+    }
+}
+
+/// Traz o perfil da pasta de configuração para o lado do executável na primeira abertura
+/// portátil. Nunca sobrescreve o arquivo local e, sem o marcador, não faz nada.
+pub fn migrar_para_portatil() -> Result<(), ErroPerfis> {
+    let Some(pasta) = pasta_do_executavel().filter(|pasta| tem_marcador(pasta)) else {
+        return Ok(());
+    };
+    let origem = pasta_de_configuracao()?.join(NOME_PASTA).join(NOME_ARQUIVO);
+    migrar(&origem, &pasta.join(NOME_ARQUIVO))
+}
+
+/// Copia os perfis de `origem` para `destino` quando o destino ainda não existe.
+///
+/// A origem é validada antes de qualquer gravação e continua intacta.
+pub(crate) fn migrar(origem: &Path, destino: &Path) -> Result<(), ErroPerfis> {
+    match destino.try_exists() {
+        Ok(true) => return Ok(()),
+        Ok(false) => {}
+        Err(erro) => return Err(leitura(destino, erro)),
+    }
+    match origem.try_exists() {
+        Ok(true) => {}
+        Ok(false) => return Ok(()),
+        Err(erro) => return Err(leitura(origem, erro)),
+    }
+    let perfis = carregar(origem)?;
+    salvar(destino, &perfis)
+}
+
+fn pasta_do_executavel() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf))
+}
+
+fn pasta_de_configuracao() -> Result<PathBuf, ErroPerfis> {
+    directories::BaseDirs::new()
+        .map(|pastas| pastas.config_dir().to_path_buf())
+        .ok_or(ErroPerfis::PastaUsuarioIndisponivel)
+}
+
+fn tem_marcador(pasta: &Path) -> bool {
+    pasta.join(MARCADOR_PORTATIL).is_file()
 }
 
 /// Lê o arquivo de perfis. Arquivo ausente resulta em conjunto vazio.
