@@ -52,6 +52,12 @@ Na suíte rápida, o Planejador e o gesto do PlotS são a **entrada** do teste, 
 - [x] Fase 6: janela e modo manual (`7c47c9e`). Pendente: o canal não traz o total de páginas, então uma falta no fim do documento passa sem aviso na janela
 - [x] Janela: "Verso recebido" na lista, rodapé e folhas quando a segunda passada já chegou e falta o gesto; "Ver o outro lado" (só a vista) e rótulo da face que não troca ao virar (`ade950c`)
 
+Pendências de polimento da janela (não bloqueiam):
+
+- O cartão da folha ainda usa o ícone de relógio em "Verso recebido", enquanto a lista usa losango.
+- A mesma folha diz "Verso recebido, falta recolocar" e "verso em branco"; revisar a frase para não repetir "verso" com dois sentidos.
+- O indicador âmbar do tema claro mede 2,98:1 como elemento não textual; o texto ao lado cobre o estado.
+
 ## Pronto quando
 
 A matriz da especificação passa nos dois níveis, e os erros de propósito são acusados.
