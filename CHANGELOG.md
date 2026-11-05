@@ -2,6 +2,11 @@
 
 O PlotS segue o [versionamento semântico](https://semver.org/lang/pt-BR/). As versões alfa ainda não têm teste em papel.
 
+## 1.0.0-alpha.3 (em desenvolvimento)
+
+- PlotSim: a lista de impressoras distingue "Aguardando verso" de "Verso recebido"; o rodapé e cada folha acompanham, e uma linha avisa que o gesto é aplicado em Recolocar.
+- PlotSim: "Virar folha" passa a "Ver o outro lado", com o aviso de que só muda a vista, e o rótulo alterna para "Ver a frente" quando a folha está virada. Virar não renomeia mais as faces: a frente vista contra a luz continua sendo a frente.
+
 ## 1.0.0-alpha.2
 
 Integrada em 2026-11-04 (`7b16a4f`): uso pela janela com várias impressoras, avisos no topo no lugar dos cartões e instalador sem as impressoras simuladas.

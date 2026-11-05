@@ -50,6 +50,7 @@ Na suíte rápida, o Planejador e o gesto do PlotS são a **entrada** do teste, 
 - [x] Fase 4: gesto como dado, canal local e `plots imprimir --teste` (`108bede`)
 - [x] Fase 5: suíte ponta a ponta, PDFs de teste, matriz e relatório (`108bede`). Rápida: 42 de 44, 2 sem cobertura. O driver da fila virtual não tem o Ofício de 216 × 330 mm, então esse papel segue sem conferência de ponta a ponta
 - [x] Fase 6: janela e modo manual (`7c47c9e`). Pendente: o canal não traz o total de páginas, então uma falta no fim do documento passa sem aviso na janela
+- [x] Janela: "Verso recebido" na lista, rodapé e folhas quando a segunda passada já chegou e falta o gesto; "Ver o outro lado" (só a vista) e rótulo da face que não troca ao virar (`ade950c`)
 
 ## Pronto quando
 

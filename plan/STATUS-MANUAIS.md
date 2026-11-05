@@ -68,12 +68,14 @@ Requisitos: OK 68 · PARTIAL 26 · MISSING 2 · BUG 0 · N/A 4 (100). Detalhes e
 | plotsim-janela | `7c47c9e` | concluído; filas virtuais pelo spooler real, sem papel |
 | 1.0.0-alpha | `11bc3e3` | tag local; instalador gerado, não executado |
 | 1.0.0-alpha.2 | `7b16a4f` | concluído no código; avisos no topo, proteção do verso e envio simultâneo; sem papel |
+| 1.0.0-alpha.3 | `ade950c` | em desenvolvimento; PlotSim com "Verso recebido" e "Ver o outro lado"; sem instalador |
 
 **Próximo:**
 
 1. Feito em 2026-11-04: calibração, impressão sem lote e PlotSim integrados. Suíte rápida no `master` `a34a54e`: 42 de 44, 2 sem cobertura, 0 falhas.
 2. Feito em 2026-11-04: `1.0.0-alpha.2` (`7b16a4f`), com avisos no topo, confirmação do verso com o trabalho enviado, envio simultâneo sem perda e papel misto mantendo o lado. CI verde; suíte rápida 42 de 44, 2 sem cobertura, 0 falhas.
-3. Auditoria revista e instalador final gerado em 2026-11-04, a partir de `b0c7302`. Falta o teste do usuário: papel pela calibração, janela do driver com OK e Cancelar, e instalador em máquina ou conta de teste. O instalador da alpha.2, sem as simuladas, ainda precisa ser gerado.
+3. Auditoria revista e instalador final gerado em 2026-11-04, a partir de `b0c7302`. Falta o teste do usuário: papel pela calibração, janela do driver com OK e Cancelar, e instalador em máquina ou conta de teste. O instalador da alpha.2, sem as simuladas, foi gerado (`PlotS_1.0.0-alpha.2_x64-setup.exe`) e ainda não foi executado.
+4. Feito em 2026-11-04: PlotSim avisa quando o verso chegou e separa a vista do gesto (`ade950c`). Próximo: testar o fluxo frente → verso com o PDF marcado, olhando o estado "Verso recebido" na janela real.
 
 Depois da primeira versão: impressora virtual, Linux e macOS, divisão por velocidade (`15-multiplas-impressoras`) e medir se o Graphify economiza tokens, com 3 perguntas respondidas com e sem ele.
 
