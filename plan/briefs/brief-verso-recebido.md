@@ -41,7 +41,17 @@ removidas ao fim. Não toque em `IMP1`, `IMP2` nem em processos do usuário.
    - `title`/`aria-description`: pt-BR "Só muda o que aparece na tela. O gesto é aplicado em
      Recolocar." / en "Only changes what the screen shows. The gesture is applied in Reload."
    - O botão continua desabilitado/habilitado pelas mesmas regras de hoje.
-4. **A confirmação do gesto** continua igual. Não mexa no modelo físico.
+4. **O rótulo da face não pode trocar quando a folha é virada.** Hoje, antes de virar, a folha
+   diz `frente p. 2 · verso em branco`; ao virar, a mesma página aparece como `verso p. 2`.
+   Isso faz a frente vista contra a luz parecer um verso já impresso.
+   - `frente` e `verso` nomeiam as faces impressas, não o lado que está à vista. Virar muda só o
+     desenho (a face impressa a 30%, espelhada) e a etiqueta "Virada"; o texto continua
+     `frente p. 2 · verso em branco`.
+   - Quando o verso ainda não foi aplicado, não chamar de verso nada que seja a frente. Se o
+     modelo precisar de uma linha, use "o outro lado ainda está em branco; o verso é impresso
+     depois de Recolocar" — sem inventar uma face.
+   - Teste em `tela.ts` cobrindo os dois lados antes e depois de virar, com a mesma página.
+5. **A confirmação do gesto** continua igual. Não mexa no modelo físico.
 
 ## Testes
 
