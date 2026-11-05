@@ -490,13 +490,6 @@
   color: var(--fg-muted);
 }
 
-/* No claro o metadado do estado fica sempre no texto principal. */
-:global([data-theme='light']) .linha .estado,
-:global([data-theme='light']) .linha:not(.inerte):hover .estado,
-:global([data-theme='light']) .marcada .estado {
-  color: var(--fg);
-}
-
 /* O que pede atencao se destaca pelo peso, nunca pela cor do texto. */
 .linha .estadoDestaque,
 .linha:not(.inerte):hover .estadoDestaque,

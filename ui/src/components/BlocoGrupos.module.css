@@ -53,18 +53,13 @@
   background: var(--panel-hover);
 }
 
-:global([data-theme='light']) .opcao:hover {
-  background: var(--accent-bg-soft);
-}
-
 .opcao:has(:focus-visible) {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 .opcaoAtiva,
-.opcaoAtiva:hover,
-:global([data-theme='light']) .opcaoAtiva:hover {
+.opcaoAtiva:hover {
   color: var(--fg);
   background: var(--bg-sunken);
   box-shadow: inset 0 0 0 1px var(--border-strong);

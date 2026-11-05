@@ -81,12 +81,27 @@
 }
 
 .titulo {
+  display: flex;
   flex-shrink: 0;
+  align-items: flex-start;
+  gap: 8px;
   margin: 0;
   padding: 16px 20px 0;
   color: var(--fg);
   font-size: 15px;
   font-weight: 600;
+  line-height: 20px;
+}
+
+/* O alerta fica na primeira linha; o texto quebra na coluna dele. */
+.iconeDoTitulo {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--icon-warning);
+}
+
+.textoDoTitulo {
+  min-width: 0;
 }
 
 /* So o corpo rola: titulo e botoes continuam visiveis em qualquer altura. */

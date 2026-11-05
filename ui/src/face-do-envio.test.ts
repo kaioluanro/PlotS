@@ -14,7 +14,7 @@ import {
   type ResumoDoEnvio,
 } from "./cartoes";
 import { desenhoDoCartao } from "./cartoes-gesto";
-import { conteudoDaConfirmacao } from "./confirmacao";
+import { conteudoDaConfirmacao, conteudoDoEnvio } from "./confirmacao";
 import {
   conteudoDoVerso,
   envioComFace,
@@ -343,6 +343,11 @@ describe("confirmacao do verso", () => {
     ]);
     expect(dialogo.gestos?.[0]?.desenho).not.toBeNull();
     expect(dialogo.linhas).toContain("24 pág · 12 folhas");
+  });
+
+  it("o titulo do verso pede atencao, e um dialogo comum nao", () => {
+    expect(conteudo().atencao).toBe(true);
+    expect(conteudoDoEnvio([], []).atencao).toBeUndefined();
   });
 
   it("o par de tamanhos diferentes entra nas notas do verso", () => {

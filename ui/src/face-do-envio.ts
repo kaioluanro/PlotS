@@ -303,6 +303,7 @@ export function conteudoDoVerso(
     ...conteudoDoEnvio([], [], false, soSimuladas),
     titulo: "face.envio.versoTitulo",
     texto: "face.envio.versoTexto",
+    atencao: true,
     ...(aviso === undefined ? {} : { aviso }),
     fechar: soSimuladas ? "face.envio.versoSimular" : "face.envio.versoConfirmar",
     linhas: leitura === null ? linhas : linhasComTrecho(linhas, leitura, idioma),

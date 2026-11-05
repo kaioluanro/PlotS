@@ -50,7 +50,7 @@
   color: var(--status-waiting);
 }
 
-/* Verde de status fica abaixo de 3:1 sobre o claro como icone: aqui o estado e dito pelo texto e pela forma. */
+/* O verde de status passaria hoje, mas o banner nao carrega um segundo verde: o estado e dito pelo texto e pela forma. */
 .aviso[data-tom="ativo"] .icone {
   color: var(--fg-muted);
 }

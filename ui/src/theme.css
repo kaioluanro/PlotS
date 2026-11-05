@@ -1,6 +1,6 @@
 /*
  * Decisoes aprovadas pela autoridade de interface:
- * - O tema segue o sistema; sem preferencia clara, fica o escuro como reserva.
+ * - O tema segue o sistema: a preferencia clara do sistema usa o cinza neutro dos paineis, e sem preferencia fica o escuro.
  * - Excecoes a faixa de 12 a 14 px de icone: 18 px no estado vazio e o x de 12 px em caixa de 24x24.
  *
  * Inter, licenca SIL OFL 1.1, a partir de @fontsource/inter. So os pesos em uso: 400, 500 e 600.
@@ -114,6 +114,7 @@
   --status-offline-text: #ef4444;
   --status-offline-hover: #f87171;
 
+  --icon-warning: #f59e0b;
   --focus-ring: #38bdf8;
   --shape-tabs-lane-bg: #1a1c1f;
   --shape-tabs-lane-border: rgba(255, 255, 255, 0.06);
@@ -144,72 +145,68 @@
   --font-mono: 'Caskaydia Cove Nerd Font Mono', 'Cascadia Mono', Consolas, 'Courier New', monospace;
 }
 
-[data-theme='light'] {
-  color-scheme: light;
+[data-theme='gray'] {
+  color-scheme: dark;
 
-  --bg: #f6f7fb;
-  --bg-sunken: #eef2f7;
-  --bg-elevated: #ffffff;
-  --panel: #ffffff;
-  --panel-hover: #f1f5f9;
-  --border: #e6eaf0;
-  --border-control: rgba(24, 24, 27, 0.62);
-  --border-control-hover: rgba(24, 24, 27, 0.72);
-  --border-strong: rgba(24, 24, 27, 0.22);
-  --overlay-scrim: rgba(24, 24, 27, 0.45);
-  --overlay-scrim-clean: rgba(24, 24, 27, 0.6);
-  --overlay-scrim-nested: rgba(24, 24, 27, 0.5);
+  --bg: #333333;
+  --bg-sunken: #2b2b2b;
+  --bg-elevated: #3f3f3f;
+  --panel: #4f4f4f;
+  --panel-hover: #595959;
+  --border: #454545;
+  --border-control: rgba(255, 255, 255, 0.45);
+  --border-control-hover: rgba(255, 255, 255, 0.58);
+  --border-strong: rgba(255, 255, 255, 0.24);
+  --overlay-scrim: rgba(12, 12, 12, 0.6);
+  --overlay-scrim-clean: rgba(12, 12, 12, 0.72);
+  --overlay-scrim-nested: rgba(12, 12, 12, 0.66);
 
-  --fg: #18181b;
-  --fg-muted: #3f3f46;
-  --fg-faint: #5f5f68;
-  --text-primary: #18181b;
-  --text-secondary: #3f3f46;
-  --text-tertiary: #5f5f68;
-  --text-quaternary: #a1a1aa;
+  --fg: #f2f2f2;
+  --fg-muted: #dedede;
+  --fg-faint: #b4b4b4;
+  --text-primary: #f2f2f2;
+  --text-secondary: #dedede;
+  --text-tertiary: #b4b4b4;
+  --text-quaternary: #8f8f8f;
 
-  --accent: #18181b;
-  --accent-strong: #000000;
-  --accent-on: #ffffff;
-  --accent-soft: rgba(24, 24, 27, 0.05);
-  --accent-faint: rgba(24, 24, 27, 0.05);
-  --accent-bg-soft: rgba(24, 24, 27, 0.06);
-  --accent-border: rgba(24, 24, 27, 0.18);
-  --accent-border-soft: rgba(24, 24, 27, 0.22);
-  --accent-ring: rgba(24, 24, 27, 0.08);
+  --accent: #f2f2f2;
+  --accent-strong: #ffffff;
+  --accent-on: #1c1c1c;
+  --accent-soft: rgba(255, 255, 255, 0.06);
+  --accent-faint: rgba(255, 255, 255, 0.06);
+  --accent-bg-soft: rgba(255, 255, 255, 0.08);
+  --accent-border: rgba(255, 255, 255, 0.24);
+  --accent-border-soft: rgba(255, 255, 255, 0.24);
+  --accent-ring: rgba(255, 255, 255, 0.1);
 
-  --surface-modal: #ffffff;
-  --surface-card-default: #f8fafc;
-  --surface-card-default-strong: #eef2f7;
-  --surface-card-selected: rgba(24, 24, 27, 0.06);
-  --border-subtle: #e6eaf0;
-  --border-accent: rgba(24, 24, 27, 0.22);
+  --surface-modal: #3f3f3f;
+  --surface-card-default: #4a4a4a;
+  --surface-card-default-strong: #555555;
+  --surface-card-selected: rgba(255, 255, 255, 0.07);
+  --border-subtle: #3d3d3d;
+  --border-accent: rgba(255, 255, 255, 0.24);
 
-  /*
-   * Excecao a norma visual: no tema claro, o verde e o laranja de estado ficam mais escuros para
-   * passar de 3:1 sobre as superficies do claro (elemento grafico, WCAG 1.4.11). O tema escuro
-   * nao muda. A norma em si nao foi editada.
-   */
-  --status-working: #059669;
-  --status-working-soft: rgba(5, 150, 105, 0.14);
-  --status-waiting: #c2610a;
-  --status-waiting-soft: rgba(194, 97, 10, 0.14);
-  --status-stopped: #5f5f68;
-  --status-stopped-soft: rgba(95, 95, 104, 0.12);
-  --status-disabled: #a1a1aa;
-  --status-disabled-soft: rgba(161, 161, 170, 0.12);
-  --status-offline: #dc2626;
-  --status-offline-soft: rgba(220, 38, 38, 0.12);
-  --status-offline-text: #b91c1c;
-  --status-offline-hover: #b91c1c;
+  --status-working: #34d399;
+  --status-working-soft: rgba(52, 211, 153, 0.16);
+  --status-waiting: #f59e0b;
+  --status-waiting-soft: rgba(245, 158, 11, 0.16);
+  --status-stopped: #b4b4b4;
+  --status-stopped-soft: rgba(180, 180, 180, 0.14);
+  --status-disabled: #8f8f8f;
+  --status-disabled-soft: rgba(143, 143, 143, 0.14);
+  --status-offline: #fb8b8b;
+  --status-offline-soft: rgba(251, 139, 139, 0.16);
+  --status-offline-text: #fb8b8b;
+  --status-offline-hover: #fecaca;
 
+  --icon-warning: #f59e0b;
   --focus-ring: #38bdf8;
-  --shape-tabs-lane-bg: #ececef;
-  --shape-tabs-lane-border: #dcdfe5;
+  --shape-tabs-lane-bg: #2e2e2e;
+  --shape-tabs-lane-border: rgba(255, 255, 255, 0.07);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
 }
 
 *,

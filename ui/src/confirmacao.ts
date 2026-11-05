@@ -25,6 +25,8 @@ export interface ConteudoConfirmacao {
   aviso?: string;
   /** O botao de confirmar segue em frente em vez de encerrar algo. */
   confirmaAvancando?: boolean;
+  /** Pede atencao no titulo, antes do texto: o passo seguinte gasta papel. */
+  atencao?: boolean;
   /** So informa: o dialogo tem apenas o botao de manter, que o fecha. */
   semConfirmar?: boolean;
 }

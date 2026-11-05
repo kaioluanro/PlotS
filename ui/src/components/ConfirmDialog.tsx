@@ -1,5 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { CircleAlert } from "lucide-react";
+import { CircleAlert, TriangleAlert } from "lucide-react";
 import { useRef } from "react";
 import type { ConteudoConfirmacao } from "../confirmacao";
 import { rolarPeloTeclado } from "../dialogo";
@@ -14,6 +14,18 @@ interface Props {
   conteudo: ConteudoConfirmacao | null;
   aoCancelar: () => void;
   aoConfirmar: () => void;
+}
+
+/** O titulo com o alerta antes do texto quando o passo seguinte gasta papel; o nome acessivel e so o texto. */
+export function TituloDoDialogo({ conteudo }: { conteudo: ConteudoConfirmacao }) {
+  return (
+    <>
+      {conteudo.atencao === true && (
+        <TriangleAlert size={16} aria-hidden="true" className={styles.iconeDoTitulo} />
+      )}
+      <span className={styles.textoDoTitulo}>{t(conteudo.titulo, conteudo.parametros)}</span>
+    </>
+  );
 }
 
 export function ConfirmDialog({ conteudo, aoCancelar, aoConfirmar }: Props) {
@@ -55,7 +67,9 @@ export function ConfirmDialog({ conteudo, aoCancelar, aoConfirmar }: Props) {
         >
           {visivel && (
             <>
-              <Dialog.Title className={styles.titulo}>{t(visivel.titulo, visivel.parametros)}</Dialog.Title>
+              <Dialog.Title className={styles.titulo}>
+                <TituloDoDialogo conteudo={visivel} />
+              </Dialog.Title>
               <Dialog.Description asChild>
                 <div ref={corpo} className={styles.corpo}>
                   <p className={styles.texto}>{t(visivel.texto, visivel.parametros)}</p>
