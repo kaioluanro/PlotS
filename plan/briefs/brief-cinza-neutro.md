@@ -1,12 +1,12 @@
-# PlotS: alerta no diálogo do verso e cinza do InDesign
+# PlotS: alerta no diálogo do verso e cinza neutro dos painéis
 
 Pedido do usuário em 2026-11-04, depois de testar o PlotSim corrigido:
 
 1. O diálogo "Imprimir os versos?" já existe e já pergunta o que precisa. Falta **um ícone de
    alerta amarelo** no começo do título, antes do texto. Nada mais muda nesse diálogo.
-2. A interface do PlotS, hoje branca no tema claro, passa a usar o **cinza do InDesign**. Só o
+2. A interface do PlotS, hoje branca no tema claro, passa a usar o **cinza neutro dos painéis**. Só o
    PlotS; o PlotSim não muda. O tema escuro atual continua; o que hoje é o tema claro vira o
-   cinza. O documento PDF continua branco, como a página no InDesign.
+   cinza. O documento PDF continua branco, como a página no editor de referência.
 
 Leia `E:\PlotS\AGENTS.md`, `.claude/team.json`, `.claude/skills/craft-team/SKILL.md` e
 `.claude/agents/plots-implementer.md` antes de agir; siga o método do papel. Não faça push nem
@@ -25,7 +25,7 @@ nas filas `PlotSim - IMP1` / `IMP2` nem em processos do usuário: use só as imp
 simuladas do build de desenvolvimento. Filas temporárias, se precisar, só `PlotSim — Uso *`,
 criadas e removidas pela janela.
 
-## 1. Cinza do InDesign (decisão da autoridade de interface)
+## 1. Cinza neutro dos painéis (decisão da autoridade de interface)
 
 Substitua **integralmente** o bloco `[data-theme='light']` de `ui/src/theme.css` por
 `[data-theme='gray']` com exatamente estes valores (medição em `contrast.py` anexa ao relatório):

@@ -9,6 +9,7 @@ Decisão do usuário em 2026-11-03: remover "Folhas por lote" da janela e deixar
 ## Comportamento
 
 - **Um fluxo só na janela:** todas as frentes saem em um trabalho contínuo, sem clique no meio. O cartão espera sem prazo e oferece "Imprimir versos", que envia um trabalho só, com a frase e a figura do gesto.
+- **Confirmação do verso:** o diálogo "Imprimir os versos?" leva um triângulo de alerta amarelo antes do título, só nele, porque o passo seguinte gasta papel (`c248cf8`). O corpo, os botões e o gesto não mudam.
 - **Papéis mistos:** um trecho por papel; a troca de papel para o envio e é dita antes.
 - **Todas as impressoras marcadas imprimem a mesma coisa.** A divisão sai da janela, por decisão do usuário em 2026-11-03; o núcleo e o PlotSim seguem testando a repartição.
 - **Escolha do que imprimir, no rodapé: Frente ou Verso**, para todas as marcadas. Só frente hoje, e só verso quando quiser, mesmo depois de fechar o programa. A escolha nunca muda sozinha, por decisão do usuário: só ele a troca. O verso sempre pede confirmação, com o gesto de cada impressora, porque o maço errado estraga as folhas.
@@ -28,6 +29,7 @@ Decisão do usuário em 2026-11-03: remover "Folhas por lote" da janela e deixar
 - [x] Campo "Quantidade" no rodapé, com cópias em frente, verso e automático (`18bb5cc`)
 - [x] Simuladas e PlotSim conferem o maço final (`18bb5cc`). O automático com cópias só tem teste de planejamento, porque o PlotSim não modela as duas faces automáticas
 - [x] Verso em espera sempre pede confirmação, com o gesto, as páginas, o papel e as cópias do trabalho enfileirado, nunca os números da aba (`7b16a4f`)
+- [x] Triângulo de alerta no título da confirmação do verso, só nele (`c248cf8`)
 - [x] Envio simultâneo não perde trabalho no driver que falha com dois trabalhos juntos: uma fila por vez nesse driver, e o registro do Windows transforma trabalho descartado em erro com Reimprimir (`7b16a4f`)
 - [x] Papel misto mantém o lado do documento; o par de tamanhos diferentes se separa com o verso em branco, avisado na análise (`7b16a4f`)
 

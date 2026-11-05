@@ -2,10 +2,15 @@
 
 O PlotS segue o [versionamento semântico](https://semver.org/lang/pt-BR/). As versões alfa ainda não têm teste em papel.
 
-## 1.0.0-alpha.3 (em desenvolvimento)
+## 1.0.0-alpha.3
+
+Gerada em 2026-11-05 (`c248cf8`).
 
 - PlotSim: a lista de impressoras distingue "Aguardando verso" de "Verso recebido"; o rodapé e cada folha acompanham, e uma linha avisa que o gesto é aplicado em Recolocar.
 - PlotSim: "Virar folha" passa a "Ver o outro lado", com o aviso de que só muda a vista, e o rótulo alterna para "Ver a frente" quando a folha está virada. Virar não renomeia mais as faces: a frente vista contra a luz continua sendo a frente.
+- PlotS: o tema claro deixa de ser branco e passa a usar o cinza neutro dos painéis, com a mesma hierarquia de superfícies; o tema escuro continua e a página do PDF continua branca.
+- PlotS: a confirmação "Imprimir os versos?" leva um triângulo de alerta amarelo antes do título, só nela, para o passo que gasta papel.
+- PlotS: entregue em portátil `.zip` (10,36 MB), sem instalador; o zip leva o programa, a `pdfium.dll`, a licença e os avisos de terceiros.
 
 ## 1.0.0-alpha.2
 

@@ -9,6 +9,7 @@ Aplicar `estilo-ui-ux.md` em toda a interface, em pt-BR e en.
 ## Plano de implementação
 
 - [x] `theme.css` com os tokens, temas escuro e claro, e Inter embutida
+- [x] Tema claro substituído pelo cinza neutro dos painéis, com o escuro intacto (`c248cf8`)
 - [x] Componentes base com CSS Modules, `lucide-react` e Radix
 - [x] Textos via `t()` em pt-BR e en
 - [x] Foco visível, ESC em diálogos e contraste medido
@@ -22,7 +23,7 @@ Aplicar `estilo-ui-ux.md` em toda a interface, em pt-BR e en.
 - O nome da impressora vai até 2 linhas, com `line-clamp: 2`, `overflow-wrap: anywhere` e `title`, como exceção à §6.5 e à §8.4 de `estilo-ui-ux.md`: errar a impressora desperdiça papel, e nomes de fila costumam diferir só no fim. O estado também vai até 2 linhas, com `title`.
 - "Calibrar…" usa padding `2px 8px` em 11 px, como exceção ao `4px 10px` do botão pequeno da norma: o botão fica na primeira linha, ao lado do nome, em uma lateral de 240 px.
 
-- **Pontos de estado no tema claro (`256e8ce`):** `--status-working #059669` e `--status-waiting #c2610a`, para os pontos passarem de 3:1 sobre todas as superfícies sem que espera e erro fiquem iguais para quem não separa bem as cores. Exceção à norma, que aceita os valores originais como indicador com rótulo. O tema escuro não muda.
+- **Tema cinza neutro no lugar do branco (`c248cf8`):** decisão do usuário em 2026-11-04. O tema claro do sistema passa a ser o cinza neutro dos painéis (`[data-theme='gray']`), com `color-scheme: dark`: fundo `#333333`, poço `#2b2b2b`, painel `#4f4f4f`, hover `#595959`, texto `#f2f2f2`. O tema escuro continua e a página do PDF continua branca, como a página no editor de referência. O acento volta a ser claro, como no escuro. Contraste medido em `%LOCALAPPDATA%\plots-build\cinza-indesign\saidas\contraste.log`: o pior par de texto é 5,21:1 (`--fg-muted` sobre hover) e o pior indicador é 3,06:1 (vermelho de erro sobre hover). `--fg-faint` não pode ser usado sobre `--panel`/`--panel-hover` (3,95/3,38), e o vermelho de erro sobre hover fica restrito a ponto ou borda.
 
 ## Pendente
 
