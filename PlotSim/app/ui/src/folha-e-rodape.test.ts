@@ -129,18 +129,59 @@ describe("seleção e erro na folha", () => {
     expect(css).toMatch(/\.selecionada:hover\s*\{[^}]*border-color:\s*var\(--accent\)/);
   });
 
-  it("o botão de virar diz a folha escolhida, e sem seleção diz só virar", () => {
+  it("o botão de virar diz a folha escolhida, e sem seleção diz só o verbo", () => {
     expect(rotuloDeVirar(bandeja({ folhas: [] }), 2)).toEqual({
       chave: "rodape.virar",
       parametros: {},
     });
-    expect(traduzir("pt-BR", "rodape.virar.folha", { n: "2" })).toBe("Virar folha 2");
-    expect(traduzir("en", "rodape.virar.folha", { n: "2" })).toBe("Flip sheet 2");
+    expect(traduzir("pt-BR", "rodape.virar.folha", { n: "2" })).toBe(
+      "Ver o outro lado da folha 2",
+    );
+    expect(traduzir("en", "rodape.virar.folha", { n: "2" })).toBe(
+      "See the other side of sheet 2",
+    );
+  });
+
+  it("o botão de virar avisa que só muda a vista, e o gesto fica em Recolocar", () => {
+    expect(traduzir("pt-BR", "rodape.virar")).toBe("Ver o outro lado");
+    expect(traduzir("en", "rodape.virar")).toBe("See the other side");
+    expect(traduzir("pt-BR", "rodape.virar.dica")).toBe(
+      "Só muda o que aparece na tela. O gesto é aplicado em Recolocar.",
+    );
+    expect(traduzir("en", "rodape.virar.dica")).toBe(
+      "Only changes what the screen shows. The gesture is applied in Reload.",
+    );
+    expect(appTsx).toMatch(/aria-description=\{titulo\}/);
+    expect(appTsx).toMatch(/title=\{titulo\}/);
   });
 
   it("o botão de virar com folha escolhida leva o número", () => {
     const tela = bandeja({ folhas: [{ numero: 2, situacao: "certa", motivos: [], frente: [], verso: [] }] });
     expect(rotuloDeVirar(tela, 2)).toEqual({ chave: "rodape.virar.folha", parametros: { n: "2" } });
+  });
+
+  it("virada a folha, o botão oferece a frente, nos dois idiomas", () => {
+    const tela = bandeja({ folhas: [{ numero: 2, situacao: "certa", motivos: [], frente: [], verso: [] }] });
+    expect(rotuloDeVirar(tela, 2, true)).toEqual({
+      chave: "rodape.virar.frente.folha",
+      parametros: { n: "2" },
+    });
+    expect(rotuloDeVirar(tela, null, true)).toEqual({ chave: "rodape.virar.frente", parametros: {} });
+    expect(traduzir("pt-BR", "rodape.virar.frente.folha", { n: "2" })).toBe(
+      "Ver a frente da folha 2",
+    );
+    expect(traduzir("en", "rodape.virar.frente.folha", { n: "2" })).toBe("See the front of sheet 2");
+    expect(traduzir("pt-BR", "rodape.virar.frente")).toBe("Ver a frente");
+    expect(traduzir("en", "rodape.virar.frente")).toBe("See the front");
+  });
+
+  it("a folha leva a situação do verso recebido para o rótulo acessível", () => {
+    expect(folhaTsx).toMatch(/chaveDaSituacao\(folha\.situacao, versoRecebido\)/);
+    expect(appTsx).toMatch(/versoRecebido=\{versoRecebido\}/);
+  });
+
+  it("o rótulo do botão segue a folha escolhida, não o estado da lista", () => {
+    expect(appTsx).toMatch(/rotuloDeVirar\(bandeja, folha, folhaVirada\)/);
   });
 });
 

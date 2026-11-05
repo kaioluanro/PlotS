@@ -44,7 +44,9 @@ describe("textos da janela", () => {
     expect(traduzir("pt-BR", "estado.ociosa")).toBe("Ociosa");
     expect(traduzir("pt-BR", "estado.recebendo")).toBe("Recebendo");
     expect(traduzir("pt-BR", "estado.aguardando_verso")).toBe("Aguardando verso");
-    expect(traduzir("pt-BR", "rodape.virar")).toBe("Virar folha");
+    expect(traduzir("pt-BR", "estado.verso_recebido")).toBe("Verso recebido");
+    expect(traduzir("en", "estado.verso_recebido")).toBe("Back side received");
+    expect(traduzir("pt-BR", "rodape.virar")).toBe("Ver o outro lado");
     expect(traduzir("pt-BR", "rodape.recolocar")).toBe("Recolocar");
     expect(traduzir("pt-BR", "rodape.limpar")).toBe("Limpar bandeja");
     expect(traduzir("pt-BR", "rodape.resumo", { certas: "3", total: "3" })).toBe(
@@ -54,6 +56,19 @@ describe("textos da janela", () => {
 
   it("marcador sem valor continua visível em vez de sumir", () => {
     expect(traduzir("en", "folha.titulo")).toBe("Sheet {n}");
+  });
+
+  it("a dica acima da pilha diz o que falta, nos dois idiomas", () => {
+    expect(traduzir("pt-BR", "centro.versoRecebido")).toBe(
+      "O verso já chegou. Escolha o gesto em Recolocar para imprimir o outro lado.",
+    );
+    expect(traduzir("en", "centro.versoRecebido")).toBe(
+      "The back side has arrived. Choose the gesture in Reload to print the other side.",
+    );
+    expect(traduzir("pt-BR", "centro.aguardandoVerso")).toBe("Aguardando o verso chegar do PlotS.");
+    expect(traduzir("en", "centro.aguardandoVerso")).toBe(
+      "Waiting for the back side from PlotS.",
+    );
   });
 });
 

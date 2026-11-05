@@ -146,10 +146,11 @@ interface Props {
   folha: FolhaTela;
   selecionada: boolean;
   virada: boolean;
+  versoRecebido: boolean;
   aoEscolher: (numero: number) => void;
 }
 
-function FolhaSemMemo({ fila, folha, selecionada, virada, aoEscolher }: Props) {
+function FolhaSemMemo({ fila, folha, selecionada, virada, versoRecebido, aoEscolher }: Props) {
   const camadas = camadasVisiveis(folha, virada);
   const proporcao = proporcaoDaFolha(camadas);
   const { elemento, visivel } = useVisivel<HTMLButtonElement>();
@@ -162,8 +163,8 @@ function FolhaSemMemo({ fila, folha, selecionada, virada, aoEscolher }: Props) {
   // Só conta o que já está na tela: uma folha fora da vista não começou a desenhar.
   const pendente = visivel && pendenteDoPapel(camadas, situacoes);
   const desenhando = useAtrasado(pendente, ATRASO_DO_INDICADOR);
-  const situacao = t(chaveDaSituacao(folha.situacao));
-  const paginas = textoDasPaginas(camadas);
+  const situacao = t(chaveDaSituacao(folha.situacao, versoRecebido));
+  const paginas = textoDasPaginas(camadas, virada);
   const motivos = folha.situacao === "sem_marca" ? [t("folha.sem_marca.texto")] : folha.motivos;
   const rotulo = t("folha.rotulo", { n: String(folha.numero), situacao, paginas });
   const classes = [

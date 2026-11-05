@@ -194,6 +194,13 @@
   border-radius: 50%;
 }
 
+/* O verso que já chegou: mesmo grupo de espera, forma própria. */
+.losango {
+  background: currentColor;
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+
 .quadrado {
   background: currentColor;
   border-radius: 1px;

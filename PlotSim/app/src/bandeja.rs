@@ -314,6 +314,11 @@ impl Bandeja {
         self.etapa != Etapa::Livre
     }
 
+    /// A passada do verso já chegou e a pilha só espera o gesto.
+    pub fn verso_recebido(&self) -> bool {
+        self.etapa == Etapa::AguardandoGesto && !self.pendentes.is_empty()
+    }
+
     /// Uma passada chegou. Se o gesto ainda não veio, ela espera: a pilha continua na saída.
     pub fn receber(&mut self, arquivo: PathBuf, paginas: Vec<PaginaVista>) {
         self.guardar(arquivo, paginas, false);

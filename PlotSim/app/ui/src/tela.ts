@@ -6,6 +6,7 @@ export type EstadoFila =
   | "ociosa"
   | "recebendo"
   | "aguardando_verso"
+  | "verso_recebido"
   | "com_aviso"
   | "sem_modo"
   | "fora_do_windows"
@@ -143,7 +144,7 @@ export function textoDoAviso(
 }
 
 /** A forma do ponto muda com o estado: nada aqui depende só da cor. */
-export type FormaDoPonto = "vazado" | "cheio" | "quadrado" | "discreto";
+export type FormaDoPonto = "vazado" | "cheio" | "losango" | "quadrado" | "discreto";
 
 export function pontoDoEstado(estado: EstadoFila): { forma: FormaDoPonto; cor: string } {
   switch (estado) {
@@ -151,6 +152,8 @@ export function pontoDoEstado(estado: EstadoFila): { forma: FormaDoPonto; cor: s
       return { forma: "vazado", cor: "trabalhando" };
     case "aguardando_verso":
       return { forma: "cheio", cor: "esperando" };
+    case "verso_recebido":
+      return { forma: "losango", cor: "esperando" };
     case "com_aviso":
     case "fora_do_windows":
     case "diferente":
@@ -169,6 +172,14 @@ export function textoComNumero(
   parametros: Record<string, string> = {},
 ): string {
   return n === 1 ? t(singular, parametros) : t(plural, { ...parametros, n: String(n) });
+}
+
+/**
+ * A passada do verso chegou e a pilha só espera o gesto. Sem passada pendente, ou com a pilha
+ * já recolocada, o verso ainda falta.
+ */
+export function passadaDoVersoRecebida(bandeja: BandejaTela | null): boolean {
+  return bandeja !== null && bandeja.etapa === "aguardando_gesto" && bandeja.esperando > 0;
 }
 
 export function resumoDaBandeja(bandeja: BandejaTela | null): string {
@@ -196,7 +207,12 @@ export function resumoDaBandeja(bandeja: BandejaTela | null): string {
     }
     return quantas === 1 ? t("rodape.resumo.um", { certas }) : t("rodape.resumo", { certas, total });
   }
-  return textoComNumero(bandeja.folhas.length, "rodape.andamento.um", "rodape.andamento");
+  const recebido = passadaDoVersoRecebida(bandeja);
+  return textoComNumero(
+    bandeja.folhas.length,
+    recebido ? "rodape.andamento.versoRecebido.um" : "rodape.andamento.um",
+    recebido ? "rodape.andamento.versoRecebido" : "rodape.andamento",
+  );
 }
 
 export interface Acao {
@@ -291,12 +307,29 @@ function rotuloDaPagina(camada: CamadaTela | undefined): string {
     : t("folha.paginaLida", { n: String(camada.numero) });
 }
 
-/** "frente p. 1 · verso p. 2", sempre pelo lado que está à vista. */
-export function textoDasPaginas(camadas: readonly CamadaTela[]): string {
+/**
+ * "frente p. 1 · verso p. 2": frente e verso nomeiam as faces impressas, não o lado que está
+ * à vista. Virada a folha, a face da frente aparece através do papel e continua sendo a frente.
+ */
+export function textoDasPaginas(camadas: readonly CamadaTela[], virada = false): string {
   return t("folha.paginas", {
-    frente: rotuloDaPagina(camadas.find((c) => !c.atras)),
-    verso: rotuloDaPagina(camadas.find((c) => c.atras)),
+    frente: rotuloDaPagina(camadas.find((c) => c.atras === virada)),
+    verso: rotuloDaPagina(camadas.find((c) => c.atras !== virada)),
   });
+}
+
+/**
+ * A linha acima da pilha: o verso já chegou e falta o gesto, ou o PlotS ainda não o enviou.
+ * Sem pilha na tela, não há espera para anunciar.
+ */
+export function dicaDaEspera(bandeja: BandejaTela | null): Chave | null {
+  if (bandeja === null || bandeja.folhas.length === 0) return null;
+  // Recebendo ou com aviso, a linha da pilha não pode contradizer o estado da lista.
+  if (bandeja.recebendo || bandeja.aviso !== null) return null;
+  if (bandeja.etapa === "aguardando_gesto") {
+    return bandeja.esperando > 0 ? "centro.versoRecebido" : "centro.aguardandoVerso";
+  }
+  return bandeja.etapa === "na_entrada" ? "centro.aguardandoVerso" : null;
 }
 
 /** Desenho de uma página que já chegou à tela, ou que falhou. Sem nenhum dos dois, ainda está a caminho. */
@@ -312,7 +345,8 @@ export function pendenteDoPapel(
 
 /**
  * Sem desenho, o verso e a frente dizem isso com palavras diferentes, para não se confundirem.
- * Virada a folha, o lado à vista é o oposto das camadas: a página da frente passa a ser o verso.
+ * O aviso acompanha a face que a pessoa está vendo: virada a folha, o lado de trás do papel é o
+ * que aparece e o aviso do verso passa a descrever a camada da frente.
  */
 export function chaveDoDesenhoFalho(camada: CamadaTela, virada: boolean): Chave {
   return camada.atras !== virada ? "folha.semDesenhoVerso" : "folha.semDesenho";
@@ -332,17 +366,24 @@ export function iconeDoResumo(
   return bandeja.semInstrucao ? "neutro" : "certo";
 }
 
-/** O botão de virar diz a folha escolhida; sem folha escolhida, diz só o verbo. */
+/** O botão de virar diz a folha escolhida e o lado que ele mostra; sem escolha, diz só o verbo. */
 export function rotuloDeVirar(
   bandeja: BandejaTela | null,
   selecionada: number | null,
+  virada = false,
 ): { chave: Chave; parametros: Record<string, string> } {
   const escolhida = selecionada !== null && bandeja?.folhas.some((f) => f.numero === selecionada);
-  if (!escolhida || selecionada === null) return { chave: "rodape.virar", parametros: {} };
-  return { chave: "rodape.virar.folha", parametros: { n: String(selecionada) } };
+  if (!escolhida || selecionada === null) {
+    return { chave: virada ? "rodape.virar.frente" : "rodape.virar", parametros: {} };
+  }
+  return {
+    chave: virada ? "rodape.virar.frente.folha" : "rodape.virar.folha",
+    parametros: { n: String(selecionada) },
+  };
 }
 
-export function chaveDaSituacao(situacao: SituacaoFolha): Chave {
+export function chaveDaSituacao(situacao: SituacaoFolha, versoRecebido = false): Chave {
+  if (situacao === "em_andamento" && versoRecebido) return "folha.em_andamento.versoRecebido";
   const chaves: Record<SituacaoFolha, Chave> = {
     em_andamento: "folha.em_andamento",
     certa: "folha.certa",

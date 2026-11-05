@@ -34,6 +34,7 @@ pub enum EstadoFila {
     Ociosa,
     Recebendo,
     AguardandoVerso,
+    VersoRecebido,
     ComAviso,
     SemModo,
     ForaDoWindows,
@@ -406,7 +407,11 @@ fn estado_da_bandeja(bandeja: &Bandeja) -> EstadoFila {
     } else if bandeja.aviso().is_some() {
         EstadoFila::ComAviso
     } else if bandeja.aguardando_verso() {
-        EstadoFila::AguardandoVerso
+        if bandeja.verso_recebido() {
+            EstadoFila::VersoRecebido
+        } else {
+            EstadoFila::AguardandoVerso
+        }
     } else {
         EstadoFila::Ociosa
     }
@@ -518,8 +523,10 @@ fn ao_receber_evento(compartilhado: &Compartilhado, nome: &str, evento: Evento) 
 #[cfg(test)]
 mod testes {
     use super::*;
+    use crate::marca::PaginaVista;
     use plotsim_core::recepcao::TrabalhoRecebido;
     use plotsim_core::spooler::{ErroSpooler, Spooler, TrabalhoNaFila};
+    use plotsim_physics::{BordaQueEntra, Entrada, FaceNaEntrada, Giro};
     use std::fs;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::thread;
@@ -564,6 +571,76 @@ mod testes {
         assert_eq!(estado_de(&compartilhado), EstadoFila::Recebendo);
         ao_receber(&compartilhado, "jato", Novidade::Ocupada(false));
         assert_eq!(estado_de(&compartilhado), EstadoFila::Ociosa);
+    }
+
+    const GESTO_JATO: Gesto = Gesto {
+        entrada: Entrada::Traseira,
+        face_impressa: FaceNaEntrada::ParaTras,
+        borda_que_entra: BordaQueEntra::Base,
+        inverter_ordem: false,
+    };
+
+    fn pagina_de_teste(numero: u32) -> PaginaVista {
+        PaginaVista {
+            indice: 0,
+            numero: Some(numero),
+            branca: false,
+            giro: Giro::Nenhum,
+            largura_mm: 210.0,
+            altura_mm: 297.0,
+        }
+    }
+
+    #[test]
+    fn a_lista_distingue_o_verso_que_chegou_do_que_ainda_falta() {
+        let modo = crate::bandeja::modo_do_registro(modo_pedido(true));
+        let mut bandeja = Bandeja::nova(modo);
+        bandeja.receber("frente.pdf".into(), vec![pagina_de_teste(2)]);
+        assert_eq!(
+            estado_da_bandeja(&bandeja),
+            EstadoFila::AguardandoVerso,
+            "a frente saiu e a passada do verso ainda não chegou"
+        );
+        bandeja.receber("verso.pdf".into(), vec![pagina_de_teste(1)]);
+        assert_eq!(
+            estado_da_bandeja(&bandeja),
+            EstadoFila::VersoRecebido,
+            "a passada do verso está na espera do gesto"
+        );
+        bandeja.recolocar(GESTO_JATO).unwrap();
+        assert_eq!(
+            estado_da_bandeja(&bandeja),
+            EstadoFila::Ociosa,
+            "o lote inteiro foi impresso e conferido"
+        );
+    }
+
+    #[test]
+    fn o_gesto_aplicado_antes_do_verso_continua_aguardando_o_verso() {
+        let modo = crate::bandeja::modo_do_registro(modo_pedido(true));
+        let mut bandeja = Bandeja::nova(modo);
+        bandeja.receber("frente.pdf".into(), vec![pagina_de_teste(2)]);
+        bandeja.recolocar(GESTO_JATO).unwrap();
+        assert_eq!(
+            estado_da_bandeja(&bandeja),
+            EstadoFila::AguardandoVerso,
+            "a pilha já está na entrada e a segunda passada ainda não chegou"
+        );
+    }
+
+    #[test]
+    fn um_aviso_ativo_vence_a_lista_dizer_que_o_verso_chegou() {
+        let modo = crate::bandeja::modo_do_registro(modo_pedido(true));
+        let mut bandeja = Bandeja::nova(modo);
+        bandeja.receber("frente.pdf".into(), vec![pagina_de_teste(2)]);
+        bandeja.receber("verso.pdf".into(), vec![pagina_de_teste(1)]);
+        assert_eq!(estado_da_bandeja(&bandeja), EstadoFila::VersoRecebido);
+        bandeja.definir_aviso(Some(Aviso::novo("pdf_ilegivel", None)));
+        assert_eq!(
+            estado_da_bandeja(&bandeja),
+            EstadoFila::ComAviso,
+            "o aviso é o que a pessoa precisa ver primeiro"
+        );
     }
 
     #[test]

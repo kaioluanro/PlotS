@@ -25,9 +25,11 @@ import {
   acaoLimpar,
   acaoRecolocar,
   acaoVirar,
+  dicaDaEspera,
   folhaEscolhida,
   iconeDoResumo,
   nomeDaFila,
+  passadaDoVersoRecebida,
   rotuloDeVirar,
   pontoDoEstado,
   resumoDaBandeja,
@@ -63,6 +65,7 @@ function BotaoDoRodape({
   parametros,
   icone,
   primario,
+  descricao,
   aoClicar,
 }: {
   acao: Acao;
@@ -70,15 +73,19 @@ function BotaoDoRodape({
   parametros?: Record<string, string>;
   icone: ReactNode;
   primario?: boolean;
+  /** O que o botão faz, mesmo quando ligado; o motivo de estar desligado vem junto. */
+  descricao?: string;
   aoClicar: () => void;
 }) {
   const motivo = acao.motivo === null ? undefined : t(acao.motivo);
+  const titulo = [descricao, motivo].filter((parte) => parte !== undefined).join(" ") || undefined;
   return (
     <button
       type="button"
       className={`${botoes.botao} ${primario ? botoes.primario : botoes.secundario}`}
       disabled={!acao.ativa}
-      title={motivo}
+      title={titulo}
+      aria-description={titulo}
       onClick={aoClicar}
     >
       {icone}
@@ -265,11 +272,13 @@ export function App() {
   const folhas = bandeja?.folhas ?? [];
   const escolherFolha = useCallback((numero: number) => setFolha(numero), []);
   const icone = iconeDoResumo(bandeja);
-  const rotuloVirar = rotuloDeVirar(bandeja, folha);
+  const versoRecebido = passadaDoVersoRecebida(bandeja);
+  const folhaVirada = folha !== null && viradas.has(folha);
+  const rotuloVirar = rotuloDeVirar(bandeja, folha, folhaVirada);
+  const dica = dicaDaEspera(bandeja);
   const avisoDaBandeja = bandeja?.aviso ? textoDoAviso(bandeja.aviso) : null;
   const notas: string[] = [];
   if (bandeja) {
-    if (bandeja.esperando > 0) notas.push(t("centro.esperando"));
     if (bandeja.etapa === "na_entrada") notas.push(textoDasOperacoes(bandeja.operacoes));
     if (bandeja.leitura !== null) notas.push(t(`centro.leitura.${bandeja.leitura}`));
     if (bandeja.semInstrucao) notas.push(t("centro.semInstrucao"));
@@ -487,6 +496,11 @@ export function App() {
             ) : (
               <>
                 <h2 className={styles.tituloDaSecao}>{t("centro.folhas")}</h2>
+                {dica !== null && (
+                  <p className={styles.notas} aria-live="polite">
+                    {t(dica)}
+                  </p>
+                )}
                 <div className={styles.grade}>
                   {fila !== null &&
                     folhas.map((item) => (
@@ -496,6 +510,7 @@ export function App() {
                         folha={item}
                         selecionada={item.numero === folha}
                         virada={viradas.has(item.numero)}
+                        versoRecebido={versoRecebido}
                         aoEscolher={escolherFolha}
                       />
                     ))}
@@ -537,6 +552,7 @@ export function App() {
                 rotulo={rotuloVirar.chave}
                 parametros={rotuloVirar.parametros}
                 icone={<FlipHorizontal2 size={14} aria-hidden="true" />}
+                descricao={t("rodape.virar.dica")}
                 aoClicar={virarFolha}
               />
               <BotaoDoRodape

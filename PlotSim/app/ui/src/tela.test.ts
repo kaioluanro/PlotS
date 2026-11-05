@@ -5,7 +5,9 @@ import {
   acaoRecolocar,
   acaoVirar,
   camadasVisiveis,
+  chaveDaSituacao,
   comoErroTela,
+  dicaDaEspera,
   ESCOLHA_VAZIA,
   escolherEntrada,
   estiloDaCamada,
@@ -15,6 +17,7 @@ import {
   gestoCompleto,
   GuardaDeDesenhos,
   nomeDaFila,
+  passadaDoVersoRecebida,
   pontoDoEstado,
   proporcaoDaFolha,
   resumoDaBandeja,
@@ -135,6 +138,29 @@ describe("resumo do rodapé", () => {
     expect(resumoDaBandeja(meia)).toBe(t("rodape.andamento", { n: "2" }));
   });
 
+  it("com o verso recebido, o rodapé não diz que ainda espera, nos dois idiomas", () => {
+    const recebido = (quantas: number) =>
+      bandeja({
+        etapa: "aguardando_gesto",
+        folhas: Array.from({ length: quantas }, (_, i) => folha(i + 1)),
+        esperando: 1,
+      });
+    expect(passadaDoVersoRecebida(recebido(3))).toBe(true);
+    expect(passadaDoVersoRecebida(bandeja({ etapa: "aguardando_gesto", folhas: [folha(1)] }))).toBe(
+      false,
+    );
+    expect(traduzir("pt-BR", "rodape.andamento.versoRecebido", { n: "3" })).toBe(
+      "3 folhas, verso recebido",
+    );
+    expect(traduzir("en", "rodape.andamento.versoRecebido", { n: "3" })).toBe(
+      "3 sheets, back side received",
+    );
+    expect(traduzir("pt-BR", "rodape.andamento.versoRecebido.um")).toBe("1 folha, verso recebido");
+    expect(traduzir("en", "rodape.andamento.versoRecebido.um")).toBe("1 sheet, back side received");
+    expect(resumoDaBandeja(recebido(3))).toBe(t("rodape.andamento.versoRecebido", { n: "3" }));
+    expect(resumoDaBandeja(recebido(1))).toBe(t("rodape.andamento.versoRecebido.um"));
+  });
+
   it("folha que falta entra no total", () => {
     const pronta = bandeja({
       etapa: "conferida",
@@ -229,6 +255,23 @@ describe("desenho da folha", () => {
     );
   });
 
+  it("o rótulo da face segue a face impressa, não o lado que está à vista", () => {
+    const umLado = [camada({ numero: 2 })];
+    const mesmoLadoVirado = [camada({ numero: 2, atras: true })];
+    const antes = textoDasPaginas(umLado, false);
+    expect(textoDasPaginas(mesmoLadoVirado, true)).toBe(antes);
+    expect(antes).toBe(
+      t("folha.paginas", { frente: t("folha.paginaLida", { n: "2" }), verso: t("folha.paginaEmBranco") }),
+    );
+    // Com as duas faces impressas, virar troca o desenho e não o nome das faces.
+    const comAsDuas = [camada({ pagina: 1, numero: 1 }), camada({ pagina: 2, numero: 2, atras: true })];
+    const asDuasViradas = [camada({ pagina: 2, numero: 2 }), camada({ pagina: 1, numero: 1, atras: true })];
+    expect(textoDasPaginas(asDuasViradas, true)).toBe(textoDasPaginas(comAsDuas, false));
+    expect(textoDasPaginas(comAsDuas, false)).toBe(
+      t("folha.paginas", { frente: t("folha.paginaLida", { n: "1" }), verso: t("folha.paginaLida", { n: "2" }) }),
+    );
+  });
+
   it("a página em branco diz que está em branco, e não que não tem marca", () => {
     const frente = camada({ numero: 5 });
     const atras = camada({ numero: null, branca: true, atras: true });
@@ -241,9 +284,67 @@ describe("desenho da folha", () => {
 
 describe("estado da impressora", () => {
   it("cada grupo de estado tem forma própria", () => {
-    const estados: EstadoFila[] = ["ociosa", "recebendo", "aguardando_verso", "com_aviso"];
+    const estados: EstadoFila[] = [
+      "ociosa",
+      "recebendo",
+      "aguardando_verso",
+      "verso_recebido",
+      "com_aviso",
+    ];
     const formas = new Set(estados.map((estado) => pontoDoEstado(estado).forma));
     expect(formas.size).toBe(estados.length);
+  });
+});
+
+describe("dica acima da pilha", () => {
+  it("diz que o verso chegou e que falta o gesto", () => {
+    const espera = bandeja({ etapa: "aguardando_gesto", folhas: [folha(1)], esperando: 1 });
+    expect(dicaDaEspera(espera)).toBe("centro.versoRecebido");
+  });
+
+  it("sem o verso, diz que ainda espera o PlotS", () => {
+    expect(dicaDaEspera(bandeja({ etapa: "aguardando_gesto", folhas: [folha(1)] }))).toBe(
+      "centro.aguardandoVerso",
+    );
+    expect(dicaDaEspera(bandeja({ etapa: "na_entrada", folhas: [folha(1)] }))).toBe(
+      "centro.aguardandoVerso",
+    );
+  });
+
+  it("sem pilha ou com o lote conferido, não anuncia espera", () => {
+    expect(dicaDaEspera(null)).toBeNull();
+    expect(dicaDaEspera(bandeja({ etapa: "vazia" }))).toBeNull();
+    expect(dicaDaEspera(bandeja({ etapa: "conferida", folhas: [folha(1)], esperando: 1 }))).toBeNull();
+  });
+
+  it("não contradiz Recebendo nem um aviso na lista", () => {
+    const comVerso = () =>
+      bandeja({ etapa: "aguardando_gesto", folhas: [folha(1)], esperando: 1 });
+    expect(dicaDaEspera(bandeja({ ...comVerso(), recebendo: true }))).toBeNull();
+    expect(
+      dicaDaEspera(
+        bandeja({ ...comVerso(), aviso: { codigo: "pdf_ilegivel", detalhe: null } }),
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("situação da folha", () => {
+  it("com o verso recebido e o gesto faltando, a folha diz isso e o rótulo acessível acompanha", () => {
+    expect(chaveDaSituacao("em_andamento", false)).toBe("folha.em_andamento");
+    expect(chaveDaSituacao("em_andamento", true)).toBe("folha.em_andamento.versoRecebido");
+    expect(traduzir("pt-BR", "folha.em_andamento.versoRecebido")).toBe(
+      "Verso recebido, falta recolocar",
+    );
+    expect(traduzir("en", "folha.em_andamento.versoRecebido")).toBe("Back side received, reload");
+    const situacao = traduzir("pt-BR", "folha.em_andamento.versoRecebido");
+    expect(
+      traduzir("pt-BR", "folha.rotulo", {
+        n: "3",
+        situacao,
+        paginas: "frente p. 2 · verso em branco",
+      }),
+    ).toBe("Folha 3: Verso recebido, falta recolocar. frente p. 2 · verso em branco");
   });
 });
 
@@ -289,7 +390,7 @@ describe("fila sem bandeja", () => {
     for (const estado of ["sem_modo", "fora_do_windows", "diferente"] as const) {
       expect(temBandeja(fila(estado))).toBe(false);
     }
-    for (const estado of ["ociosa", "recebendo", "aguardando_verso", "com_aviso"] as const) {
+    for (const estado of ["ociosa", "recebendo", "aguardando_verso", "verso_recebido", "com_aviso"] as const) {
       expect(temBandeja(fila(estado))).toBe(true);
     }
   });
