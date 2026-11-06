@@ -281,6 +281,8 @@ fn rasterizar(
         .rotate(rotacao_do_bitmap(plano), false)
         .use_print_quality(true)
         .set_format(PdfBitmapFormat::BGRA)
+        // O DIB do GDI é BGRA; a inversão que o pdfium-render liga por padrão entregaria RGBA.
+        .set_reverse_byte_order(false)
         .clear_before_rendering(true)
         .set_clear_color(PdfColor::WHITE);
     let bitmap = pagina

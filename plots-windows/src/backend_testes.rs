@@ -23,11 +23,16 @@ fn fila_a_72_dpi(largura: i32, altura: i32) -> Dispositivo {
     }
 }
 
-/// Uma página com um quadrado preto de 40 pontos no canto superior esquerdo.
-fn pdf_com_marca(largura: i64, altura: i64, rotacao: i64, unidade: Option<f32>) -> Vec<u8> {
+/// Uma página só, com o conteúdo indicado e a rotação e a unidade pedidas.
+fn pdf_de_uma_pagina(
+    largura: i64,
+    altura: i64,
+    rotacao: i64,
+    unidade: Option<f32>,
+    conteudo: String,
+) -> Vec<u8> {
     let mut doc = Document::with_version("1.5");
     let raiz = doc.new_object_id();
-    let conteudo = format!("0 g 0 {} 40 40 re f", altura - 40);
     let stream = doc.add_object(Stream::new(dictionary! {}, conteudo.into_bytes()));
     let mut pagina = dictionary! {
         "Type" => "Page", "Parent" => raiz,
@@ -51,6 +56,36 @@ fn pdf_com_marca(largura: i64, altura: i64, rotacao: i64, unidade: Option<f32>) 
     bytes
 }
 
+/// Uma página com um quadrado preto de 40 pontos no canto superior esquerdo.
+fn pdf_com_marca(largura: i64, altura: i64, rotacao: i64, unidade: Option<f32>) -> Vec<u8> {
+    pdf_de_uma_pagina(
+        largura,
+        altura,
+        rotacao,
+        unidade,
+        format!("0 g 0 {} 40 40 re f", altura - 40),
+    )
+}
+
+/// Quatro faixas verticais iguais: vermelho, laranja, amarelo e azul.
+fn pdf_com_faixas_de_cor(largura: f32, altura: f32) -> Vec<u8> {
+    let faixa = largura / 4.0;
+    pdf_de_uma_pagina(
+        largura as i64,
+        altura as i64,
+        0,
+        None,
+        format!(
+            "1 0 0 rg 0 0 {faixa} {altura} re f \
+             1 0.5 0 rg {faixa} 0 {faixa} {altura} re f \
+             1 1 0 rg {} 0 {faixa} {altura} re f \
+             0 0 1 rg {} 0 {faixa} {altura} re f",
+            faixa * 2.0,
+            faixa * 3.0
+        ),
+    )
+}
+
 /// Desenha a página 1 do PDF como o envio faria, passando pela barreira e pela passada.
 fn desenhar(pdf: &[u8], pagina: Pagina, fila: &Dispositivo) -> (PlanoPagina, Vec<u8>) {
     let origem = crate::abrir_origem(pdf).unwrap();
@@ -66,6 +101,58 @@ fn desenhar(pdf: &[u8], pagina: Pagina, fila: &Dispositivo) -> (PlanoPagina, Vec
 fn pixel(plano: &PlanoPagina, pixels: &[u8], x: i32, y: i32) -> [u8; 4] {
     let inicio = ((y * plano.largura_px + x) * 4) as usize;
     pixels[inicio..inicio + 4].try_into().unwrap()
+}
+
+fn bloco_png(png: &mut Vec<u8>, tipo: &[u8; 4], dados: &[u8]) {
+    png.extend((dados.len() as u32).to_be_bytes());
+    png.extend_from_slice(tipo);
+    png.extend_from_slice(dados);
+    let mut crc = 0xffff_ffffu32;
+    for byte in tipo.iter().chain(dados) {
+        crc ^= u32::from(*byte);
+        for _ in 0..8 {
+            crc = if crc & 1 != 0 {
+                (crc >> 1) ^ 0xedb8_8320
+            } else {
+                crc >> 1
+            };
+        }
+    }
+    png.extend((!crc).to_be_bytes());
+}
+
+/// PNG RGB a partir de um bitmap BGRA de cima para baixo, sem compressão.
+fn png_rgb(largura: usize, altura: usize, pixels: &[u8]) -> Vec<u8> {
+    let mut cru = Vec::with_capacity(altura * (largura * 3 + 1));
+    for linha in 0..altura {
+        cru.push(0);
+        for x in 0..largura {
+            let inicio = (linha * largura + x) * 4;
+            cru.extend([pixels[inicio + 2], pixels[inicio + 1], pixels[inicio]]);
+        }
+    }
+    let mut zlib = vec![0x78, 0x01];
+    let pedacos: Vec<&[u8]> = cru.chunks(0xffff).collect();
+    for (indice, pedaco) in pedacos.iter().enumerate() {
+        zlib.push(u8::from(indice + 1 == pedacos.len()));
+        zlib.extend((pedaco.len() as u16).to_le_bytes());
+        zlib.extend((!(pedaco.len() as u16)).to_le_bytes());
+        zlib.extend(*pedaco);
+    }
+    let (a, b) = cru.iter().fold((1u32, 0u32), |(a, b), byte| {
+        let a = (a + u32::from(*byte)) % 65_521;
+        (a, (b + a) % 65_521)
+    });
+    zlib.extend(((b << 16) | a).to_be_bytes());
+    let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
+    let mut cabecalho = Vec::new();
+    cabecalho.extend((largura as u32).to_be_bytes());
+    cabecalho.extend((altura as u32).to_be_bytes());
+    cabecalho.extend([8, 2, 0, 0, 0]);
+    bloco_png(&mut png, b"IHDR", &cabecalho);
+    bloco_png(&mut png, b"IDAT", &zlib);
+    bloco_png(&mut png, b"IEND", &[]);
+    png
 }
 
 fn original(numero: usize) -> Pagina {
@@ -183,6 +270,117 @@ fn unidade_da_pagina_entra_no_tamanho() {
         &fila_a_72_dpi(200, 300),
     );
     assert_eq!((plano.largura_px, plano.altura_px), (200, 300));
+}
+
+#[test]
+#[ignore = "precisa da pdfium.dll"]
+fn as_faixas_de_cor_saem_com_os_bytes_bgra_certos() {
+    let (plano, pixels) = desenhar(
+        &pdf_com_faixas_de_cor(100.0, 100.0),
+        original(1),
+        &fila_a_72_dpi(100, 100),
+    );
+    assert_eq!((plano.largura_px, plano.altura_px), (100, 100));
+    let faixas: [(i32, [u8; 4], &str); 4] = [
+        (12, [0, 0, 255, 255], "vermelho"),
+        (37, [0, 128, 255, 255], "laranja"),
+        (62, [0, 255, 255, 255], "amarelo"),
+        (87, [255, 0, 0, 255], "azul"),
+    ];
+    for (x, esperado, cor) in faixas {
+        assert_eq!(pixel(&plano, &pixels, x, 50), esperado, "{cor}");
+    }
+}
+
+/// A página colorida sai da fila com as cores certas: o PDF gerado pelo driver é rasterizado
+/// de novo e as faixas laranja e amarelo têm de continuar laranja e amarelo.
+#[test]
+#[ignore = "precisa da pdfium.dll e envia à fila de PDF do Windows"]
+fn a_pagina_colorida_chega_ao_pdf_da_fila_com_as_cores_certas() {
+    let Some(fila) = crate::listar_filas()
+        .unwrap()
+        .into_iter()
+        .find(|fila| fila.nome == FILA_DE_PDF)
+    else {
+        eprintln!("fila de PDF ausente: nada foi enviado");
+        return;
+    };
+    let Some(pasta) = std::env::var_os("PLOTS_ARQUIVO_SAIDA").map(std::path::PathBuf::from) else {
+        eprintln!("PLOTS_ARQUIVO_SAIDA não definida: nada foi enviado");
+        return;
+    };
+    let pasta = pasta.join(format!("teste-cor-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&pasta);
+    std::fs::create_dir_all(&pasta).unwrap();
+    let pdf = pdf_com_faixas_de_cor(595.0, 842.0);
+    let origem = crate::abrir_origem(&pdf).unwrap();
+    let dimensoes = origem.dimensoes_paginas().unwrap();
+    let mut backend = BackendWindows::novo(&fila, origem, dimensoes, Some(&pasta)).unwrap();
+    backend.enviar(Passada::Frente, &[original(1)]).unwrap();
+
+    let mut estado = EstadoEnvio::EmAndamento;
+    for _ in 0..600 {
+        estado = backend.consultar().unwrap();
+        if estado != EstadoEnvio::EmAndamento {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    assert_eq!(estado, EstadoEnvio::Concluido);
+
+    let arquivo = pasta.join("lote-0001-frente.pdf");
+    let saida = std::fs::read(&arquivo).unwrap();
+    let documento = biblioteca()
+        .unwrap()
+        .load_pdf_from_byte_slice(&saida, None)
+        .unwrap();
+    let pagina = documento.pages().get(0).unwrap();
+    let configuracao = PdfRenderConfig::new()
+        .set_reverse_byte_order(false)
+        .set_format(PdfBitmapFormat::BGRA);
+    let desenho = pagina.render_with_config(&configuracao).unwrap();
+    let (largura, altura) = (desenho.width() as usize, desenho.height() as usize);
+    let bytes = desenho.as_raw_bytes();
+    assert_eq!(bytes.len(), largura * altura * 4, "bitmap do PDF gerado");
+    let (mut laranja, mut amarelo, mut laranja_azulado, mut ciano) = (0, 0, 0, 0);
+    for pixel in bytes.chunks_exact(4) {
+        let (b, g, r) = (pixel[0], pixel[1], pixel[2]);
+        if r > 200 && g > 80 && g < 180 && b < 60 {
+            laranja += 1;
+        }
+        if r > 200 && g > 200 && b < 60 {
+            amarelo += 1;
+        }
+        if b > 200 && g > 80 && g < 180 && r < 60 {
+            laranja_azulado += 1;
+        }
+        if b > 200 && g > 200 && r < 60 {
+            ciano += 1;
+        }
+    }
+    let nome = arquivo
+        .file_name()
+        .and_then(|nome| nome.to_str())
+        .unwrap_or("arquivo");
+    eprintln!(
+        "{nome}: {largura}x{altura}, laranja {laranja}, amarelo {amarelo}, \
+         laranja azulado {laranja_azulado}, ciano {ciano}"
+    );
+    if let Some(destino) = std::env::var_os("PLOTS_COR_PNG").map(std::path::PathBuf::from) {
+        std::fs::write(&destino, png_rgb(largura, altura, &bytes)).unwrap();
+        eprintln!(
+            "PNG: {}",
+            destino
+                .file_name()
+                .and_then(|nome| nome.to_str())
+                .unwrap_or("arquivo")
+        );
+    }
+    assert!(laranja > 1000, "laranja com só {laranja} pixels");
+    assert!(amarelo > 1000, "amarelo com só {amarelo} pixels");
+    assert_eq!(laranja_azulado, 0, "laranja saiu azulado");
+    assert_eq!(ciano, 0, "amarelo saiu ciano");
+    std::fs::remove_dir_all(&pasta).unwrap();
 }
 
 #[test]
