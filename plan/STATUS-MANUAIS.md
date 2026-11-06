@@ -1,6 +1,6 @@
 # STATUS
 
-Requisitos: OK 72 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4 (106). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
+Requisitos: OK 73 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4 (107). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
 
 | Plano | OK | PARTIAL | MISSING | BUG | N/A | Estado |
 |---|---|---|---|---|---|---|
@@ -33,7 +33,7 @@ Requisitos: OK 72 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4 (106). Detalhes e
 | [Versionamento](26-versionamento.md) | 1 | 0 | 0 | 0 | 0 | Concluído |
 | [Impressão no Windows: faces e desenho](27-impressao-pdfjs.md) | 1 | 1 | 0 | 0 | 0 | Concluído no código; falta impressora real |
 | [Opções da impressora](28-opcoes-da-impressora.md) | 0 | 1 | 0 | 0 | 0 | Concluído no código; falta driver com bandeja |
-| [Cor das imagens impressas](29-cor-das-imagens.md) | - | - | - | - | - | Em andamento |
+| [Cor das imagens impressas](29-cor-das-imagens.md) | 1 | 0 | 0 | 0 | 0 | Concluído no código; falta impressora real |
 
 ## Lotes
 
@@ -75,6 +75,7 @@ Requisitos: OK 72 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4 (106). Detalhes e
 | 1.0.0-alpha.3 | `c248cf8` | concluído no código; PlotSim com "Verso recebido" e "Ver o outro lado"; PlotS com tema cinza neutro e alerta no verso; portátil em `.zip`, sem instalador |
 | 1.0.0-alpha.4 | `97643ec` | concluído no código; perfil portátil ao lado do exe; portátil em `.zip` |
 | 1.0.0-alpha.5 | `559a9c8` | concluído no código; frente/verso corretos, 1 página sem verso, desenho por bitmap compatível e painel de opções; portátil em `.zip` |
+| 1.0.0-alpha.6 | `6a972c6` | concluído no código; cor das imagens (BGRA) corrigida; portátil em `.zip` |
 
 **Próximo:**
 
@@ -85,6 +86,7 @@ Requisitos: OK 72 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4 (106). Detalhes e
 5. Feito em 2026-11-05: `1.0.0-alpha.3` (`c248cf8`), com o cinza neutro no lugar do branco e o alerta no diálogo do verso. CI verde; portátil em `PlotS_1.0.0-alpha.3_x64_portatil.zip`, aberto e fechado sem erro. Falta o teste do usuário com papel e com o PDF marcado.
 6. Feito em 2026-11-05: `1.0.0-alpha.4` (`97643ec`), com o `perfis.toml` ao lado do `PlotS.exe` no portátil e a importação única de `%APPDATA%`; o instalado não muda. CI verde; portátil em `PlotS` com `PLOTS-PORTATIL.txt` e sem o perfil dentro do zip. Falta mover a pasta para outro computador e conferir o perfil na prática.
 7. Feito em 2026-11-06: `1.0.0-alpha.5` (`559a9c8`), com "Frente" = páginas ímpares e "Verso" = pares, 1 página sem folha em branco, desenho por bitmap compatível + `StretchBlt` e a chave de boca com bandeja/resolução/cor. CI verde; portátil em `PlotS_1.0.0-alpha.5_x64_portatil.zip`. Falta o teste em impressora real (L6170), um driver com bandeja/zero opções e um envio usando o `DEVMODE` salvo.
+8. Feito em 2026-11-06: `1.0.0-alpha.6` (`6a972c6`), com a cor das imagens corrigida (o pdfium entregava RGBA e o GDI lia BGRA; laranja/amarelo saíam azuis). CI verde; portátil em `PlotS_1.0.0-alpha.6_x64_portatil.zip`. Falta conferir em impressora real e corrigir a prévia colorida do PlotSim.
 
 Depois da primeira versão: impressora virtual, Linux e macOS, divisão por velocidade (`15-multiplas-impressoras`) e medir se o Graphify economiza tokens, com 3 perguntas respondidas com e sem ele.
 

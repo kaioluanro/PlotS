@@ -2,6 +2,13 @@
 
 O PlotS segue o [versionamento semântico](https://semver.org/lang/pt-BR/). As versões alfa ainda não têm teste em papel.
 
+## 1.0.0-alpha.6
+
+Gerada em 2026-11-06 (`6a972c6`).
+
+- PlotS: as imagens impressas saem com as cores certas. O pdfium-render entrega os pixels em RGBA por padrão, mas o DIB do GDI e a marca da página em branco usam BGRA; o laranja e o amarelo saíam azuis. A rasterização passou a pedir BGRA de verdade.
+- PlotS: entregue em portátil `.zip`, sem instalador.
+
 ## 1.0.0-alpha.5
 
 Gerada em 2026-11-06 (`559a9c8`).
