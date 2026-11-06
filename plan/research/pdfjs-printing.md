@@ -672,3 +672,20 @@ pesquisa acima muda duas decisoes do projeto:
 A opcao "Frente" do PlotS passa a mandar as paginas impares (a frente real da folha), e
 "Verso" as pares; antes "Frente" mandava a primeira passada, que em documento de 1 pagina e a
 face em branco. E a correcao do mesmo relato de folha em branco.
+---
+
+## 13. LicenÃ§as dos trechos citados
+
+Os trechos de cÃ³digo reproduzidos neste documento servem sÃ³ para anÃ¡lise de interoperabilidade:
+PDF.js â€” Â© Mozilla Foundation, Apache-2.0; Firefox/mozilla-central â€” Â© Mozilla Contributors,
+MPL-2.0. Os excertos permanecem sob as licenÃ§as originais e nÃ£o fazem parte do cÃ³digo nem da
+licenÃ§a MIT do PlotS.
+
+---
+
+## 13. Licencas dos trechos citados
+
+Os trechos de codigo reproduzidos neste documento servem so para analise de interoperabilidade:
+PDF.js - (c) Mozilla Foundation, Apache-2.0; Firefox/mozilla-central - (c) Mozilla Contributors,
+MPL-2.0. Os excertos permanecem sob as licencas originais e nao fazem parte do codigo nem da
+licenca MIT do PlotS.

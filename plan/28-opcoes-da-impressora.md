@@ -47,8 +47,8 @@ o painel diz que não há opções ajustáveis e aponta a engrenagem.
 ## Backend
 
 - `plots-windows`: leitura das capacidades e aplicação no `DEVMODE`.
-  - `opcoes_da_fila(fila) -> OpcoesDaFila` usa `OpenPrinter`/`DeviceCapabilitiesW` e o ajuste
-    salvo (ou o padrão) para os valores atuais.
+  - `opcoes_da_fila(fila, salvo) -> OpcoesDaFila` usa `listar_filas` para a porta e
+    `DeviceCapabilitiesW`, e o ajuste salvo (ou o padrão) para os valores atuais.
   - `aplicar_opcoes_da_fila(fila, salvo, escolhas) -> Vec<u8>` monta o `DEVMODE` a partir do
     salvo/padrão, marca só os campos escolhidos, valida com `DocumentPropertiesW` e devolve os
     bytes; recusa vira `ErroPreferencias::Envio`.

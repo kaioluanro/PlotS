@@ -31,6 +31,8 @@ Requisitos: OK 71 · PARTIAL 26 · MISSING 2 · BUG 0 · N/A 4 (103). Detalhes e
 | [Impressão sem lote](24-impressao-sem-lote.md) | — | — | — | — | — | Em andamento |
 | [Avisos no topo](25-avisos-no-topo.md) | 2 | 1 | 0 | 0 | 0 | Concluído no código |
 | [Versionamento](26-versionamento.md) | 1 | 0 | 0 | 0 | 0 | Concluído |
+| [Impressão no Windows: faces e desenho](27-impressao-pdfjs.md) | - | - | - | - | - | Em andamento |
+| [Opções da impressora](28-opcoes-da-impressora.md) | - | - | - | - | - | Em andamento |
 
 ## Lotes
 
