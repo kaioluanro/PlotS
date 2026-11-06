@@ -3,8 +3,11 @@
 
 use crate::impressoras::{GRAVACAO_DE_PERFIS, VARIAVEL_PERFIS};
 use plots_perfis::{AjusteRecusado, ErroPerfis, Perfis};
-use plots_windows::{ErroPreferencias, FonteDeAjustes, RespostaDaJanela};
-use serde::Serialize;
+use plots_windows::{
+    Bandeja, Cor, ErroPreferencias, Escolhas, FonteDeAjustes, OpcoesDaFila, Resolucao,
+    RespostaDaJanela,
+};
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::{Mutex, PoisonError};
@@ -35,6 +38,8 @@ pub enum CodigoFalha {
     NaoAbriu,
     NaoGravou,
     Grande,
+    /// O driver não respondeu com as opções ou não aceitou as escolhidas.
+    OpcaoRecusada,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -70,6 +75,149 @@ pub struct EstadoDasPreferencias {
     /// Filas cujo ajuste diz duas faces no campo publico. O envio continua em uma face so.
     #[serde(rename = "duasFaces")]
     pub duas_faces: Vec<String>,
+}
+
+/// Bandeja que o driver declara para a fila.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BandejaDaImpressora {
+    pub valor: i16,
+    pub nome: String,
+}
+
+/// Par de resolução que o driver declara, em dpi.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolucaoDaImpressora {
+    pub x: i32,
+    pub y: i32,
+}
+
+/// Cor que o driver declara.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CorDaImpressora {
+    Colorida,
+    Monocromatica,
+}
+
+/// O que a pessoa escolheu; `null` deixa o campo como o driver o entregou.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EscolhasDaImpressora {
+    pub bandeja: Option<i16>,
+    pub resolucao: Option<ResolucaoDaImpressora>,
+    pub cor: Option<CorDaImpressora>,
+}
+
+/// O que o driver declara para a fila, com os valores que o ajuste atual usa.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpcoesDaImpressora {
+    pub bandejas: Vec<BandejaDaImpressora>,
+    pub resolucoes: Vec<ResolucaoDaImpressora>,
+    pub cor: Option<CorDaImpressora>,
+    pub atual: EscolhasDaImpressora,
+}
+
+impl From<Cor> for CorDaImpressora {
+    fn from(cor: Cor) -> Self {
+        match cor {
+            Cor::Colorida => Self::Colorida,
+            Cor::Monocromatica => Self::Monocromatica,
+        }
+    }
+}
+
+impl From<CorDaImpressora> for Cor {
+    fn from(cor: CorDaImpressora) -> Self {
+        match cor {
+            CorDaImpressora::Colorida => Self::Colorida,
+            CorDaImpressora::Monocromatica => Self::Monocromatica,
+        }
+    }
+}
+
+impl From<Bandeja> for BandejaDaImpressora {
+    fn from(bandeja: Bandeja) -> Self {
+        Self {
+            valor: bandeja.valor,
+            nome: bandeja.nome,
+        }
+    }
+}
+
+impl From<Resolucao> for ResolucaoDaImpressora {
+    fn from(resolucao: Resolucao) -> Self {
+        Self {
+            x: resolucao.x,
+            y: resolucao.y,
+        }
+    }
+}
+
+impl EscolhasDaImpressora {
+    fn para_o_driver(&self) -> Escolhas {
+        Escolhas {
+            bandeja: self.bandeja,
+            resolucao: self.resolucao.map(|resolucao| (resolucao.x, resolucao.y)),
+            cor: self.cor.map(Cor::from),
+        }
+    }
+}
+
+impl From<OpcoesDaFila> for OpcoesDaImpressora {
+    fn from(opcoes: OpcoesDaFila) -> Self {
+        Self {
+            bandejas: opcoes.bandejas.into_iter().map(Into::into).collect(),
+            resolucoes: opcoes.resolucoes.into_iter().map(Into::into).collect(),
+            cor: opcoes.cor.map(Into::into),
+            atual: EscolhasDaImpressora {
+                bandeja: opcoes.atual.bandeja,
+                resolucao: opcoes
+                    .atual
+                    .resolucao
+                    .map(|(x, y)| ResolucaoDaImpressora { x, y }),
+                cor: opcoes.atual.cor.map(Into::into),
+            },
+        }
+    }
+}
+
+/// Fala com o driver da fila sobre as opções que ele declara. Nos testes, um falso responde.
+trait OpcoesDoDriver {
+    fn ler(&self, fila: &str, salvo: Option<&[u8]>) -> Result<OpcoesDaFila, ErroPreferencias>;
+    fn aplicar(
+        &self,
+        fila: &str,
+        salvo: Option<&[u8]>,
+        escolhas: &Escolhas,
+    ) -> Result<Vec<u8>, ErroPreferencias>;
+}
+
+struct OpcoesDoSistema;
+
+impl OpcoesDoDriver for OpcoesDoSistema {
+    fn ler(&self, fila: &str, salvo: Option<&[u8]>) -> Result<OpcoesDaFila, ErroPreferencias> {
+        plots_windows::opcoes_da_fila(fila, salvo)
+    }
+
+    fn aplicar(
+        &self,
+        fila: &str,
+        salvo: Option<&[u8]>,
+        escolhas: &Escolhas,
+    ) -> Result<Vec<u8>, ErroPreferencias> {
+        plots_windows::aplicar_opcoes_da_fila(fila, salvo, escolhas)
+    }
+}
+
+/// O driver não respondeu ou não aceitou as opções: a fila sumida tem o código dela.
+fn falha_do_driver(erro: ErroPreferencias, fila: &str) -> FalhaPreferencias {
+    match erro {
+        ErroPreferencias::FilaInexistente => FalhaPreferencias::nova(CodigoFalha::FilaSumiu, fila),
+        ErroPreferencias::Envio(_) => FalhaPreferencias::nova(CodigoFalha::OpcaoRecusada, fila),
+    }
 }
 
 /// A janela de preferencias do driver. Nos testes, um falso responde no lugar dela.
@@ -148,6 +296,26 @@ fn atualizar<T>(
     Ok(resultado)
 }
 
+/// Grava o ajuste aceito pela pessoa ou pelo driver. O arquivo inteiro volta como estava se
+/// qualquer passo falhar.
+fn gravar_ajuste(
+    caminho: &std::path::Path,
+    fila: &str,
+    bytes: Vec<u8>,
+) -> Result<(), FalhaPreferencias> {
+    let gravado = atualizar(caminho, |perfis| {
+        perfis.definir_ajuste_do_driver(fila, bytes)
+    })
+    .map_err(|erro| match erro {
+        ErroPerfis::ConteudoGrande => FalhaPreferencias::nova(CodigoFalha::Grande, fila),
+        _ => FalhaPreferencias::nova(CodigoFalha::NaoGravou, fila),
+    })?;
+    gravado.map_err(|recusa| match recusa {
+        AjusteRecusado::Grande => FalhaPreferencias::nova(CodigoFalha::Grande, fila),
+        AjusteRecusado::Vazio => FalhaPreferencias::nova(CodigoFalha::NaoAbriu, fila),
+    })
+}
+
 /// Abre a janela e grava so se a pessoa aceitar. Uma janela por vez, por fila.
 fn conduzir(
     janela: &impl JanelaDoDriver,
@@ -175,17 +343,7 @@ fn conduzir(
     match resposta {
         RespostaDaJanela::Cancelada => Ok(FimDaJanela::Cancelado),
         RespostaDaJanela::Aceita(bytes) => {
-            let gravado = atualizar(&caminho, |perfis| {
-                perfis.definir_ajuste_do_driver(fila, bytes)
-            })
-            .map_err(|erro| match erro {
-                ErroPerfis::ConteudoGrande => FalhaPreferencias::nova(CodigoFalha::Grande, fila),
-                _ => FalhaPreferencias::nova(CodigoFalha::NaoGravou, fila),
-            })?;
-            gravado.map_err(|recusa| match recusa {
-                AjusteRecusado::Grande => FalhaPreferencias::nova(CodigoFalha::Grande, fila),
-                AjusteRecusado::Vazio => FalhaPreferencias::nova(CodigoFalha::NaoAbriu, fila),
-            })?;
+            gravar_ajuste(&caminho, fila, bytes)?;
             Ok(FimDaJanela::Salvo)
         }
     }
@@ -223,6 +381,41 @@ fn voltar_ao_padrao_em(
         perfis.remover_ajuste_do_driver(fila);
     })
     .map_err(nao_gravou)
+}
+
+/// Lê do driver o que ele declara e parte do ajuste salvo para mostrar os valores atuais.
+fn ler_opcoes_em(
+    driver: &impl OpcoesDoDriver,
+    caminho: Result<PathBuf, ErroPerfis>,
+    fila: &str,
+) -> Result<OpcoesDaImpressora, FalhaPreferencias> {
+    let nao_abriu = |_| FalhaPreferencias::nova(CodigoFalha::NaoAbriu, fila);
+    let caminho = caminho.map_err(nao_abriu)?;
+    let perfis = plots_perfis::carregar(&caminho).map_err(nao_abriu)?;
+    driver
+        .ler(fila, perfis.ajuste_do_driver(fila))
+        .map(OpcoesDaImpressora::from)
+        .map_err(|erro| falha_do_driver(erro, fila))
+}
+
+/// Aplica as escolhas no ajuste da fila e grava só depois de o driver aceitar.
+fn aplicar_em(
+    driver: &impl OpcoesDoDriver,
+    caminho: Result<PathBuf, ErroPerfis>,
+    fila: &str,
+    escolhas: &EscolhasDaImpressora,
+) -> Result<(), FalhaPreferencias> {
+    let nao_gravou = |_| FalhaPreferencias::nova(CodigoFalha::NaoGravou, fila);
+    let caminho = caminho.map_err(nao_gravou)?;
+    let perfis = plots_perfis::carregar(&caminho).map_err(nao_gravou)?;
+    let bytes = driver
+        .aplicar(
+            fila,
+            perfis.ajuste_do_driver(fila),
+            &escolhas.para_o_driver(),
+        )
+        .map_err(|erro| falha_do_driver(erro, fila))?;
+    gravar_ajuste(&caminho, fila, bytes)
 }
 
 /// Tira do arquivo o ajuste recusado, salvo se a pessoa ja gravou outro nesse meio tempo.
@@ -429,6 +622,38 @@ pub async fn voltar_ao_padrao_da_fila(fila: String) -> Result<(), FalhaPreferenc
     tauri::async_runtime::spawn_blocking(move || voltar_ao_padrao_em(caminho_do_sistema(), &fila))
         .await
         .unwrap_or(Err(interrompida))
+}
+
+/// Le as opcoes que o driver da fila declara, sem abrir a janela dele.
+#[tauri::command]
+pub async fn opcoes_da_impressora(fila: String) -> Result<OpcoesDaImpressora, FalhaPreferencias> {
+    let interrompida = FalhaPreferencias::nova(CodigoFalha::NaoAbriu, &fila);
+    let da_thread = fila.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        ler_opcoes_em(&OpcoesDoSistema, caminho_do_sistema(), &da_thread)
+    })
+    .await
+    .unwrap_or(Err(interrompida))
+}
+
+/// Aplica no ajuste salvo da fila as opcoes escolhidas no painel.
+#[tauri::command]
+pub async fn aplicar_opcoes_da_impressora(
+    fila: String,
+    escolhas: EscolhasDaImpressora,
+) -> Result<(), FalhaPreferencias> {
+    let interrompida = FalhaPreferencias::nova(CodigoFalha::NaoGravou, &fila);
+    let da_thread = fila.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        aplicar_em(
+            &OpcoesDoSistema,
+            caminho_do_sistema(),
+            &da_thread,
+            &escolhas,
+        )
+    })
+    .await
+    .unwrap_or(Err(interrompida))
 }
 
 #[cfg(test)]
@@ -905,5 +1130,186 @@ mod testes {
         assert_eq!(fim, Ok(FimDaJanela::Cancelado));
         assert!(!arquivo.exists(), "nada foi gravado");
         assert!(!plots_windows::ha_janela_do_driver_aberta());
+    }
+
+    struct DriverDeOpcoes {
+        leitura: Result<OpcoesDaFila, ErroPreferencias>,
+        escrita: Result<Vec<u8>, ErroPreferencias>,
+        salvo_lido: RefCell<Vec<Option<Vec<u8>>>>,
+        escolhas_recebidas: RefCell<Option<Escolhas>>,
+    }
+
+    impl DriverDeOpcoes {
+        fn novo(
+            leitura: Result<OpcoesDaFila, ErroPreferencias>,
+            escrita: Result<Vec<u8>, ErroPreferencias>,
+        ) -> Self {
+            Self {
+                leitura,
+                escrita,
+                salvo_lido: RefCell::new(Vec::new()),
+                escolhas_recebidas: RefCell::new(None),
+            }
+        }
+    }
+
+    impl OpcoesDoDriver for DriverDeOpcoes {
+        fn ler(&self, _fila: &str, salvo: Option<&[u8]>) -> Result<OpcoesDaFila, ErroPreferencias> {
+            self.salvo_lido.borrow_mut().push(salvo.map(<[u8]>::to_vec));
+            self.leitura.clone()
+        }
+
+        fn aplicar(
+            &self,
+            _fila: &str,
+            salvo: Option<&[u8]>,
+            escolhas: &Escolhas,
+        ) -> Result<Vec<u8>, ErroPreferencias> {
+            self.salvo_lido.borrow_mut().push(salvo.map(<[u8]>::to_vec));
+            *self.escolhas_recebidas.borrow_mut() = Some(escolhas.clone());
+            self.escrita.clone()
+        }
+    }
+
+    fn opcoes_de_exemplo() -> OpcoesDaFila {
+        OpcoesDaFila {
+            bandejas: vec![Bandeja {
+                valor: 1,
+                nome: "Bandeja 1".into(),
+            }],
+            resolucoes: vec![Resolucao { x: 600, y: 600 }],
+            cor: Some(Cor::Colorida),
+            atual: Escolhas {
+                bandeja: Some(1),
+                resolucao: Some((600, 600)),
+                cor: Some(Cor::Colorida),
+            },
+        }
+    }
+
+    fn perfil_com_ajuste(fila: &str, ajuste: Vec<u8>) -> Pasta {
+        let pasta = Pasta::nova();
+        let mut perfis = Perfis::new();
+        perfis.definir_modelo(fila, ModeloImpressora::Laser);
+        perfis.definir_ajuste_do_driver(fila, ajuste).unwrap();
+        plots_perfis::salvar(&pasta.arquivo(), &perfis).unwrap();
+        pasta
+    }
+
+    #[test]
+    fn ler_opcoes_parte_do_ajuste_salvo_e_traz_so_o_que_o_driver_declara() {
+        let pasta = perfil_com_ajuste("Sala", vec![1, 2]);
+        let driver = DriverDeOpcoes::novo(Ok(opcoes_de_exemplo()), Ok(Vec::new()));
+        let opcoes = ler_opcoes_em(&driver, Ok(pasta.arquivo()), "Sala").unwrap();
+        assert_eq!(*driver.salvo_lido.borrow(), [Some(vec![1u8, 2])]);
+        assert_eq!(
+            opcoes.bandejas,
+            [BandejaDaImpressora {
+                valor: 1,
+                nome: "Bandeja 1".into()
+            }]
+        );
+        assert_eq!(
+            opcoes.resolucoes,
+            [ResolucaoDaImpressora { x: 600, y: 600 }]
+        );
+        assert_eq!(opcoes.cor, Some(CorDaImpressora::Colorida));
+        assert_eq!(
+            opcoes.atual.resolucao,
+            Some(ResolucaoDaImpressora { x: 600, y: 600 })
+        );
+    }
+
+    #[test]
+    fn aplicar_opcoes_grava_no_perfil_depois_de_o_driver_aceitar() {
+        let pasta = perfil_com_ajuste("Sala", vec![1]);
+        let driver = DriverDeOpcoes::novo(Ok(opcoes_de_exemplo()), Ok(vec![7, 7]));
+        let escolhas = EscolhasDaImpressora {
+            bandeja: Some(2),
+            resolucao: Some(ResolucaoDaImpressora { x: 300, y: 300 }),
+            cor: Some(CorDaImpressora::Monocromatica),
+        };
+        assert_eq!(
+            aplicar_em(&driver, Ok(pasta.arquivo()), "Sala", &escolhas),
+            Ok(())
+        );
+        let lidos = plots_perfis::carregar(&pasta.arquivo()).unwrap();
+        assert_eq!(lidos.ajuste_do_driver("Sala"), Some(&[7u8, 7][..]));
+        assert_eq!(
+            *driver.escolhas_recebidas.borrow(),
+            Some(Escolhas {
+                bandeja: Some(2),
+                resolucao: Some((300, 300)),
+                cor: Some(Cor::Monocromatica),
+            })
+        );
+    }
+
+    #[test]
+    fn driver_que_recusa_as_opcoes_nao_grava_e_o_ajuste_anterior_fica() {
+        let pasta = perfil_com_ajuste("Sala", vec![1]);
+        let driver = DriverDeOpcoes::novo(
+            Ok(opcoes_de_exemplo()),
+            Err(ErroPreferencias::Envio(ErroEnvio::Resposta("não aceitou"))),
+        );
+        let escolhas = EscolhasDaImpressora {
+            bandeja: None,
+            resolucao: Some(ResolucaoDaImpressora { x: 600, y: 600 }),
+            cor: None,
+        };
+        assert_eq!(
+            aplicar_em(&driver, Ok(pasta.arquivo()), "Sala", &escolhas),
+            Err(FalhaPreferencias::nova(CodigoFalha::OpcaoRecusada, "Sala"))
+        );
+        let lidos = plots_perfis::carregar(&pasta.arquivo()).unwrap();
+        assert_eq!(lidos.ajuste_do_driver("Sala"), Some(&[1u8][..]));
+    }
+
+    #[test]
+    fn fila_que_sumiu_aparece_com_o_codigo_dela_ao_ler_e_ao_aplicar() {
+        let pasta = Pasta::nova();
+        let driver = DriverDeOpcoes::novo(
+            Err(ErroPreferencias::FilaInexistente),
+            Err(ErroPreferencias::FilaInexistente),
+        );
+        let escolhas = EscolhasDaImpressora {
+            bandeja: None,
+            resolucao: None,
+            cor: None,
+        };
+        assert_eq!(
+            ler_opcoes_em(&driver, Ok(pasta.arquivo()), "Sumida"),
+            Err(FalhaPreferencias::nova(CodigoFalha::FilaSumiu, "Sumida"))
+        );
+        assert_eq!(
+            aplicar_em(&driver, Ok(pasta.arquivo()), "Sumida", &escolhas),
+            Err(FalhaPreferencias::nova(CodigoFalha::FilaSumiu, "Sumida"))
+        );
+        assert!(!pasta.arquivo().exists(), "nada foi gravado");
+    }
+
+    #[test]
+    fn arquivo_de_perfis_ilegivel_nao_promete_opcoes_nem_grava() {
+        let pasta = Pasta::nova();
+        fs::write(pasta.arquivo(), "nao e toml = =").unwrap();
+        let driver = DriverDeOpcoes::novo(Ok(opcoes_de_exemplo()), Ok(vec![7]));
+        let escolhas = EscolhasDaImpressora {
+            bandeja: None,
+            resolucao: None,
+            cor: None,
+        };
+        assert_eq!(
+            ler_opcoes_em(&driver, Ok(pasta.arquivo()), "Sala"),
+            Err(FalhaPreferencias::nova(CodigoFalha::NaoAbriu, "Sala"))
+        );
+        assert_eq!(
+            aplicar_em(&driver, Ok(pasta.arquivo()), "Sala", &escolhas),
+            Err(FalhaPreferencias::nova(CodigoFalha::NaoGravou, "Sala"))
+        );
+        assert!(driver.salvo_lido.borrow().is_empty());
+        assert_eq!(
+            fs::read_to_string(pasta.arquivo()).unwrap(),
+            "nao e toml = ="
+        );
     }
 }

@@ -4,6 +4,7 @@
 
 use crate::erro::ErroEnvio;
 use crate::estado::Estado;
+use crate::opcoes::{Cor, Escolhas};
 use crate::papel::{
     conferir_devmode, AjustePapel, CampoLido, FacesDoEnvio, LeituraDevmode, DMPAPER_USER,
     ESCALA_REAL, ORIENTACAO_RETRATO, UMA_COPIA, UMA_POR_FOLHA,
@@ -15,15 +16,16 @@ use crate::texto::{deslocamento_no_buffer, texto_utf16_le};
 use crate::LIMITE_BUFFER_BYTES;
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
-use windows::core::{w, Error, HRESULT, PCWSTR};
+use windows::core::{w, Error, HRESULT, PCWSTR, PWSTR};
 use windows::Win32::Foundation::{ERROR_INSUFFICIENT_BUFFER, ERROR_INVALID_PARAMETER, HWND};
 use windows::Win32::Graphics::Gdi::{
     CreateCompatibleBitmap, CreateCompatibleDC, CreateDCW, DeleteDC, DeleteObject, GetDeviceCaps,
     SelectObject, SetDIBits, SetStretchBltMode, StretchBlt, StretchDIBits, BITMAPINFO,
     BITMAPINFOHEADER, BI_RGB, DEVMODEW, DEVMODE_FIELD_FLAGS, DIB_RGB_COLORS, DMCOLLATE_FALSE,
-    DMDUP_SIMPLEX, DMDUP_VERTICAL, DM_COLLATE, DM_COPIES, DM_DUPLEX, DM_FORMNAME, DM_IN_BUFFER,
-    DM_IN_PROMPT, DM_NUP, DM_ORIENTATION, DM_OUT_BUFFER, DM_PAPERLENGTH, DM_PAPERSIZE,
-    DM_PAPERWIDTH, DM_SCALE, HALFTONE, HBITMAP, HDC, HGDIOBJ, HORZRES, LOGPIXELSX, LOGPIXELSY,
+    DMCOLOR_COLOR, DMCOLOR_MONOCHROME, DMDUP_SIMPLEX, DMDUP_VERTICAL, DM_COLLATE, DM_COLOR,
+    DM_COPIES, DM_DEFAULTSOURCE, DM_DUPLEX, DM_FORMNAME, DM_IN_BUFFER, DM_IN_PROMPT, DM_NUP,
+    DM_ORIENTATION, DM_OUT_BUFFER, DM_PAPERLENGTH, DM_PAPERSIZE, DM_PAPERWIDTH, DM_PRINTQUALITY,
+    DM_SCALE, DM_YRESOLUTION, HALFTONE, HBITMAP, HDC, HGDIOBJ, HORZRES, LOGPIXELSX, LOGPIXELSY,
     PHYSICALHEIGHT, PHYSICALOFFSETX, PHYSICALOFFSETY, PHYSICALWIDTH, RASTERCAPS, RC_STRETCHDIB,
     SRCCOPY, STRETCH_BLT_MODE, VERTRES,
 };
@@ -33,6 +35,7 @@ use windows::Win32::Graphics::Printing::{
 };
 use windows::Win32::Storage::Xps::{
     AbortDoc, DeviceCapabilitiesW, EndDoc, EndPage, StartDocW, StartPage, DC_DUPLEX, DOCINFOW,
+    PRINTER_DEVICE_CAPABILITIES,
 };
 
 /// Pergunta ao driver da própria fila, sem abrir nada na fila e sem mudar nada.
@@ -105,6 +108,28 @@ impl Impressora {
             },
         )?;
         Ok(Self { handle, nome })
+    }
+
+    /// Pergunta ao driver o que ele declara para uma capacidade. Na primeira chamada `saida` é
+    /// `None` e a resposta é só a quantidade; depois ela aponta para o array do tamanho pedido.
+    /// Nada na fila muda.
+    pub(crate) fn capacidades(
+        &self,
+        porta: &[u16],
+        tipo: PRINTER_DEVICE_CAPABILITIES,
+        saida: Option<*mut core::ffi::c_void>,
+    ) -> i32 {
+        // Garantia: `self.nome` e `porta` terminam em zero e vivem durante a chamada; `saida`,
+        // quando existe, aponta para o array que a chamada anterior dimensionou.
+        unsafe {
+            DeviceCapabilitiesW(
+                PCWSTR::from_raw(self.nome.as_ptr()),
+                PCWSTR::from_raw(porta.as_ptr()),
+                tipo,
+                saida.map(|ponteiro| PWSTR(ponteiro.cast())),
+                None,
+            )
+        }
     }
 
     /// `DEVMODE` da fila com os campos que o envio precisa fixar, partindo do ajuste salvo quando
@@ -357,6 +382,7 @@ fn decodificar_estado_da_fila(buffer: &[u8]) -> Option<Estado> {
 
 /// Bloco do `DEVMODE` com os dados privados do driver depois da parte pública. Fica em `u64`
 /// para garantir o alinhamento de `DEVMODEW`.
+#[derive(Clone)]
 pub(crate) struct BufferDevmode(Vec<u64>);
 
 impl BufferDevmode {
@@ -460,6 +486,173 @@ impl BufferDevmode {
         let modo = unsafe { &mut *self.ponteiro_mut() };
         modo.dmFields |= DM_DUPLEX;
         modo.dmDuplex = DMDUP_VERTICAL;
+    }
+
+    /// Marca só os campos que a pessoa escolheu no painel. Papel, face, cópias, escala,
+    /// orientação e páginas por folha continuam fora: o envio é quem decide esses campos.
+    pub(crate) fn aplicar_escolhas(&mut self, escolhas: &Escolhas) -> Result<(), ErroEnvio> {
+        let resolucao = escolhas
+            .resolucao
+            .map(|(x, y)| {
+                let em_dpi = |valor: i32| {
+                    i16::try_from(valor)
+                        .ok()
+                        .filter(|dpi| *dpi > 0)
+                        .ok_or(ErroEnvio::Resposta("resolução fora do intervalo"))
+                };
+                Ok::<_, ErroEnvio>((em_dpi(x)?, em_dpi(y)?))
+            })
+            .transpose()?;
+        // Garantia: mesmo tamanho e alinhamento de `aplicar`; a referência exclusiva vale só aqui.
+        unsafe {
+            let modo = &mut *self.ponteiro_mut();
+            if let Some(bandeja) = escolhas.bandeja {
+                modo.dmFields |= DM_DEFAULTSOURCE;
+                modo.Anonymous1.Anonymous1.dmDefaultSource = bandeja;
+            }
+            if let Some((x, y)) = resolucao {
+                modo.dmFields |= DM_PRINTQUALITY | DM_YRESOLUTION;
+                modo.Anonymous1.Anonymous1.dmPrintQuality = x;
+                modo.dmYResolution = y;
+            }
+            if let Some(cor) = escolhas.cor {
+                modo.dmFields |= DM_COLOR;
+                modo.dmColor = match cor {
+                    Cor::Colorida => DMCOLOR_COLOR,
+                    Cor::Monocromatica => DMCOLOR_MONOCHROME,
+                };
+            }
+        }
+        Ok(())
+    }
+
+    /// Repõe, a partir do padrão do driver, valor e bit de presença dos campos que a pessoa deixou
+    /// em "Padrão da impressora". O resto do ajuste salvo continua como está: papel, face, cópias,
+    /// escala, orientação, páginas por folha e os dados privados não são tocados aqui.
+    pub(crate) fn repor_campos_do_padrao(&mut self, padrao: &Self, escolhas: &Escolhas) {
+        // Garantia: os dois buffers têm o tamanho de `DEVMODEW`, e os campos lidos são inteiros.
+        let (campos_do_padrao, bandeja, qualidade, y, cor) = unsafe {
+            let modo = &*padrao.ponteiro();
+            (
+                modo.dmFields.0,
+                modo.Anonymous1.Anonymous1.dmDefaultSource,
+                modo.Anonymous1.Anonymous1.dmPrintQuality,
+                modo.dmYResolution,
+                modo.dmColor,
+            )
+        };
+        let repor = |marcados: &mut DEVMODE_FIELD_FLAGS, bit: DEVMODE_FIELD_FLAGS| {
+            *marcados = DEVMODE_FIELD_FLAGS(if campos_do_padrao & bit.0 != 0 {
+                marcados.0 | bit.0
+            } else {
+                marcados.0 & !bit.0
+            });
+        };
+        // Garantia: mesmo tamanho e alinhamento de `aplicar`; a referência exclusiva vale só aqui.
+        unsafe {
+            let modo = &mut *self.ponteiro_mut();
+            if escolhas.bandeja.is_none() {
+                repor(&mut modo.dmFields, DM_DEFAULTSOURCE);
+                modo.Anonymous1.Anonymous1.dmDefaultSource = bandeja;
+            }
+            if escolhas.resolucao.is_none() {
+                repor(&mut modo.dmFields, DM_PRINTQUALITY);
+                repor(&mut modo.dmFields, DM_YRESOLUTION);
+                modo.Anonymous1.Anonymous1.dmPrintQuality = qualidade;
+                modo.dmYResolution = y;
+            }
+            if escolhas.cor.is_none() {
+                repor(&mut modo.dmFields, DM_COLOR);
+                modo.dmColor = cor;
+            }
+        }
+    }
+
+    /// Depois da fusão, cada campo escolhido precisa ter ficado como a pessoa pediu. Um driver que
+    /// responde sucesso e ignora ou troca o valor não aplicou a escolha: isso é recusa.
+    pub(crate) fn conferir_escolhas(&self, escolhas: &Escolhas) -> Result<(), ErroEnvio> {
+        // Garantia: mesmo tamanho e alinhamento de `aplicar`; o driver preencheu o buffer. Os
+        // campos lidos da união são inteiros, válidos em qualquer padrão de bits.
+        let modo = unsafe { &*self.ponteiro() };
+        let marcados = modo.dmFields.0;
+        let (bandeja, qualidade, y, cor) = unsafe {
+            (
+                modo.Anonymous1.Anonymous1.dmDefaultSource,
+                modo.Anonymous1.Anonymous1.dmPrintQuality,
+                modo.dmYResolution,
+                modo.dmColor,
+            )
+        };
+        if let Some(esperada) = escolhas.bandeja {
+            if marcados & DM_DEFAULTSOURCE.0 == 0 || bandeja != esperada {
+                return Err(ErroEnvio::Resposta(
+                    "o driver não manteve a bandeja escolhida",
+                ));
+            }
+        }
+        if let Some((x, y_pedido)) = escolhas.resolucao {
+            let dpi = |valor: i32| {
+                i16::try_from(valor).map_err(|_| ErroEnvio::Resposta("resolução fora do intervalo"))
+            };
+            let (x, y_pedido) = (dpi(x)?, dpi(y_pedido)?);
+            // Um driver pode guardar só a resolução horizontal; a vertical marcada tem de bater.
+            let vertical_ok = marcados & DM_YRESOLUTION.0 == 0 || y == y_pedido;
+            if marcados & DM_PRINTQUALITY.0 == 0 || qualidade != x || !vertical_ok {
+                return Err(ErroEnvio::Resposta(
+                    "o driver não manteve a resolução escolhida",
+                ));
+            }
+        }
+        if let Some(esperada) = escolhas.cor {
+            let esperada = match esperada {
+                Cor::Colorida => DMCOLOR_COLOR,
+                Cor::Monocromatica => DMCOLOR_MONOCHROME,
+            };
+            if marcados & DM_COLOR.0 == 0 || cor != esperada {
+                return Err(ErroEnvio::Resposta("o driver não manteve a cor escolhida"));
+            }
+        }
+        Ok(())
+    }
+
+    /// Os valores que o driver já usa, lidos só dos campos que ele marcou.
+    pub(crate) fn escolhas_atuais(&self) -> Escolhas {
+        // Garantia: mesmo tamanho e alinhamento de `aplicar`; o driver preencheu o buffer. Os
+        // campos lidos são inteiros, válidos em qualquer padrão de bits.
+        let modo = unsafe { &*self.ponteiro() };
+        let marcados = modo.dmFields.0;
+        // Garantia: os campos lidos da união são inteiros, válidos em qualquer padrão de bits.
+        let (bandeja, resolucao) = unsafe {
+            (
+                (marcados & DM_DEFAULTSOURCE.0 != 0)
+                    .then_some(modo.Anonymous1.Anonymous1.dmDefaultSource),
+                if marcados & DM_PRINTQUALITY.0 != 0 {
+                    let x = i32::from(modo.Anonymous1.Anonymous1.dmPrintQuality);
+                    let y = if marcados & DM_YRESOLUTION.0 != 0 {
+                        i32::from(modo.dmYResolution)
+                    } else {
+                        x
+                    };
+                    (x > 0 && y > 0).then_some((x, y))
+                } else {
+                    None
+                },
+            )
+        };
+        let cor = if marcados & DM_COLOR.0 != 0 {
+            match modo.dmColor {
+                DMCOLOR_COLOR => Some(Cor::Colorida),
+                DMCOLOR_MONOCHROME => Some(Cor::Monocromatica),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        Escolhas {
+            bandeja,
+            resolucao,
+            cor,
+        }
     }
 
     /// Em duas faces, o que vale é a resposta do driver: ele precisa ter ficado com o campo marcado

@@ -309,6 +309,11 @@
   composes: engrenagem;
 }
 
+/* A chave de boca das opcoes do driver: mesmo alvo de 24 px da engrenagem. */
+.chaveDeBoca {
+  composes: engrenagem;
+}
+
 /* A janela do driver esta aberta. A nota abaixo da linha diz isso em palavras. */
 .engrenagemAberta {
   color: var(--fg);

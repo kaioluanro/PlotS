@@ -10,6 +10,7 @@ pub use plots_print;
 
 mod erro;
 mod estado;
+mod opcoes;
 mod papel;
 mod passada;
 mod preferencias;
@@ -34,6 +35,9 @@ mod spooler;
 pub use backend::BackendWindows;
 pub use erro::{ErroEnvio, COMANDO_BAIXAR_BIBLIOTECA};
 pub use estado::{Condicao, Estado};
+#[cfg(not(windows))]
+pub use opcoes::{aplicar_opcoes_da_fila, opcoes_da_fila};
+pub use opcoes::{Bandeja, Cor, Escolhas, OpcoesDaFila, Resolucao};
 pub use papel::{
     ajuste_do_papel, conferir_devmode, medida_nominal, AjustePapel, CampoLido, FacesDoEnvio,
     LeituraDevmode,
@@ -53,6 +57,8 @@ pub use preferencias::{
 };
 #[cfg(windows)]
 pub use preferencias_driver::ajuste_pede_duas_faces;
+#[cfg(windows)]
+pub use preferencias_driver::{aplicar_opcoes_da_fila, opcoes_da_fila};
 #[cfg(windows)]
 pub use preferencias_janela::{
     abrir_janela_do_driver, encerrar_janelas_do_driver, fechar_janelas_do_driver,

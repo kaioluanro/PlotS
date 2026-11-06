@@ -3,12 +3,17 @@
 //! entrada hostil: os bytes salvos só chegam ao driver depois de conferidos.
 
 use crate::erro::ErroEnvio;
+use crate::opcoes::{
+    bandejas_de, cor_de, resolucoes_de, total_declarado, Bandeja, Cor, Escolhas, OpcoesDaFila,
+    Resolucao, CARACTERES_DO_NOME_DA_BANDEJA,
+};
 use crate::papel::{AjustePapel, FacesDoEnvio};
 use crate::preferencias::{ErroPreferencias, RespostaDaJanela};
 use crate::spooler::{sistema, BufferDevmode, Impressora};
-use crate::LIMITE_BUFFER_BYTES;
+use crate::{ErroFilas, LIMITE_BUFFER_BYTES};
 use windows::Win32::Foundation::{ERROR_INVALID_PRINTER_NAME, ERROR_PRINTER_NOT_FOUND};
 use windows::Win32::Graphics::Gdi::{DEVMODEW, DMDUP_SIMPLEX};
+use windows::Win32::Storage::Xps::{DC_BINNAMES, DC_BINS, DC_COLORDEVICE, DC_ENUMRESOLUTIONS};
 
 /// Resposta de `DocumentPropertiesW` quando tudo correu bem ou a pessoa aceitou.
 pub(crate) const IDOK: i32 = 1;
@@ -171,6 +176,145 @@ fn fila_inexistente(codigo: u32) -> bool {
     [ERROR_INVALID_PRINTER_NAME.0, ERROR_PRINTER_NOT_FOUND.0]
         .iter()
         .any(|falta| windows::core::HRESULT::from_win32(*falta).0 as u32 == codigo)
+}
+
+/// `DeviceCapabilities` recebe o nome da fila e a porta, não o handle aberto. A porta pode vir em
+/// lista: o driver quer uma só, como em `DriverDoSistema::dc_duplex`.
+fn porta_da_fila(fila: &str) -> Result<Vec<u16>, ErroPreferencias> {
+    let filas = crate::listar_filas().map_err(|erro| match erro {
+        ErroFilas::Sistema(codigo) => ErroPreferencias::Envio(ErroEnvio::Sistema {
+            chamada: "EnumPrintersW",
+            codigo,
+        }),
+        _ => ErroPreferencias::Envio(ErroEnvio::Resposta(
+            "não foi possível ler a fila no sistema",
+        )),
+    })?;
+    let porta = filas
+        .into_iter()
+        .find(|item| item.nome == fila)
+        .map(|item| item.porta)
+        .ok_or(ErroPreferencias::FilaInexistente)?;
+    Ok(porta
+        .split(',')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect())
+}
+
+fn ler_bandejas(impressora: &Impressora, porta: &[u16]) -> Result<Vec<Bandeja>, ErroPreferencias> {
+    let total = total_declarado(impressora.capacidades(porta, DC_BINS, None))
+        .map_err(ErroPreferencias::Envio)?;
+    if total == 0 {
+        return Ok(Vec::new());
+    }
+    let mut valores = vec![0i16; total];
+    let devolvidos =
+        total_declarado(impressora.capacidades(porta, DC_BINS, Some(valores.as_mut_ptr().cast())))
+            .map_err(ErroPreferencias::Envio)?;
+    valores.truncate(devolvidos.min(total));
+
+    let total_de_nomes = total_declarado(impressora.capacidades(porta, DC_BINNAMES, None))
+        .map_err(ErroPreferencias::Envio)?;
+    let mut nomes = Vec::new();
+    if total_de_nomes > 0 {
+        nomes = vec![0u16; total_de_nomes * CARACTERES_DO_NOME_DA_BANDEJA];
+        let devolvidos = total_declarado(impressora.capacidades(
+            porta,
+            DC_BINNAMES,
+            Some(nomes.as_mut_ptr().cast()),
+        ))
+        .map_err(ErroPreferencias::Envio)?;
+        nomes.truncate(devolvidos.min(total_de_nomes) * CARACTERES_DO_NOME_DA_BANDEJA);
+    }
+    Ok(bandejas_de(&valores, &nomes))
+}
+
+fn ler_resolucoes(
+    impressora: &Impressora,
+    porta: &[u16],
+) -> Result<Vec<Resolucao>, ErroPreferencias> {
+    let total = total_declarado(impressora.capacidades(porta, DC_ENUMRESOLUTIONS, None))
+        .map_err(ErroPreferencias::Envio)?;
+    if total == 0 {
+        return Ok(Vec::new());
+    }
+    let mut pares = vec![0i32; total * 2];
+    let devolvidos = total_declarado(impressora.capacidades(
+        porta,
+        DC_ENUMRESOLUTIONS,
+        Some(pares.as_mut_ptr().cast()),
+    ))
+    .map_err(ErroPreferencias::Envio)?;
+    pares.truncate(devolvidos.min(total) * 2);
+    Ok(resolucoes_de(&pares))
+}
+
+fn ler_cor(impressora: &Impressora, porta: &[u16]) -> Option<Cor> {
+    cor_de(impressora.capacidades(porta, DC_COLORDEVICE, None))
+}
+
+/// O ajuste salvo é a partida quando ainda serve para esta fila; se não serve, o padrão do driver.
+fn partida(driver: &impl DriverDaFila, salvo: Option<&[u8]>) -> Result<BufferDevmode, ErroEnvio> {
+    let padrao = ler_padrao(driver)?;
+    Ok(partida_com(driver, &padrao, salvo))
+}
+
+fn partida_com(
+    driver: &impl DriverDaFila,
+    padrao: &BufferDevmode,
+    salvo: Option<&[u8]>,
+) -> BufferDevmode {
+    salvo
+        .and_then(|bytes| validar_salvo(driver, padrao, bytes).ok())
+        .unwrap_or_else(|| padrao.clone())
+}
+
+/// O que o driver declara para a fila, com os valores que o ajuste atual usa. Só lê.
+pub fn opcoes_da_fila(fila: &str, salvo: Option<&[u8]>) -> Result<OpcoesDaFila, ErroPreferencias> {
+    let impressora = abrir_fila(fila)?;
+    let porta = porta_da_fila(fila)?;
+    let atual = partida(&impressora, salvo)
+        .map_err(ErroPreferencias::Envio)?
+        .escolhas_atuais();
+    Ok(OpcoesDaFila {
+        bandejas: ler_bandejas(&impressora, &porta)?,
+        resolucoes: ler_resolucoes(&impressora, &porta)?,
+        cor: ler_cor(&impressora, &porta),
+        atual,
+    })
+}
+
+/// Monta o `DEVMODE` a partir do ajuste salvo ou do padrão e marca só os campos escolhidos. A
+/// recusa do driver sobe como erro, sem bytes para gravar.
+pub(crate) fn aplicar_em(
+    driver: &impl DriverDaFila,
+    salvo: Option<&[u8]>,
+    escolhas: &Escolhas,
+) -> Result<Vec<u8>, ErroEnvio> {
+    let padrao = ler_padrao(driver)?;
+    let mut novo = partida_com(driver, &padrao, salvo);
+    novo.repor_campos_do_padrao(&padrao, escolhas);
+    novo.aplicar_escolhas(escolhas)?;
+    let mut mesclado = BufferDevmode::com_tamanho(driver.tamanho())?;
+    if driver.mesclar(&mut mesclado, &novo) != IDOK {
+        return Err(ErroEnvio::Resposta("o driver não aceitou as opções"));
+    }
+    mesclado.conferir_escolhas(escolhas)?;
+    mesclado.bytes()
+}
+
+/// Aplica as escolhas no ajuste salvo da fila e devolve os bytes que o chamador grava.
+pub fn aplicar_opcoes_da_fila(
+    fila: &str,
+    salvo: Option<&[u8]>,
+    escolhas: &Escolhas,
+) -> Result<Vec<u8>, ErroPreferencias> {
+    let impressora = abrir_fila(fila)?;
+    aplicar_em(&impressora, salvo, escolhas).map_err(ErroPreferencias::Envio)
 }
 
 /// O campo público do ajuste diz duas faces. O envio continua em uma face só, e a pessoa fica sabendo.

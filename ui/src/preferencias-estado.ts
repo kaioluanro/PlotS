@@ -24,6 +24,8 @@ export interface Preferencias {
   abrir: (fila: string) => void;
   voltarAoPadrao: (fila: string) => void;
   dispensarAviso: (fila: string) => void;
+  /** Relê quem tem ajuste salvo, depois de aplicar ou voltar ao padrão pelo painel. */
+  recarregar: () => void;
 }
 
 const NENHUMA: ReadonlySet<string> = new Set();
@@ -117,5 +119,5 @@ export function usePreferencias(lendoLista: boolean, impressoras: readonly Impre
     setAvisos((atuais) => semAviso(atuais, fila));
   }, []);
 
-  return { salvas, duasFaces, abertas, avisos, abrir, voltarAoPadrao, dispensarAviso };
+  return { salvas, duasFaces, abertas, avisos, abrir, voltarAoPadrao, dispensarAviso, recarregar: ler };
 }

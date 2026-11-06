@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { origemDoDialogo, rolarPeloTeclado } from "./dialogo";
+import { deveRolarPeloTeclado, origemDoDialogo, rolarPeloTeclado } from "./dialogo";
 
 function corpo(scrollTop: number) {
   return { scrollTop, clientHeight: 100, scrollHeight: 400 };
@@ -39,6 +39,37 @@ describe("rolagem do corpo do dialogo pelo teclado", () => {
     const alvo = { scrollTop: 0, clientHeight: 100, scrollHeight: 100 };
     expect(rolarPeloTeclado("ArrowDown", alvo)).toBe(false);
     expect(rolarPeloTeclado("ArrowDown", null)).toBe(false);
+  });
+
+  it("controle interativo usa a tecla para o proprio valor, nao para rolar", () => {
+    const dentro = { closest: () => ({}) };
+    for (const alvo of [dentro, { closest: () => ({}) }, { closest: () => ({}) }]) {
+      expect(deveRolarPeloTeclado(alvo)).toBe(false);
+    }
+    expect(deveRolarPeloTeclado({ closest: () => null })).toBe(true);
+    expect(deveRolarPeloTeclado(null)).toBe(true);
+  });
+
+  it("o seletor cobre select, input, button, link, textarea e papeis de controle", () => {
+    let visto = "";
+    deveRolarPeloTeclado({
+      closest: (seletor: string) => {
+        visto = seletor;
+        return null;
+      },
+    });
+    for (const trecho of [
+      "select",
+      "input",
+      "button",
+      "a",
+      "textarea",
+      '[role="slider"]',
+      '[role="radio"]',
+      '[role="listbox"]',
+    ]) {
+      expect(visto).toContain(trecho);
+    }
   });
 });
 

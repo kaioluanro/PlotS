@@ -8,6 +8,7 @@ import {
   Ruler,
   Settings,
   SlidersHorizontal,
+  Wrench,
   X,
 } from "lucide-react";
 import { Fragment, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
@@ -52,7 +53,7 @@ import {
   textoDoAvisoDoAjuste,
   type CodigoAvisoDoAjuste,
 } from "../preferencias";
-import { usePreferencias } from "../preferencias-estado";
+import type { Preferencias } from "../preferencias-estado";
 import { copiasDaFace, type Aba } from "../tabs";
 import type { AnaliseDoDocumento } from "../analise-documento";
 import { mostraOpcaoDoDriver } from "../opcoes-envio";
@@ -76,6 +77,10 @@ interface Props {
   /** Escolhas ainda sendo gravadas, por nome de fila. */
   gravacoes: ReadonlyMap<string, Modelo>;
   aoAtualizar: () => void;
+  /** O que se sabe do ajuste do driver em cada fila. */
+  preferencias: Preferencias;
+  /** Abre o painel das opções que o driver declara, sem abrir a janela dele. */
+  aoAbrirOpcoes: (fila: string, temAjusteSalvo: boolean) => void;
   /** O que se sabe do papel do envio que esta na tela. */
   documento?: AnaliseDoDocumento | null;
   aoAlternar: (impressora: string) => void;
@@ -104,6 +109,8 @@ export function Sidebar({
   lendo,
   gravacoes,
   aoAtualizar,
+  preferencias,
+  aoAbrirOpcoes,
   documento = null,
   aoAlternar,
   aoEscolherModelo,
@@ -143,7 +150,6 @@ export function Sidebar({
   const botaoEnvio = useRef<HTMLButtonElement>(null);
   const focoNoEnvio = useFocoQuandoOEnvioSai(lateralRef, botaoEnvio, botao.desabilitado);
   const idNotaDoModelo = useId();
-  const preferencias = usePreferencias(lendo, impressoras);
   const botaoAtualizar = useRef<HTMLButtonElement>(null);
   const [pedidoDeVolta, setPedidoDeVolta] = useState<PedidoDeVolta | null>(null);
   const [dispensados, setDispensados] = useState<ReadonlySet<string>>(new Set());
@@ -261,6 +267,7 @@ export function Sidebar({
                 temPreferencias(impressora) ? (preferencias.avisos.get(impressora.nome) ?? null) : null
               }
               aoAbrirPreferencias={preferencias.abrir}
+              aoAbrirOpcoes={(fila) => aoAbrirOpcoes(fila, preferencias.salvas.has(fila))}
               aoPedirVolta={setPedidoDeVolta}
               aoDispensarAviso={preferencias.dispensarAviso}
             />
@@ -379,6 +386,7 @@ interface PropsLinha {
   janelaAberta: boolean;
   avisoDoAjuste: CodigoAvisoDoAjuste | null;
   aoAbrirPreferencias: (fila: string) => void;
+  aoAbrirOpcoes: (fila: string) => void;
   aoPedirVolta: (pedido: PedidoDeVolta) => void;
   aoDispensarAviso: (fila: string) => void;
 }
@@ -465,6 +473,7 @@ export function LinhaImpressora({
   janelaAberta,
   avisoDoAjuste,
   aoAbrirPreferencias,
+  aoAbrirOpcoes,
   aoPedirVolta,
   aoDispensarAviso,
 }: PropsLinha) {
@@ -623,18 +632,30 @@ export function LinhaImpressora({
           </label>
           {real ? (
             // Fora dos rotulos da linha: clicar aqui nunca marca nem desmarca a impressora.
-            <button
-              ref={engrenagem}
-              type="button"
-              className={`${styles.engrenagem} ${janelaAberta ? styles.engrenagemAberta : ""}`}
-              aria-label={t("preferencias.rotulo", { nome })}
-              aria-haspopup="dialog"
-              aria-busy={janelaAberta}
-              title={t("preferencias.titulo")}
-              onClick={() => aoAbrirPreferencias(impressora.nome)}
-            >
-              <Settings size={14} aria-hidden="true" />
-            </button>
+            <>
+              <button
+                ref={engrenagem}
+                type="button"
+                className={`${styles.engrenagem} ${janelaAberta ? styles.engrenagemAberta : ""}`}
+                aria-label={t("preferencias.rotulo", { nome })}
+                aria-haspopup="dialog"
+                aria-busy={janelaAberta}
+                title={t("preferencias.titulo")}
+                onClick={() => aoAbrirPreferencias(impressora.nome)}
+              >
+                <Settings size={14} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className={styles.chaveDeBoca}
+                aria-label={t("opcoes.rotulo", { nome })}
+                aria-haspopup="dialog"
+                title={t("opcoes.titulo")}
+                onClick={() => aoAbrirOpcoes(impressora.nome)}
+              >
+                <Wrench size={14} aria-hidden="true" />
+              </button>
+            </>
           ) : (
             modoDaLinha
           )}

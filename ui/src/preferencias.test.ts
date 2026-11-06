@@ -58,6 +58,7 @@ function lateral(impressoras: readonly Impressora[]): string {
           janelaAberta: false,
           avisoDoAjuste: null,
           aoAbrirPreferencias: sem,
+          aoAbrirOpcoes: sem,
           aoPedirVolta: sem,
           aoDispensarAviso: sem,
         }),
@@ -80,9 +81,10 @@ describe("engrenagem das preferencias", () => {
 
   it("aparece em cada fila real e em nenhuma simulada", () => {
     expect(vezes(lateral([SIMULADA]), ROTULO_DA_ENGRENAGEM)).toBe(0);
-    expect(vezes(lateral([FILA, SIMULADA]), ROTULO_DA_ENGRENAGEM)).toBe(1);
+    // Engrenagem e chave de boca: dois botoes de dialogo por fila real.
+    expect(vezes(lateral([FILA, SIMULADA]), ROTULO_DA_ENGRENAGEM)).toBe(2);
     const duas = lateral([FILA, { ...FILA, id: "fila:Outra", nome: "Outra" }, SIMULADA]);
-    expect(vezes(duas, ROTULO_DA_ENGRENAGEM)).toBe(2);
+    expect(vezes(duas, ROTULO_DA_ENGRENAGEM)).toBe(4);
   });
 
   it("fica fora de qualquer rotulo: clicar nela nao marca a impressora", () => {

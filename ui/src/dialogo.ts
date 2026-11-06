@@ -1,5 +1,18 @@
 const PASSO_DA_SETA = 40;
 
+/** Controles que usam as setas/Home/End para o proprio valor, nao para rolar o corpo. */
+const CONTROLES_INTERATIVOS =
+  'select, input, button, a, textarea, [role="slider"], [role="radio"], [role="listbox"]';
+
+export interface ComAncestral {
+  closest(seletor: string): unknown;
+}
+
+/** Só o que não é um controle interativo deixa o corpo rolar com as teclas. */
+export function deveRolarPeloTeclado(alvo: ComAncestral | null): boolean {
+  return alvo === null || alvo.closest(CONTROLES_INTERATIVOS) === null;
+}
+
 export interface Rolavel {
   scrollTop: number;
   readonly clientHeight: number;

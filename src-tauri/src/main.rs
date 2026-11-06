@@ -173,7 +173,9 @@ fn main() -> ExitCode {
         .invoke_handler(tauri::generate_handler![
             abrir_documento,
             preferencias::abrir_preferencias,
+            preferencias::aplicar_opcoes_da_impressora,
             preferencias::estado_das_preferencias,
+            preferencias::opcoes_da_impressora,
             preferencias::voltar_ao_padrao_da_fila,
             andamento_da_abertura,
             calibracao::calibracao_avaliar,

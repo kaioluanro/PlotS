@@ -5,8 +5,9 @@ use crate::papel::{FacesDoEnvio, UMA_POR_FOLHA};
 use crate::spooler::BufferDevmode;
 use std::cell::{Cell, RefCell};
 use windows::Win32::Graphics::Gdi::{
-    DEVMODE_DUPLEX, DEVMODE_FIELD_FLAGS, DMDUP_SIMPLEX, DMDUP_VERTICAL, DM_COPIES, DM_DUPLEX,
-    DM_NUP, DM_ORIENTATION, DM_PAPERSIZE, DM_SCALE,
+    DEVMODE_DUPLEX, DEVMODE_FIELD_FLAGS, DMCOLOR_COLOR, DMCOLOR_MONOCHROME, DMDUP_SIMPLEX,
+    DMDUP_VERTICAL, DM_COLLATE, DM_COLOR, DM_COPIES, DM_DEFAULTSOURCE, DM_DUPLEX, DM_NUP,
+    DM_ORIENTATION, DM_PAPERSIZE, DM_PRINTQUALITY, DM_SCALE, DM_YRESOLUTION,
 };
 
 const EXTRA: u16 = 32;
@@ -69,6 +70,9 @@ fn qualidade(buffer: &BufferDevmode) -> i16 {
 struct Falso {
     resposta_da_janela: i32,
     recusa_tudo: Cell<bool>,
+    recusa_mescla: Cell<bool>,
+    ignora_bandeja: Cell<bool>,
+    padrao_com_opcoes: Cell<bool>,
     entradas_da_janela: RefCell<Vec<Vec<u8>>>,
     donos: RefCell<Vec<isize>>,
     janelas: Cell<u32>,
@@ -79,6 +83,9 @@ impl Falso {
         Self {
             resposta_da_janela: IDCANCEL,
             recusa_tudo: Cell::new(false),
+            recusa_mescla: Cell::new(false),
+            ignora_bandeja: Cell::new(false),
+            padrao_com_opcoes: Cell::new(false),
             entradas_da_janela: RefCell::new(Vec::new()),
             donos: RefCell::new(Vec::new()),
             janelas: Cell::new(0),
@@ -95,13 +102,41 @@ impl DriverDaFila for Falso {
             return -1;
         }
         destino.preencher(&padrao().bytes().unwrap());
+        if self.padrao_com_opcoes.get() {
+            // Garantia: o buffer tem o tamanho de `DEVMODEW` e os campos são inteiros.
+            unsafe {
+                let modo = &mut *destino.ponteiro_mut();
+                modo.dmFields |= DM_DEFAULTSOURCE
+                    | DM_PRINTQUALITY
+                    | DM_YRESOLUTION
+                    | DM_COLOR
+                    | DM_DUPLEX
+                    | DM_COLLATE
+                    | DM_PAPERSIZE
+                    | DM_COPIES
+                    | DM_SCALE
+                    | DM_ORIENTATION
+                    | DM_NUP;
+                modo.Anonymous1.Anonymous1.dmDefaultSource = 3;
+                modo.Anonymous1.Anonymous1.dmPrintQuality = 300;
+                modo.dmYResolution = 300;
+                modo.dmColor = DMCOLOR_MONOCHROME;
+            }
+        }
         IDOK
     }
     fn mesclar(&self, destino: &mut BufferDevmode, entrada: &BufferDevmode) -> i32 {
-        if qualidade(entrada) == QUALIDADE_RECUSADA {
+        if self.recusa_mescla.get() || qualidade(entrada) == QUALIDADE_RECUSADA {
             return -1;
         }
         destino.preencher(&entrada.bytes().unwrap());
+        if self.ignora_bandeja.get() {
+            // Garantia: o buffer tem o tamanho de `DEVMODEW` e o campo é um inteiro.
+            unsafe {
+                let modo = &mut *destino.ponteiro_mut();
+                modo.dmFields = DEVMODE_FIELD_FLAGS(modo.dmFields.0 & !DM_DEFAULTSOURCE.0);
+            }
+        }
         IDOK
     }
     fn perguntar(&self, destino: &mut BufferDevmode, entrada: &BufferDevmode, dono: isize) -> i32 {
@@ -796,4 +831,238 @@ fn fluxo_manual_continua_em_uma_face_mesmo_com_ajuste_de_duas_faces() {
     let salvo = salvo_de_duas_faces();
     let montado = montar(&driver, papel_a4(), FacesDoEnvio::Uma, Some(&salvo)).unwrap();
     assert_eq!(faces_montadas(&montado).0, DMDUP_SIMPLEX);
+}
+
+const CAMPOS_DO_ENVIO: DEVMODE_FIELD_FLAGS = DEVMODE_FIELD_FLAGS(
+    DM_DUPLEX.0 | DM_COPIES.0 | DM_SCALE.0 | DM_ORIENTATION.0 | DM_NUP.0 | DM_PAPERSIZE.0,
+);
+
+fn buffer_das_escolhas(bytes: &[u8]) -> BufferDevmode {
+    BufferDevmode::de_bytes(bytes).expect("os bytes formam um DEVMODE")
+}
+
+#[test]
+fn aplicar_escolhas_marca_bandeja_resolucao_e_cor() {
+    let driver = Falso::novo();
+    let escolhas = Escolhas {
+        bandeja: Some(7),
+        resolucao: Some((600, 300)),
+        cor: Some(Cor::Monocromatica),
+    };
+    let bytes = aplicar_em(&driver, None, &escolhas).unwrap();
+    let buffer = buffer_das_escolhas(&bytes);
+    // Garantia: o buffer tem o tamanho de `DEVMODEW` e os campos lidos são inteiros.
+    let modo = unsafe { &*buffer.ponteiro() };
+    // Garantia: os campos da união são inteiros, válidos em qualquer padrão de bits.
+    let (bandeja, qualidade, cor) = unsafe {
+        (
+            modo.Anonymous1.Anonymous1.dmDefaultSource,
+            modo.Anonymous1.Anonymous1.dmPrintQuality,
+            modo.dmColor,
+        )
+    };
+    assert_ne!(modo.dmFields.0 & DM_DEFAULTSOURCE.0, 0);
+    assert_eq!(bandeja, 7);
+    assert_ne!(modo.dmFields.0 & DM_PRINTQUALITY.0, 0);
+    assert_ne!(modo.dmFields.0 & DM_YRESOLUTION.0, 0);
+    assert_eq!(qualidade, 600);
+    assert_eq!(modo.dmYResolution, 300);
+    assert_ne!(modo.dmFields.0 & DM_COLOR.0, 0);
+    assert_eq!(cor, DMCOLOR_MONOCHROME);
+}
+
+#[test]
+fn aplicar_escolhas_nao_marca_os_campos_que_o_envio_decide() {
+    let driver = Falso::novo();
+    let escolhas = Escolhas {
+        bandeja: Some(3),
+        ..Escolhas::default()
+    };
+    let bytes = aplicar_em(&driver, None, &escolhas).unwrap();
+    let buffer = buffer_das_escolhas(&bytes);
+    // Garantia: como em `aplicar_escolhas_marca_bandeja_resolucao_e_cor`.
+    let modo = unsafe { &*buffer.ponteiro() };
+    // Garantia: os campos da união são inteiros, válidos em qualquer padrão de bits.
+    let (copias, escala) = unsafe {
+        (
+            modo.Anonymous1.Anonymous1.dmCopies,
+            modo.Anonymous1.Anonymous1.dmScale,
+        )
+    };
+    assert_eq!(modo.dmFields.0 & CAMPOS_DO_ENVIO.0, 0);
+    assert_eq!(copias, 1);
+    assert_eq!(escala, 100);
+}
+
+#[test]
+fn campo_nao_escolhido_fica_como_estava_no_ajuste() {
+    let driver = Falso::novo();
+    let escolhas = Escolhas {
+        resolucao: Some((1200, 1200)),
+        ..Escolhas::default()
+    };
+    let bytes = aplicar_em(&driver, None, &escolhas).unwrap();
+    let buffer = buffer_das_escolhas(&bytes);
+    // Garantia: como em `aplicar_escolhas_marca_bandeja_resolucao_e_cor`.
+    let modo = unsafe { &*buffer.ponteiro() };
+    assert_eq!(modo.dmFields.0 & DM_DEFAULTSOURCE.0, 0);
+    assert_eq!(modo.dmFields.0 & DM_COLOR.0, 0);
+}
+
+#[test]
+fn campo_que_o_ajuste_ja_marcava_mantem_o_valor_quando_nao_foi_escolhido() {
+    let mut salvo = salvo_de_duas_faces_buffer();
+    salvo
+        .aplicar_escolhas(&Escolhas {
+            bandeja: Some(2),
+            ..Escolhas::default()
+        })
+        .unwrap();
+    // Garantia: como em `aplicar_escolhas_marca_bandeja_resolucao_e_cor`.
+    let modo = unsafe { &*salvo.ponteiro() };
+    // Garantia: os campos da união são inteiros, válidos em qualquer padrão de bits.
+    let (copias, escala, papel) = unsafe {
+        (
+            modo.Anonymous1.Anonymous1.dmCopies,
+            modo.Anonymous1.Anonymous1.dmScale,
+            modo.Anonymous1.Anonymous1.dmPaperSize,
+        )
+    };
+    assert_eq!(modo.dmFields.0 & CAMPOS_DO_ENVIO.0, CAMPOS_DO_ENVIO.0);
+    assert_eq!(copias, 3);
+    assert_eq!(escala, 50);
+    assert_eq!(papel, CARTA);
+    assert_eq!(modo.dmDuplex, DMDUP_VERTICAL);
+}
+
+fn salvo_de_duas_faces_buffer() -> BufferDevmode {
+    BufferDevmode::de_bytes(&salvo_de_duas_faces()).unwrap()
+}
+
+/// Ajuste salvo com os três campos do painel em valores distintos do padrão do driver.
+fn salvo_com_opcoes() -> Vec<u8> {
+    let mut buffer = salvo_de_duas_faces_buffer();
+    // Garantia: como em `padrao`.
+    unsafe {
+        let modo = &mut *buffer.ponteiro_mut();
+        modo.dmFields |= DM_DEFAULTSOURCE | DM_PRINTQUALITY | DM_YRESOLUTION | DM_COLOR;
+        modo.Anonymous1.Anonymous1.dmDefaultSource = 7;
+        modo.Anonymous1.Anonymous1.dmPrintQuality = 1200;
+        modo.dmYResolution = 1200;
+        modo.dmColor = DMCOLOR_COLOR;
+    }
+    buffer.bytes().unwrap()
+}
+
+#[test]
+fn padrao_da_impressora_repoe_os_tres_campos_e_preserva_os_do_envio() {
+    let driver = Falso::novo();
+    driver.padrao_com_opcoes.set(true);
+    let salvo = salvo_com_opcoes();
+    let bytes = aplicar_em(&driver, Some(&salvo), &Escolhas::default()).unwrap();
+    let buffer = buffer_das_escolhas(&bytes);
+    // Garantia: como em `aplicar_escolhas_marca_bandeja_resolucao_e_cor`.
+    let modo = unsafe { &*buffer.ponteiro() };
+    let (bandeja, qualidade, y, cor, copias, escala, papel, orientacao, nup) = unsafe {
+        (
+            modo.Anonymous1.Anonymous1.dmDefaultSource,
+            modo.Anonymous1.Anonymous1.dmPrintQuality,
+            modo.dmYResolution,
+            modo.dmColor,
+            modo.Anonymous1.Anonymous1.dmCopies,
+            modo.Anonymous1.Anonymous1.dmScale,
+            modo.Anonymous1.Anonymous1.dmPaperSize,
+            modo.Anonymous1.Anonymous1.dmOrientation,
+            modo.Anonymous2.dmNup,
+        )
+    };
+    assert_ne!(modo.dmFields.0 & DM_DEFAULTSOURCE.0, 0);
+    assert_eq!(bandeja, 3, "a bandeja volta ao padrão do driver");
+    assert_ne!(modo.dmFields.0 & DM_PRINTQUALITY.0, 0);
+    assert_ne!(modo.dmFields.0 & DM_YRESOLUTION.0, 0);
+    assert_eq!(qualidade, 300, "a resolução volta ao padrão do driver");
+    assert_eq!(y, 300);
+    assert_ne!(modo.dmFields.0 & DM_COLOR.0, 0);
+    assert_eq!(cor, DMCOLOR_MONOCHROME, "a cor volta ao padrão do driver");
+    // O que não é opção do painel continua vindo do ajuste salvo.
+    assert_eq!(modo.dmFields.0 & CAMPOS_DO_ENVIO.0, CAMPOS_DO_ENVIO.0);
+    assert_eq!(modo.dmDuplex, DMDUP_VERTICAL);
+    assert_eq!(copias, 3);
+    assert_eq!(escala, 50);
+    assert_eq!(orientacao, 2);
+    assert_eq!(papel, CARTA);
+    assert_eq!(nup, 4);
+}
+
+#[test]
+fn escolhas_atuais_so_lem_os_campos_marcados_pelo_driver() {
+    let padrao = padrao();
+    assert_eq!(padrao.escolhas_atuais(), Escolhas::default());
+    let mut marcado = padrao;
+    // Garantia: como em `padrao`.
+    unsafe {
+        let modo = &mut *marcado.ponteiro_mut();
+        modo.dmFields |= DM_DEFAULTSOURCE | DM_PRINTQUALITY | DM_YRESOLUTION | DM_COLOR;
+        modo.Anonymous1.Anonymous1.dmDefaultSource = 4;
+        modo.Anonymous1.Anonymous1.dmPrintQuality = 600;
+        modo.dmYResolution = 600;
+        modo.dmColor = DMCOLOR_COLOR;
+    };
+    assert_eq!(
+        marcado.escolhas_atuais(),
+        Escolhas {
+            bandeja: Some(4),
+            resolucao: Some((600, 600)),
+            cor: Some(Cor::Colorida),
+        }
+    );
+}
+
+#[test]
+fn driver_que_recusa_as_opcoes_nao_devolve_bytes() {
+    let driver = Falso::novo();
+    driver.recusa_mescla.set(true);
+    let escolhas = Escolhas {
+        cor: Some(Cor::Colorida),
+        ..Escolhas::default()
+    };
+    assert_eq!(
+        aplicar_em(&driver, None, &escolhas).err(),
+        Some(ErroEnvio::Resposta("o driver não aceitou as opções"))
+    );
+}
+
+#[test]
+fn resolucao_que_nao_cabe_no_devmode_e_recusada_antes_do_driver() {
+    let driver = Falso::novo();
+    for (x, y) in [(40_000, 600), (600, 0), (-1, 600)] {
+        let escolhas = Escolhas {
+            resolucao: Some((x, y)),
+            ..Escolhas::default()
+        };
+        assert!(aplicar_em(&driver, None, &escolhas).is_err(), "{x}x{y}");
+    }
+}
+
+#[test]
+fn driver_que_ignora_a_bandeja_escolhida_e_recusado() {
+    let driver = Falso::novo();
+    driver.ignora_bandeja.set(true);
+    let escolhas = Escolhas {
+        bandeja: Some(7),
+        ..Escolhas::default()
+    };
+    assert_eq!(
+        aplicar_em(&driver, None, &escolhas).err(),
+        Some(ErroEnvio::Resposta(
+            "o driver não manteve a bandeja escolhida"
+        ))
+    );
+}
+
+#[test]
+fn escolhas_vazias_nao_marcam_nem_mudam_nada() {
+    let driver = Falso::novo();
+    let bytes = aplicar_em(&driver, None, &Escolhas::default()).unwrap();
+    assert_eq!(bytes, padrao().bytes().unwrap());
 }

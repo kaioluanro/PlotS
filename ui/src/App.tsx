@@ -31,6 +31,7 @@ import { HistoricoDialog } from "./components/HistoricoDialog";
 import { CalibracaoDialog } from "./components/CalibracaoDialog";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { DocumentArea, ID_AREA_DOCUMENTO } from "./components/DocumentArea";
+import { OpcoesDaImpressoraDialog } from "./components/OpcoesDaImpressoraDialog";
 import { ID_LATERAL, Sidebar } from "./components/Sidebar";
 import { focarAbaAtiva, TitleBar } from "./components/TitleBar";
 import {
@@ -81,6 +82,7 @@ import {
   comModeloGravado,
   gravarEscolha,
   liberaMenuDeContexto,
+  nomeDeExibicao,
   type Aviso,
   type Impressora,
   type ListaImpressoras,
@@ -94,6 +96,7 @@ import {
   type RascunhoIntervalo,
 } from "./intervalo";
 import { abrirLote, type LoteCaminhos } from "./lote";
+import { usePreferencias } from "./preferencias-estado";
 import {
   decidirFechamentoJanela,
   deveOuvirFechamentoJanela,
@@ -125,6 +128,10 @@ export function App() {
   const [aCalibrar, setACalibrar] = useState<Impressora | null>(null);
   const [lista, setLista] = useState<ListaImpressoras>({ impressoras: [], avisos: [] });
   const [lendoLista, setLendoLista] = useState(true);
+  const preferencias = usePreferencias(lendoLista, lista.impressoras);
+  // A fila do painel de opcoes, e se ela ja tinha ajuste salvo quando a chave de boca foi usada.
+  const [filaDasOpcoes, setFilaDasOpcoes] = useState<string | null>(null);
+  const [ajusteDasOpcoes, setAjusteDasOpcoes] = useState(false);
   const [gravacoes, setGravacoes] = useState<ReadonlyMap<string, Modelo>>(new Map());
   const [falhaAoGravar, setFalhaAoGravar] = useState<Aviso | null>(null);
   const [substituicao, setSubstituicao] = useState<PedidoDeSubstituicao | null>(null);
@@ -644,6 +651,9 @@ export function App() {
       .catch(() => despachar({ tipo: "cancelar_fechamento" }));
   };
 
+  const impressoraDasOpcoes = lista.impressoras.find((item) => item.nome === filaDasOpcoes);
+  const nomeDasOpcoes = impressoraDasOpcoes ? nomeDeExibicao(impressoraDasOpcoes) : "";
+
   return (
     <div className={styles.app}>
       <TitleBar
@@ -672,6 +682,11 @@ export function App() {
             falhaAoGravar={falhaAoGravar}
             lendo={lendoLista}
             gravacoes={gravacoes}
+            preferencias={preferencias}
+            aoAbrirOpcoes={(fila, salvo) => {
+              setAjusteDasOpcoes(salvo);
+              setFilaDasOpcoes(fila);
+            }}
             aoAtualizar={() => {
               setFalhaAoGravar(null);
               atualizarLista();
@@ -756,6 +771,23 @@ export function App() {
         aoFechar={(gravou) => {
           setACalibrar(null);
           if (gravou) atualizarLista();
+        }}
+      />
+      <OpcoesDaImpressoraDialog
+        aberto={filaDasOpcoes !== null}
+        fila={filaDasOpcoes}
+        nome={nomeDasOpcoes}
+        temAjusteSalvo={ajusteDasOpcoes}
+        aoFechar={() => setFilaDasOpcoes(null)}
+        aoAbrirEngrenagem={() => {
+          const fila = filaDasOpcoes;
+          setFilaDasOpcoes(null);
+          if (fila !== null) preferencias.abrir(fila);
+        }}
+        aoAplicar={() => preferencias.recarregar()}
+        aoFilaSumiu={() => {
+          preferencias.recarregar();
+          atualizarLista();
         }}
       />
       <PainelDeAvisos
