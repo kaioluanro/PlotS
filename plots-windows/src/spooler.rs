@@ -18,12 +18,14 @@ use std::path::Path;
 use windows::core::{w, Error, HRESULT, PCWSTR};
 use windows::Win32::Foundation::{ERROR_INSUFFICIENT_BUFFER, ERROR_INVALID_PARAMETER, HWND};
 use windows::Win32::Graphics::Gdi::{
-    CreateDCW, DeleteDC, GetDeviceCaps, StretchDIBits, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
-    DEVMODEW, DEVMODE_FIELD_FLAGS, DIB_RGB_COLORS, DMCOLLATE_FALSE, DMDUP_SIMPLEX, DMDUP_VERTICAL,
-    DM_COLLATE, DM_COPIES, DM_DUPLEX, DM_FORMNAME, DM_IN_BUFFER, DM_IN_PROMPT, DM_NUP,
-    DM_ORIENTATION, DM_OUT_BUFFER, DM_PAPERLENGTH, DM_PAPERSIZE, DM_PAPERWIDTH, DM_SCALE, HDC,
-    HORZRES, LOGPIXELSX, LOGPIXELSY, PHYSICALHEIGHT, PHYSICALOFFSETX, PHYSICALOFFSETY,
-    PHYSICALWIDTH, RASTERCAPS, RC_STRETCHDIB, SRCCOPY, VERTRES,
+    CreateCompatibleBitmap, CreateCompatibleDC, CreateDCW, DeleteDC, DeleteObject, GetDeviceCaps,
+    SelectObject, SetDIBits, SetStretchBltMode, StretchBlt, StretchDIBits, BITMAPINFO,
+    BITMAPINFOHEADER, BI_RGB, DEVMODEW, DEVMODE_FIELD_FLAGS, DIB_RGB_COLORS, DMCOLLATE_FALSE,
+    DMDUP_SIMPLEX, DMDUP_VERTICAL, DM_COLLATE, DM_COPIES, DM_DUPLEX, DM_FORMNAME, DM_IN_BUFFER,
+    DM_IN_PROMPT, DM_NUP, DM_ORIENTATION, DM_OUT_BUFFER, DM_PAPERLENGTH, DM_PAPERSIZE,
+    DM_PAPERWIDTH, DM_SCALE, HALFTONE, HBITMAP, HDC, HGDIOBJ, HORZRES, LOGPIXELSX, LOGPIXELSY,
+    PHYSICALHEIGHT, PHYSICALOFFSETX, PHYSICALOFFSETY, PHYSICALWIDTH, RASTERCAPS, RC_STRETCHDIB,
+    SRCCOPY, STRETCH_BLT_MODE, VERTRES,
 };
 use windows::Win32::Graphics::Printing::{
     ClosePrinter, DocumentPropertiesW, GetJobW, GetPrinterW, OpenPrinterW, SetJobW,
@@ -553,6 +555,8 @@ impl ContextoFila {
         }
     }
 
+    /// O driver desenha DIB direto. Só o caminho de reserva precisa disso: o desenho por bitmap
+    /// compatível tenta primeiro, sem consultar esta capacidade.
     pub(crate) fn aceita_bitmap(&self) -> bool {
         self.medida(RASTERCAPS) as u32 & RC_STRETCHDIB != 0
     }
@@ -599,6 +603,165 @@ impl Drop for ContextoFila {
     }
 }
 
+/// Bitmap compatível selecionado em um DC de memória. Os dois recursos são liberados ao sair de
+/// escopo, inclusive quando um passo do desenho falha.
+struct DesenhoEmMemoria {
+    hdc: HDC,
+    bitmap: HBITMAP,
+    anterior: HGDIOBJ,
+    selecionado: bool,
+}
+
+impl DesenhoEmMemoria {
+    /// Cria o DC e o bitmap e copia os pixels antes de selecionar o bitmap: `SetDIBits` exige um
+    /// bitmap que não esteja selecionado em nenhum DC.
+    fn novo(
+        hdc_destino: HDC,
+        largura: i32,
+        altura: i32,
+        cabecalho: &BITMAPINFO,
+        pixels: &[u8],
+    ) -> Result<Self, ErroEnvio> {
+        let altura_linhas = u32::try_from(altura).map_err(|_| ErroEnvio::TamanhoInvalido)?;
+        // Garantia: `hdc_destino` é um DC vivo da fila.
+        let hdc = unsafe { CreateCompatibleDC(Some(hdc_destino)) };
+        if hdc.is_invalid() {
+            return Err(sistema("CreateCompatibleDC"));
+        }
+        // Garantia: `hdc_destino` é válido e o bitmap nasce ligado à mesma configuração da fila.
+        let bitmap = unsafe { CreateCompatibleBitmap(hdc_destino, largura, altura) };
+        if bitmap.is_invalid() {
+            let _ = unsafe { DeleteDC(hdc) };
+            return Err(sistema("CreateCompatibleBitmap"));
+        }
+        // Garantia: o bitmap ainda não está selecionado; `pixels` foi conferido e tem exatamente
+        // largura × altura × 4 bytes, o que o cabeçalho descreve. O `hdc` é ignorado com
+        // `DIB_RGB_COLORS`; o sistema só lê `pixels` durante a chamada.
+        let linhas = unsafe {
+            SetDIBits(
+                Some(hdc),
+                bitmap,
+                0,
+                altura_linhas,
+                pixels.as_ptr().cast(),
+                cabecalho,
+                DIB_RGB_COLORS,
+            )
+        };
+        if linhas != i32::try_from(altura_linhas).unwrap_or(i32::MAX) {
+            let _ = unsafe { DeleteObject(bitmap.into()) };
+            let _ = unsafe { DeleteDC(hdc) };
+            return Err(sistema("SetDIBits"));
+        }
+        let mut desenho = Self {
+            hdc,
+            bitmap,
+            anterior: HGDIOBJ::default(),
+            selecionado: false,
+        };
+        // Garantia: o DC de memória e o bitmap são válidos, e o bitmap ainda não está em outro DC.
+        let anterior = unsafe { SelectObject(hdc, bitmap.into()) };
+        if anterior.is_invalid() {
+            return Err(sistema("SelectObject"));
+        }
+        desenho.anterior = anterior;
+        desenho.selecionado = true;
+        Ok(desenho)
+    }
+}
+
+impl Drop for DesenhoEmMemoria {
+    fn drop(&mut self) {
+        // Garantia: `hdc` e `bitmap` vieram de `CreateCompatibleDC`/`CreateCompatibleBitmap` e só
+        // são liberados aqui. O bitmap antigo volta ao DC antes de o novo ser apagado.
+        unsafe {
+            if self.selecionado {
+                let _ = SelectObject(self.hdc, self.anterior);
+            }
+            let _ = DeleteObject(self.bitmap.into());
+            let _ = DeleteDC(self.hdc);
+        }
+    }
+}
+
+/// Quantas páginas passaram pelo caminho de bitmap compatível nos testes.
+#[cfg(test)]
+pub(crate) static DESENHOS_PELA_MEMORIA: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+/// Leva o bitmap do DC de memória ao DC da fila, em meio-tom, na posição e no tamanho do plano.
+fn desenhar_pela_memoria(
+    hdc: HDC,
+    plano: &PlanoPagina,
+    pixels: &[u8],
+    cabecalho: &BITMAPINFO,
+) -> Result<(), ErroEnvio> {
+    let desenho =
+        DesenhoEmMemoria::novo(hdc, plano.largura_px, plano.altura_px, cabecalho, pixels)?;
+    // Garantia: `hdc` é o DC da fila com a página aberta; o modo anterior é um inteiro válido.
+    let modo_anterior = unsafe { SetStretchBltMode(hdc, HALFTONE) };
+    if modo_anterior == 0 {
+        return Err(sistema("SetStretchBltMode"));
+    }
+    // Garantia: `desenho.hdc` tem o bitmap selecionado, e `hdc` é válido. O sistema lê a origem e
+    // escreve no destino durante a chamada.
+    let desenhado = unsafe {
+        StretchBlt(
+            hdc,
+            plano.x,
+            plano.y,
+            plano.largura_px,
+            plano.altura_px,
+            Some(desenho.hdc),
+            0,
+            0,
+            plano.largura_px,
+            plano.altura_px,
+            SRCCOPY,
+        )
+    };
+    let _ = unsafe { SetStretchBltMode(hdc, STRETCH_BLT_MODE(modo_anterior)) };
+    if !desenhado.as_bool() {
+        return Err(sistema("StretchBlt"));
+    }
+    #[cfg(test)]
+    DESENHOS_PELA_MEMORIA.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    Ok(())
+}
+
+/// Desenho direto do DIB de 32 bpp no DC da fila. Fica como reserva para quando o caminho de
+/// memória não estiver disponível.
+fn desenhar_com_dib(
+    hdc: HDC,
+    plano: &PlanoPagina,
+    pixels: &[u8],
+    cabecalho: &BITMAPINFO,
+) -> Result<(), ErroEnvio> {
+    // Garantia: `pixels` foi conferido e tem exatamente largura × altura × 4 bytes, o que o
+    // cabeçalho descreve; o sistema só lê essa região durante a chamada.
+    let linhas = unsafe {
+        StretchDIBits(
+            hdc,
+            plano.x,
+            plano.y,
+            plano.largura_px,
+            plano.altura_px,
+            0,
+            0,
+            plano.largura_px,
+            plano.altura_px,
+            Some(pixels.as_ptr().cast()),
+            cabecalho,
+            DIB_RGB_COLORS,
+            SRCCOPY,
+        )
+    };
+    if linhas <= 0 {
+        return Err(sistema("StretchDIBits"));
+    }
+    Ok(())
+}
+
 /// Documento em andamento. Sair de escopo sem terminar aborta o trabalho.
 pub(crate) struct DocumentoAberto<'a> {
     contexto: &'a ContextoFila,
@@ -641,27 +804,18 @@ impl DocumentoAberto<'_> {
             },
             ..Default::default()
         };
-        // Garantia: `pixels` foi conferido acima e tem exatamente largura × altura × 4 bytes, o
-        // que o cabeçalho descreve; o sistema só lê essa região durante a chamada.
-        let linhas = unsafe {
-            StretchDIBits(
-                hdc,
-                plano.x,
-                plano.y,
-                plano.largura_px,
-                plano.altura_px,
-                0,
-                0,
-                plano.largura_px,
-                plano.altura_px,
-                Some(pixels.as_ptr().cast()),
-                &cabecalho,
-                DIB_RGB_COLORS,
-                SRCCOPY,
-            )
-        };
-        if linhas <= 0 {
-            return Err(sistema("StretchDIBits"));
+        // O caminho clássico do GDI: o bitmap compatível passa por um DC de memória e chega ao
+        // DC da fila por `StretchBlt`. Se algum passo dele falhar, o DIB direto continua valendo.
+        if let Err(erro_da_memoria) = desenhar_pela_memoria(hdc, plano, pixels, &cabecalho) {
+            if !self.contexto.aceita_bitmap() {
+                return Err(ErroEnvio::SemSuporteABitmap);
+            }
+            if let Err(erro_do_dib) = desenhar_com_dib(hdc, plano, pixels, &cabecalho) {
+                return Err(match erro_do_dib {
+                    ErroEnvio::Sistema { .. } => erro_do_dib,
+                    _ => erro_da_memoria,
+                });
+            }
         }
         // Garantia: `hdc` é válido e tem uma página aberta.
         if unsafe { EndPage(hdc) } <= 0 {

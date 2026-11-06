@@ -304,6 +304,116 @@ pub fn plano_documento(
     Ok(lotes)
 }
 
+/// Páginas que formam a frente física de cada folha do lote, para um envio só de frentes.
+///
+/// A ordem é a da primeira passada, sem o giro que compensa a segunda: isolada, a frente é a
+/// primeira passada, e é assim que o maço volta a casar com [`versos_do_lote`] depois do gesto.
+/// Num lote que a impressora imprime nas duas faces, a própria `passada1` já é o documento
+/// inteiro.
+pub fn frentes_do_lote(lote: &Lote) -> Vec<Pagina> {
+    if lote.duas_faces {
+        return lote.passada1.clone();
+    }
+    let base = frentes_estruturais(lote);
+    let base_invertida = invertida(&base);
+    let versos = versos_estruturais(lote);
+    let versos_invertidos = invertida(&versos);
+    if mesma_sequencia(&lote.passada1, &versos) {
+        base
+    } else if mesma_sequencia(&lote.passada1, &versos_invertidos) {
+        base_invertida
+    } else {
+        // A primeira passada não descreve as folhas: a segunda, sem o giro, é a reserva.
+        sem_giro(&lote.passada2)
+    }
+}
+
+/// Páginas que formam o verso físico de cada folha do lote, para um envio só de versos.
+///
+/// A ordem é a da segunda passada, e o giro é o que o perfil aplica a ela: isolado, o verso é a
+/// segunda passada e precisa das duas coisas para casar com as frentes. Num lote de duas faces
+/// não há verso separado.
+pub fn versos_do_lote(lote: &Lote) -> Vec<Pagina> {
+    if lote.duas_faces {
+        return Vec::new();
+    }
+    let base = versos_estruturais(lote);
+    let base_invertida = invertida(&base);
+    let frentes = frentes_estruturais(lote);
+    let frentes_invertidas = invertida(&frentes);
+    let segunda = sem_giro(&lote.passada2);
+    let mut versos = if mesma_sequencia(&segunda, &frentes) {
+        base
+    } else if mesma_sequencia(&segunda, &frentes_invertidas) {
+        base_invertida
+    } else if mesma_sequencia(&lote.passada1, &base)
+        || mesma_sequencia(&lote.passada1, &base_invertida)
+    {
+        // A segunda passada não descreve as frentes: a primeira ainda diz a ordem dos versos.
+        lote.passada1.clone()
+    } else {
+        base
+    };
+    let giro = lote.passada2.iter().any(|pagina| pagina.girar_180);
+    for pagina in &mut versos {
+        pagina.girar_180 = giro;
+    }
+    versos
+}
+
+fn sem_giro(paginas: &[Pagina]) -> Vec<Pagina> {
+    paginas
+        .iter()
+        .map(|pagina| Pagina {
+            girar_180: false,
+            ..*pagina
+        })
+        .collect()
+}
+
+fn invertida(paginas: &[Pagina]) -> Vec<Pagina> {
+    paginas.iter().rev().copied().collect()
+}
+
+fn mesma_sequencia(a: &[Pagina], b: &[Pagina]) -> bool {
+    a.len() == b.len()
+        && a.iter()
+            .zip(b)
+            .all(|(a, b)| a.identidade() == b.identidade())
+}
+
+/// A primeira página de cada folha, na ordem das folhas.
+fn frentes_estruturais(lote: &Lote) -> Vec<Pagina> {
+    lote.paginas
+        .chunks(2)
+        .filter_map(|par| par.first().copied())
+        .map(|pagina| Pagina {
+            girar_180: false,
+            ..pagina
+        })
+        .collect()
+}
+
+/// A segunda página de cada folha, na ordem das folhas. Uma página sem par ganha a face em branco.
+fn versos_estruturais(lote: &Lote) -> Vec<Pagina> {
+    lote.paginas
+        .chunks(2)
+        .filter_map(|par| match par {
+            [_, verso] => Some(*verso),
+            [frente] => Some(Pagina {
+                numero: None,
+                girar_180: false,
+                copia: frente.copia,
+            }),
+            _ => None,
+        })
+        .map(|pagina| Pagina {
+            girar_180: false,
+            ..pagina
+        })
+        .collect()
+}
+
 /// Tolerância usada para reconhecer formatos nominais e comparar as duas faces
 /// de uma folha, em milímetros.
 pub const TOLERANCIA_PAPEL_MM: f64 = 2.0;
@@ -1990,5 +2100,135 @@ mod tests {
             pares_com_orientacao_mista(&limite),
             Err(ErroPapel::LimitePaginasExcedido)
         );
+    }
+
+    fn lote_do(total: usize, perfil: PerfilImpressora) -> Lote {
+        plano_documento(total, 10, OrdemPassadas::default(), perfil)
+            .unwrap()
+            .remove(0)
+    }
+
+    fn pagina(numero: usize, girar_180: bool) -> Pagina {
+        Pagina {
+            numero: Some(numero),
+            girar_180,
+            copia: 0,
+        }
+    }
+
+    #[test]
+    fn a_frente_isolada_tem_as_paginas_impares() {
+        for total in [1usize, 2, 3, 4] {
+            let lote = lote_do(total, PerfilImpressora::default());
+            let frentes = frentes_do_lote(&lote);
+            let esperado: Vec<Option<usize>> = (1..=total).step_by(2).map(Some).collect();
+            assert_eq!(numeros(&frentes), esperado, "{total} páginas");
+            assert!(frentes.iter().all(|pagina| !pagina.girar_180));
+        }
+    }
+
+    #[test]
+    fn o_verso_isolado_tem_as_paginas_pares_e_o_branco_final() {
+        for (total, esperado) in [
+            (1usize, vec![None]),
+            (2, vec![Some(2)]),
+            (3, vec![Some(2), None]),
+            (4, vec![Some(2), Some(4)]),
+        ] {
+            let lote = lote_do(total, PerfilImpressora::default());
+            assert_eq!(numeros(&versos_do_lote(&lote)), esperado, "{total} páginas");
+        }
+    }
+
+    #[test]
+    fn a_ordem_do_perfil_continua_valendo_nas_faces_isoladas() {
+        // Laser: só a primeira passada vai invertida; as frentes seguem a ordem da frente.
+        let laser = PerfilImpressora {
+            passada1_inversa: true,
+            verso_girar_180: true,
+            ..Default::default()
+        };
+        let lote = lote_do(4, laser);
+        assert_eq!(numeros(&lote.passada1), [Some(4), Some(2)]);
+        let frentes = frentes_do_lote(&lote);
+        assert_eq!(numeros(&frentes), [Some(3), Some(1)]);
+        assert!(frentes.iter().all(|pagina| !pagina.girar_180));
+        assert_eq!(numeros(&versos_do_lote(&lote)), [Some(2), Some(4)]);
+        assert!(versos_do_lote(&lote).iter().all(|pagina| pagina.girar_180));
+
+        // Jato de tinta: as duas passadas vão invertidas, e as frentes também.
+        let jato = PerfilImpressora {
+            passada1_inversa: true,
+            passada2_inversa: true,
+            verso_girar_180: true,
+            ..Default::default()
+        };
+        let lote = lote_do(4, jato);
+        assert_eq!(numeros(&lote.passada1), [Some(4), Some(2)]);
+        let frentes = frentes_do_lote(&lote);
+        assert_eq!(numeros(&frentes), [Some(3), Some(1)]);
+        assert!(frentes.iter().all(|pagina| !pagina.girar_180));
+        assert_eq!(numeros(&versos_do_lote(&lote)), [Some(4), Some(2)]);
+        assert!(versos_do_lote(&lote).iter().all(|pagina| pagina.girar_180));
+    }
+
+    #[test]
+    fn o_verso_isolado_recebe_o_giro_da_segunda_passada() {
+        let lote = Lote {
+            paginas: vec![pagina(1, false), pagina(2, false)],
+            passada1: vec![pagina(2, false)],
+            passada2: vec![pagina(1, true)],
+            duas_faces: false,
+        };
+        assert!(versos_do_lote(&lote)[0].girar_180);
+        assert!(!frentes_do_lote(&lote)[0].girar_180);
+        let sem_giro = Lote {
+            passada2: vec![pagina(1, false)],
+            ..lote
+        };
+        assert!(!versos_do_lote(&sem_giro)[0].girar_180);
+    }
+
+    #[test]
+    fn frente_fora_do_par_usa_a_segunda_passada_sem_giro() {
+        let lote = Lote {
+            paginas: vec![
+                pagina(1, false),
+                pagina(2, false),
+                pagina(3, false),
+                pagina(4, false),
+            ],
+            passada1: vec![pagina(1, false), pagina(3, false)],
+            passada2: vec![pagina(2, true), pagina(4, true)],
+            duas_faces: false,
+        };
+        let frentes = frentes_do_lote(&lote);
+        assert_eq!(numeros(&frentes), [Some(2), Some(4)]);
+        assert!(frentes.iter().all(|pagina| !pagina.girar_180));
+    }
+
+    #[test]
+    fn lote_de_duas_faces_ja_traz_a_frente_inteira_e_nao_tem_verso_separado() {
+        let lote = Lote {
+            paginas: vec![
+                pagina(1, false),
+                pagina(2, false),
+                pagina(3, false),
+                pagina(4, false),
+            ],
+            passada1: vec![
+                pagina(1, false),
+                pagina(2, false),
+                pagina(3, false),
+                pagina(4, false),
+            ],
+            passada2: Vec::new(),
+            duas_faces: true,
+        };
+        assert_eq!(
+            numeros(&frentes_do_lote(&lote)),
+            [Some(1), Some(2), Some(3), Some(4)]
+        );
+        assert!(versos_do_lote(&lote).is_empty());
     }
 }

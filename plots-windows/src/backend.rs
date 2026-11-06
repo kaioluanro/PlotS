@@ -356,9 +356,6 @@ impl BackendWindows {
             com_recuo_ao_padrao(&mut self.ajuste_do_driver, |salvo| {
                 let devmode = impressora.devmode(ajuste, faces, salvo)?;
                 let contexto = ContextoFila::criar(nome_fila, &devmode)?;
-                if !contexto.aceita_bitmap() {
-                    return Err(ErroEnvio::SemSuporteABitmap);
-                }
                 let dispositivo = contexto.dispositivo();
                 conferir_papel(&dispositivo, &papel)?;
                 Ok((contexto, dispositivo))

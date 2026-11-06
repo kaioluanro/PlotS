@@ -70,6 +70,8 @@ export interface Cartao {
   copias?: number;
   /** O que este trabalho imprime. */
   alcance?: AlcanceDoCartao;
+  /** `false` quando nenhuma página de verso é numerada: um trabalho de uma página, por exemplo. */
+  temVerso?: boolean;
   /** Folhas do trecho atual: e o que sai de novo ao reimprimir. */
   folhasDoLote?: number;
   /** As paginas do trecho atual: e por elas que a pessoa acha o maco. */
@@ -126,7 +128,10 @@ export function cartaoOcupaAImpressora(cartao: Cartao): boolean {
 
 /** Ainda ha versos por imprimir: fechar perde o cartao, e por isso o fechamento pergunta. */
 export function cartaoSeguraAAba(cartao: Cartao): boolean {
-  return cartaoEmAndamento(cartao) || cartao.estado.tipo === "frentes_prontas";
+  return (
+    cartaoEmAndamento(cartao) ||
+    (cartao.estado.tipo === "frentes_prontas" && cartao.temVerso !== false)
+  );
 }
 
 /** A secao so diz "Encerrados" quando nenhum cartao ainda segura a aba, e frentes prontas seguram. */
@@ -159,6 +164,8 @@ const ESTADOS_QUE_PEDEM_ACAO: ReadonlySet<EstadoCartao["tipo"]> = new Set([
 
 /** O cartao espera a pessoa: recolocar, responder um aviso, clicar em algo ou ver um erro. */
 export function cartaoPedeAcao(cartao: Cartao): boolean {
+  // As frentes de um trabalho sem verso são o fim: não há para onde a pessoa ir depois.
+  if (cartao.estado.tipo === "frentes_prontas" && cartao.temVerso === false) return false;
   return ESTADOS_QUE_PEDEM_ACAO.has(cartao.estado.tipo);
 }
 
@@ -529,8 +536,9 @@ export function tomDoCartao(cartao: Cartao): TomDoCartao {
       const resultado = cartao.resultado;
       return resultado !== null && resultado.corretas < resultado.folhas ? "problema" : "ativo";
     }
-    case "aguardando":
     case "frentes_prontas":
+      return cartao.temVerso === false ? "ativo" : "espera";
+    case "aguardando":
     case "proximo_lote":
     case "aviso":
       return "espera";
@@ -582,6 +590,10 @@ const ORIENTACOES: ReadonlyMap<string, Readonly<Record<"frente" | "verso", Orien
 export function textoDoEstadoDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual): string {
   if (cartao.estado.tipo === "aviso" && ORIENTACOES.has(cartao.estado.motivo.codigo)) {
     return traduzir(idioma, "spooler.estado.verifique");
+  }
+  // Um trabalho sem verso termina nas frentes: o cartão é de conclusão, não de espera.
+  if (cartao.estado.tipo === "frentes_prontas" && cartao.temVerso === false) {
+    return traduzir(idioma, "cartao.estado.concluido");
   }
   const chaves: Record<EstadoCartao["tipo"], Chave> = {
     preparando: "cartao.estado.preparando",
@@ -650,6 +662,7 @@ function comPontoFinal(texto: string): string {
  * idiomas, a frase traduzida pelo codigo, para nao misturar dois idiomas na mesma linha.
  */
 export function textoDoMotivo(motivo: Motivo, idioma: Idioma = idiomaAtual): string {
+  if (motivo.codigo === "sem_verso") return traduzir(idioma, "face.semVerso");
   // A frase de quem recusou nao diz o que fazer: aqui, o caminho e outro modelo.
   if (motivo.codigo === "duas_faces_recusadas") return traduzir(idioma, "modo.automatico.recusado");
   if (motivo.codigo === "fila" && motivo.texto !== "") {
@@ -835,6 +848,15 @@ export function linhasDoCartao(cartao: Cartao, idioma: Idioma = idiomaAtual): Li
       ];
     }
     case "frentes_prontas":
+      if (cartao.temVerso === false) {
+        // Sem verso, as frentes são o fim: não há gesto, espera nem segundo trabalho.
+        return [
+          cartao.simulada
+            ? linha(em("cartao.frente.simulada"), "contexto")
+            : linha(em("cartao.frente.confirmada"), "ressalva"),
+          linha(em("face.semVerso"), "contexto"),
+        ];
+      }
       // O botao de versos vem logo depois do gesto; a frase de espera, depois do botao.
       return [
         cartao.simulada
@@ -950,9 +972,12 @@ export function acoesDoCartao(cartao: Cartao): AcoesDoCartao {
   const semTrabalho = estado.tipo === "erro" && !cartaoEmAndamento(cartao);
   return {
     frente: estado.tipo === "proximo_lote",
-    pedirVerso: estado.tipo === "frentes_prontas",
+    pedirVerso: estado.tipo === "frentes_prontas" && cartao.temVerso !== false,
     verso: {
-      visivel: !cartao.loteAutomatico && (emFrente || emVerso || estado.tipo === "aguardando"),
+      visivel:
+        cartao.temVerso !== false &&
+        !cartao.loteAutomatico &&
+        (emFrente || emVerso || estado.tipo === "aguardando"),
       liberado: estado.tipo === "aguardando",
     },
     // Sem lote ainda, a preparacao falhou: nao ha o que refazer sem pedir de novo. Thread morta

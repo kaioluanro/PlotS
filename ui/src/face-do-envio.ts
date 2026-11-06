@@ -25,7 +25,14 @@ import {
   type TrechoDoEnvio,
 } from "./intervalo";
 import { passaPelaRotaManual } from "./opcoes-envio";
-import { copiasDaFace, type Aba, type FaceDoEnvio, type FrenteEnviada, type PapelDeAjuste } from "./tabs";
+import {
+  copiasDaFace,
+  temVersoDaAba,
+  type Aba,
+  type FaceDoEnvio,
+  type FrenteEnviada,
+  type PapelDeAjuste,
+} from "./tabs";
 
 /** O que a lateral sabe do papel deste envio; sem leitura, nada se afirma. */
 interface PapelLido {
@@ -37,9 +44,9 @@ export function faceDisponivel(marcadas: readonly Impressora[]): boolean {
   return marcadas.some((impressora) => impressora.modo !== "automatico");
 }
 
-/** Com o seletor fora da tela, nada de um verso escolhido antes pode valer. */
+/** Com o seletor fora da tela, ou sem verso no trecho, nada de um verso escolhido antes vale. */
 export function faceDoEnvio(aba: Aba | null, marcadas: readonly Impressora[]): FaceDoEnvio {
-  return aba !== null && faceDisponivel(marcadas) ? aba.face : "frente";
+  return aba !== null && faceDisponivel(marcadas) && temVersoDaAba(aba) ? aba.face : "frente";
 }
 
 /** Uma automatica so tem verso a imprimir se o documento tem papel que ela nao faz sozinha. */
@@ -70,7 +77,37 @@ export function envioComFace(
 ): EstadoDoEnvio {
   if (aba === null) return envio;
   const marcadas = lista.filter((impressora) => aba.impressorasMarcadas.includes(impressora.id));
-  if (faceDoEnvio(aba, marcadas) !== "verso") return envio;
+  const face = faceDoEnvio(aba, marcadas);
+  if (face !== "verso") {
+    // Sem verso, as frentes já prontas só se repetem: o botão diz isso, e a confirmação avisa
+    // que o papel será gasto de novo.
+    if (!temVersoDaAba(aba) && quemJaSaiu(aba, envio.destinos).length > 0) {
+      const n = envio.destinos.length;
+      const soSimuladas = n > 0 && envio.destinos.every((item) => item.tipo === "simulada");
+      const rotulo =
+        n > 0
+          ? traduzir(
+              idioma,
+              soSimuladas
+                ? "cartao.simular.frenteRepetirContagem"
+                : "imprimir.frenteRepetirContagem",
+              { n: String(n) },
+            )
+          : traduzir(idioma, soSimuladas ? "cartao.simular.frenteRepetir" : "imprimir.frenteRepetir");
+      const rotuloAcessivel =
+        n > 0
+          ? contagemPorExtenso(
+              soSimuladas
+                ? "cartao.simular.frenteRepetirContagem.aria"
+                : "imprimir.frenteRepetirContagem.aria",
+              n,
+              idioma,
+            )
+          : undefined;
+      return { ...envio, rotulo, rotuloAcessivel };
+    }
+    return envio;
+  }
   const soSimuladas = marcadas.length > 0 && marcadas.every((item) => item.tipo === "simulada");
   const destinos = envio.destinos.filter((impressora) => recebeVerso(impressora, documento));
   const rotulo =
@@ -129,6 +166,7 @@ export function dicaDaFace(
   marcadas: readonly Impressora[],
   idioma: Idioma = idiomaAtual,
 ): string | null {
+  if (!temVersoDaAba(aba)) return traduzir(idioma, "face.semVerso");
   if (aba.face === "frente") {
     const prontas = marcadas.some((impressora) => aba.frentesProntas.includes(impressora.id));
     return prontas ? traduzir(idioma, "cartao.dica.frentesProntas") : null;
@@ -245,7 +283,13 @@ export function notasDaFrente(
     antes: [
       ...(comErro.length > 0 ? [traduzir(idioma, "face.envio.erroAnterior")] : []),
       ...(repetidas.length > 0
-        ? [traduzir(idioma, "face.envio.jaSaiu", { lista: nomes(repetidas, idioma) })]
+        ? [
+            traduzir(
+              idioma,
+              temVersoDaAba(aba) ? "face.envio.jaSaiu" : "face.envio.jaSaiuSemVerso",
+              { lista: nomes(repetidas, idioma) },
+            ),
+          ]
         : []),
     ],
     depois: [

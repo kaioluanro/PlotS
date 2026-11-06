@@ -34,7 +34,8 @@ const CLASSE_DO_BOTAO = `${botoes.botao} ${botoes.secundario}`;
 function dicaDoPainel(cartao: Cartao): string | null {
   switch (cartao.estado.tipo) {
     case "frentes_prontas":
-      return t("avisos.dicaVersos");
+      // Sem verso, a entrada não manda escolher nada: o cartão já diz que o trabalho acabou.
+      return cartao.temVerso === false ? null : t("avisos.dicaVersos");
     case "aguardando":
       return t(cartao.simulada ? "cartao.verso.cliqueSimulado" : "cartao.verso.clique");
     case "proximo_lote":

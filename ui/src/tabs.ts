@@ -1,5 +1,11 @@
 import { cartaoSeguraAAba, comCartao, ehRecusaDeOcupada, cartaoEmAndamento, type Cartao } from "./cartoes";
-import { normalizarRascunho, type RascunhoIntervalo, type TrechoDoEnvio } from "./intervalo";
+import {
+  lerIntervaloDaAba,
+  normalizarRascunho,
+  paginasDoResumo,
+  type RascunhoIntervalo,
+  type TrechoDoEnvio,
+} from "./intervalo";
 
 export interface Documento {
   caminho: string;
@@ -70,6 +76,16 @@ export interface Aba {
   paginas: PaginasDaAba;
   /** Um cartao por impressora; trocar de aba troca a lista, e os trabalhos seguem. */
   cartoes: readonly Cartao[];
+}
+
+/**
+ * O envio da aba tem verso. Um trabalho de uma página só tem a frente; um trecho de uma página
+ * também. Sem o total conhecido, a interface não esconde a escolha antes de saber.
+ */
+export function temVersoDaAba(aba: Aba | null): boolean {
+  if (aba === null) return false;
+  const quantidade = paginasDoResumo(lerIntervaloDaAba(aba));
+  return quantidade === null || quantidade > 1;
 }
 
 export interface EstadoAbas {
@@ -228,13 +244,15 @@ export function reduzirAbas(estado: EstadoAbas, acao: AcaoAbas): EstadoAbas {
           : [...aba.impressorasMarcadas, acao.impressora],
       }));
     case "definir_intervalo":
-      return mudarAba(estado, acao.id, (aba) =>
-        aba.paginas.estado === "conhecido"
-          ? { ...aba, intervalo: normalizarRascunho(acao.intervalo, aba.paginas) }
-          : aba,
-      );
+      return mudarAba(estado, acao.id, (aba) => {
+        if (aba.paginas.estado !== "conhecido") return aba;
+        const depois = { ...aba, intervalo: normalizarRascunho(acao.intervalo, aba.paginas) };
+        return temVersoDaAba(depois) ? depois : { ...depois, face: "frente" };
+      });
     case "definir_face":
-      return mudarAba(estado, acao.id, (aba) => ({ ...aba, face: acao.face }));
+      return mudarAba(estado, acao.id, (aba) =>
+        acao.face === "verso" && !temVersoDaAba(aba) ? aba : { ...aba, face: acao.face },
+      );
     case "definir_copias":
       return mudarAba(estado, acao.id, (aba) => {
         if (!ehQuantidadeDeCopias(acao.valor)) return aba;
@@ -257,10 +275,13 @@ export function reduzirAbas(estado: EstadoAbas, acao: AcaoAbas): EstadoAbas {
     case "frente_enviada":
       return mudarAba(estado, acao.id, (aba) => ({ ...aba, frenteEnviada: acao.frente }));
     case "paginas_contadas":
-      return mudarAba(estado, acao.id, (aba) => ({
-        ...aba,
-        paginas: { estado: "conhecido", total: acao.total },
-      }));
+      return mudarAba(estado, acao.id, (aba) => {
+        const depois = {
+          ...aba,
+          paginas: { estado: "conhecido" as const, total: acao.total },
+        };
+        return temVersoDaAba(depois) ? depois : { ...depois, face: "frente" };
+      });
     case "paginas_recusadas":
       return mudarAba(estado, acao.id, (aba) => ({
         ...aba,

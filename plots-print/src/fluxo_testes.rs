@@ -327,6 +327,27 @@ fn rodar_simulado(modelo: ModeloImpressora, paginas: usize) -> (usize, usize, Lo
 }
 
 #[test]
+fn faces_isoladas_fecham_o_maco_de_uma_e_tres_paginas_nos_dois_modelos() {
+    for modelo in [ModeloImpressora::JatoDeTinta, ModeloImpressora::Laser] {
+        for total in [1usize, 3] {
+            let plano = lotes(&vec![A4; total], 10, modelo.perfil());
+            let lote = plano[0].lote.clone();
+            let mut sim = SimGuiado::novo(Mecanica::do_modelo(modelo), modelo.gesto().into());
+            sim.maco_de_fora(0, &plots_core::frentes_do_lote(&lote))
+                .unwrap();
+            sim.enviar(Passada::Verso, &plots_core::versos_do_lote(&lote))
+                .unwrap();
+            let (corretas, folhas) = sim.folhas_conferidas(&lote.paginas).unwrap();
+            assert_eq!(
+                (corretas, folhas),
+                (total.div_ceil(2), total.div_ceil(2)),
+                "{modelo:?}, {total} páginas"
+            );
+        }
+    }
+}
+
+#[test]
 fn simulacao_do_jato_segue_a_sequencia_do_modelo_e_confere_as_folhas() {
     let (corretas, folhas, lote) = rodar_simulado(ModeloImpressora::JatoDeTinta, 6);
     assert_eq!((corretas, folhas), (3, 3));

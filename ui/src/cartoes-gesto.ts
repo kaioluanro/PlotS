@@ -38,6 +38,7 @@ export function desenhoDoGesto(recolocar: Recolocar | null): DesenhoDoGesto | nu
 
 /** A figura so existe enquanto o cartao espera a recolocacao. */
 export function desenhoDoCartao(cartao: Cartao): DesenhoDoGesto | null {
+  if (cartao.estado.tipo === "frentes_prontas" && cartao.temVerso === false) return null;
   return cartao.estado.tipo === "aguardando" || cartao.estado.tipo === "frentes_prontas"
     ? desenhoDoGesto(cartao.recolocar)
     : null;

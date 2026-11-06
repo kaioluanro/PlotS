@@ -10,9 +10,9 @@ use crate::leitura_pdf;
 use crate::tempo_de_impressao::{Cronometro, Medida, Relogio};
 use plots_core::distribuicao::ModoDistribuicao;
 use plots_core::{
-    plano_automatico_copias_do_intervalo, plano_copias_do_intervalo, DimensoesPagina, FormatoPapel,
-    IntervaloPaginas, LotePapel, ModeloImpressora, OrdemPassadas, Pagina, Papel, PerfilImpressora,
-    RepartoAutomatico,
+    frentes_do_lote, plano_automatico_copias_do_intervalo, plano_copias_do_intervalo,
+    versos_do_lote, DimensoesPagina, FormatoPapel, IntervaloPaginas, LotePapel, ModeloImpressora,
+    OrdemPassadas, Pagina, Papel, PerfilImpressora, RepartoAutomatico,
 };
 use plots_perfis::historico::ResultadoDoEnvio;
 use plots_windows::plots_print::fluxo::{
@@ -119,6 +119,7 @@ pub(crate) fn motivo_do_job<E: ParaMotivo>(erro: &ErroJob<E>) -> Motivo {
         ErroJob::Backend(erro) => erro.para_motivo(),
         ErroJob::EnvioFalhou => Motivo::novo("fila", "o spooler informou uma falha"),
         ErroJob::SemLotes => Motivo::novo("pdf", "o documento não tem lotes para enviar"),
+        ErroJob::SemVerso => Motivo::novo("sem_verso", "Não há verso neste trabalho."),
         ErroJob::EstadoInvalido(estado) => Motivo::novo(
             "sistema",
             format!("operação fora de ordem no estado {estado:?}"),
@@ -304,6 +305,8 @@ pub struct Cartao {
     pub faixa_do_lote: Option<FaixaDoLote>,
     /// O que este trabalho imprime: `so_frentes`, `so_versos` ou `frente_e_verso`.
     pub alcance: &'static str,
+    /// Alguma página de verso deste trabalho é numerada. Sem isso, não há verso a oferecer.
+    pub tem_verso: bool,
     /// A cópia que o lote atual imprime, a partir de 1. `None` quando o lote mistura cópias.
     pub copia: Option<usize>,
     /// Quantas cópias o trabalho inteiro imprime.
@@ -359,6 +362,7 @@ impl Identidade {
             folhas_do_lote: 0,
             faixa_do_lote: None,
             alcance: "frente_e_verso",
+            tem_verso: true,
             copia: None,
             copias: 1,
         }
@@ -455,6 +459,11 @@ where
             Alcance::SoFrentes => "so_frentes",
             Alcance::SoVersos => "so_versos",
         };
+        cartao.tem_verso = self.condutor.lotes().iter().any(|item| {
+            versos_do_lote(&item.lote)
+                .iter()
+                .any(|pagina| pagina.numero.is_some())
+        });
         cartao.copia = self
             .condutor
             .lote()
@@ -465,16 +474,18 @@ where
             .troca_de_papel()
             .map(|papel| papel_do_cartao(&papel));
         if self.identidade.simulada {
-            cartao.sequencia = self.condutor.lote().map(|item| Sequencia {
-                frente: faces(&item.lote.passada1),
-                verso: faces(&item.lote.passada2),
-                marcas: item
-                    .lote
-                    .passada1
-                    .iter()
-                    .chain(&item.lote.passada2)
-                    .filter_map(|face| item.marcas.get(&face.identidade()).cloned())
-                    .collect(),
+            cartao.sequencia = self.condutor.lote().map(|item| {
+                let frente = frentes_do_lote(&item.lote);
+                let verso = versos_do_lote(&item.lote);
+                Sequencia {
+                    frente: faces(&frente),
+                    verso: faces(&verso),
+                    marcas: frente
+                        .iter()
+                        .chain(&verso)
+                        .filter_map(|face| item.marcas.get(&face.identidade()).cloned())
+                        .collect(),
+                }
             });
         }
         (self.emitir)(cartao);

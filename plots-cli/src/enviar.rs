@@ -660,6 +660,7 @@ fn texto_do_job<E: Display>(erro: &ErroJob<E>) -> String {
         ErroJob::Backend(erro) => erro.to_string(),
         ErroJob::EnvioFalhou => "o spooler informou uma falha".to_string(),
         ErroJob::SemLotes => "o documento não tem lotes para enviar".to_string(),
+        ErroJob::SemVerso => "não há verso neste trabalho".to_string(),
         ErroJob::EstadoInvalido(estado) => {
             format!("operação fora de ordem no estado {estado:?}")
         }

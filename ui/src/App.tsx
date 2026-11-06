@@ -25,7 +25,7 @@ import { PainelDeAvisos } from "./components/PainelDeAvisos";
 import { BlocoAjuste } from "./components/BlocoAjuste";
 import { BlocoFace } from "./components/BlocoFace";
 import { CampoCopias } from "./components/CampoCopias";
-import { copiasDaFace } from "./tabs";
+import { copiasDaFace, temVersoDaAba } from "./tabs";
 import { BlocoGrupos } from "./components/BlocoGrupos";
 import { HistoricoDialog } from "./components/HistoricoDialog";
 import { CalibracaoDialog } from "./components/CalibracaoDialog";
@@ -723,7 +723,8 @@ export function App() {
                 lista.impressoras.filter((item) => abaAtiva.impressorasMarcadas.includes(item.id)),
               ) ? (
                 <BlocoFace
-                  face={abaAtiva.face}
+                  face={faceDaAbaAtiva}
+                  semVerso={!temVersoDaAba(abaAtiva)}
                   dicaDoEstado={dicaDaFace(abaAtiva, marcadasDaAbaAtiva)}
                   aoDefinir={(face) => {
                     if (idAtiva !== null) despachar({ tipo: "definir_face", id: idAtiva, face });

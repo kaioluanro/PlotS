@@ -1,6 +1,6 @@
 //! Controle de trabalhos, independente da mecânica da impressora.
 use crate::{ErroSimulacao, Estado, Folha, Mecanica, Recolocacao, Simulador};
-use plots_core::{Lote, Pagina};
+use plots_core::{frentes_do_lote, versos_do_lote, Lote, Pagina};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Passada {
@@ -56,6 +56,8 @@ pub enum EstadoJob {
 pub enum ErroJob<E> {
     EstadoInvalido(EstadoJob),
     SemLotes,
+    /// O lote não tem nenhuma página no verso: só a face em branco fecharia a folha.
+    SemVerso,
     Backend(E),
     EnvioFalhou,
 }
@@ -177,7 +179,12 @@ impl<B: Backend> Job<B> {
         } else {
             (Passada::Frente, EstadoJob::FrenteEnviada)
         };
-        if let Err(e) = self.backend.enviar(passada, &lote.passada1) {
+        // Só de frentes, o envio leva as páginas ímpares da própria folha, na ordem da primeira
+        // passada.
+        let frentes =
+            (self.alcance == Alcance::SoFrentes && !lote.duas_faces).then(|| frentes_do_lote(lote));
+        let paginas = frentes.as_deref().unwrap_or(&lote.passada1);
+        if let Err(e) = self.backend.enviar(passada, paginas) {
             self.estado = EstadoJob::Erro;
             return Err(ErroJob::Backend(e));
         }
@@ -191,13 +198,27 @@ impl<B: Backend> Job<B> {
         let Some(lote) = self.lotes.get(self.atual) else {
             return Err(ErroJob::EstadoInvalido(self.estado));
         };
+        let versos = if self.alcance == Alcance::SoVersos {
+            let versos = versos_do_lote(lote);
+            // Sem página numerada, o trabalho não tem verso: uma folha em branco não é um verso.
+            if !versos.iter().any(|pagina| pagina.numero.is_some()) {
+                self.estado = EstadoJob::Erro;
+                return Err(ErroJob::SemVerso);
+            }
+            Some(versos)
+        } else {
+            None
+        };
         if self.alcance == Alcance::SoVersos {
-            if let Err(e) = self.backend.maco_de_fora(self.atual, &lote.passada1) {
+            // O maço que já saiu é o das frentes: o verso vai por cima dele.
+            let frentes = frentes_do_lote(lote);
+            if let Err(e) = self.backend.maco_de_fora(self.atual, &frentes) {
                 self.estado = EstadoJob::Erro;
                 return Err(ErroJob::Backend(e));
             }
         }
-        if let Err(e) = self.backend.enviar(Passada::Verso, &lote.passada2) {
+        let paginas = versos.as_deref().unwrap_or(&lote.passada2);
+        if let Err(e) = self.backend.enviar(Passada::Verso, paginas) {
             self.estado = EstadoJob::Erro;
             return Err(ErroJob::Backend(e));
         }
@@ -222,7 +243,11 @@ impl<B: Backend> Job<B> {
             }
             EstadoEnvio::Concluido
                 if self.estado == EstadoJob::FrenteEnviada
-                    && self.alcance != Alcance::SoFrentes =>
+                    && self.alcance != Alcance::SoFrentes
+                    && self
+                        .lotes
+                        .get(self.atual)
+                        .is_some_and(|lote| !lote.passada2.is_empty()) =>
             {
                 self.estado = EstadoJob::AguardandoRecolocacao
             }
@@ -342,13 +367,16 @@ mod tests {
     #[derive(Default)]
     struct Registro {
         passadas: Vec<Passada>,
+        paginas: Vec<Vec<Option<usize>>>,
         de_fora: Vec<usize>,
         cancelados: usize,
     }
     impl Backend for Registro {
         type Erro = ();
-        fn enviar(&mut self, passada: Passada, _: &[Pagina]) -> Result<(), ()> {
+        fn enviar(&mut self, passada: Passada, paginas: &[Pagina]) -> Result<(), ()> {
             self.passadas.push(passada);
+            self.paginas
+                .push(paginas.iter().map(|pagina| pagina.numero).collect());
             Ok(())
         }
         fn consultar(&mut self) -> Result<EstadoEnvio, ()> {
@@ -377,6 +405,57 @@ mod tests {
         job.enviar_frente().unwrap();
         assert_eq!(job.atualizar().unwrap(), EstadoJob::Concluido);
         assert_eq!(job.backend().passadas, [Passada::Frente, Passada::Frente]);
+    }
+
+    fn um_lote(total: usize) -> Vec<Lote> {
+        plano_documento(
+            total,
+            total.max(1),
+            OrdemPassadas::default(),
+            PerfilImpressora::default(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn so_frentes_manda_as_impares_e_uma_pagina_termina_o_trabalho() {
+        let mut job = Job::novo(Registro::default(), um_lote(1))
+            .unwrap()
+            .com_alcance(Alcance::SoFrentes);
+        job.enviar_frente().unwrap();
+        assert_eq!(job.atualizar().unwrap(), EstadoJob::Concluido);
+        assert_eq!(job.backend().paginas, [vec![Some(1)]]);
+        assert!(job.enviar_verso().is_err());
+    }
+
+    #[test]
+    fn so_frentes_manda_as_impares_do_lote_de_tres_paginas() {
+        let mut job = Job::novo(Registro::default(), um_lote(3))
+            .unwrap()
+            .com_alcance(Alcance::SoFrentes);
+        job.enviar_frente().unwrap();
+        assert_eq!(job.atualizar().unwrap(), EstadoJob::Concluido);
+        assert_eq!(job.backend().paginas, [vec![Some(1), Some(3)]]);
+    }
+
+    #[test]
+    fn so_versos_manda_as_pares_com_o_branco_final_e_declara_as_frentes() {
+        let mut job = Job::novo(Registro::default(), um_lote(3))
+            .unwrap()
+            .com_alcance(Alcance::SoVersos);
+        job.enviar_verso().unwrap();
+        assert_eq!(job.backend().paginas, [vec![Some(2), None]]);
+        assert_eq!(job.backend().de_fora, [0]);
+        assert_eq!(job.atualizar().unwrap(), EstadoJob::Concluido);
+    }
+
+    #[test]
+    fn so_versos_recusa_lote_sem_pagina_numerada() {
+        let mut job = Job::novo(Registro::default(), um_lote(1))
+            .unwrap()
+            .com_alcance(Alcance::SoVersos);
+        assert!(matches!(job.enviar_verso(), Err(ErroJob::SemVerso)));
+        assert_eq!(job.estado(), EstadoJob::Erro);
     }
 
     #[test]

@@ -404,6 +404,18 @@ fn frentes_depois_versos(
     }
     let passadas_de_frente = feitas.passadas.clone();
 
+    // Um trabalho de uma página não tem verso: o programa não manda a segunda passada.
+    let tem_verso = lotes
+        .iter()
+        .any(|lote| lote.passada1.iter().any(|pagina| pagina.numero.is_some()));
+    if !tem_verso {
+        let lidos = maços
+            .iter()
+            .map(|maco| ler_maco(maco, leitura_do_modelo(modelo)))
+            .collect();
+        return (maços, passadas_de_frente, lidos, Vec::new());
+    }
+
     let mut versos = Condutor::novo(
         SoVersos {
             modelo,
@@ -436,6 +448,21 @@ fn frentes_depois_versos(
     )
 }
 
+/// No fluxo isolado, a frente do cartão é a primeira passada; o conferidor do maço chama de
+/// frente a página ímpar, que nesse fluxo sai no outro lado. O par, a orientação e a ordem
+/// continuam valendo; o que muda é o nome das faces.
+fn com_as_faces_trocadas(macos: &MacoLido) -> MacoLido {
+    let mut maco = macos.clone();
+    for folha in &mut maco.folhas {
+        std::mem::swap(&mut folha.frente, &mut folha.verso);
+    }
+    maco
+}
+
+fn conferir_isolado(macos: &MacoLido, total: u32) -> Vec<Motivo> {
+    conferir(&com_as_faces_trocadas(macos), total)
+}
+
 #[test]
 fn frentes_de_todos_os_trechos_saem_antes_e_cada_maco_volta_para_o_seu_verso() {
     let mista = {
@@ -453,7 +480,7 @@ fn frentes_de_todos_os_trechos_saem_antes_e_cada_maco_volta_para_o_seu_verso() {
             assert_eq!(de_frente, vec![Passada::Frente; plano.len()]);
             assert_eq!(de_verso, vec![Passada::Verso; plano.len()]);
             assert_eq!(
-                conferir(&juntar(macos), total),
+                conferir_isolado(&juntar(macos), total),
                 Vec::<Motivo>::new(),
                 "{modelo:?}, {total} páginas",
             );
@@ -549,9 +576,15 @@ fn copias_saem_no_maco_certo_com_total_par_e_impar_nos_dois_modelos() {
         for (paginas, copias) in [(4usize, 2usize), (3, 2), (3, 3), (4, 3), (1, 3)] {
             let documento = vec![A4; paginas];
             let lotes = copias_do_documento(&documento, copias, modelo);
-            let (_, _, macos, _) = frentes_depois_versos(modelo, &lotes);
+            let (_, _, macos, de_verso) = frentes_depois_versos(modelo, &lotes);
+            // Sem verso não há troca de faces: a folha de uma página sai só com a frente impressa.
+            let maco = if de_verso.is_empty() {
+                juntar(macos)
+            } else {
+                com_as_faces_trocadas(&juntar(macos))
+            };
             assert_eq!(
-                confere_copias(&juntar(macos), &lotes),
+                confere_copias(&maco, &lotes),
                 Vec::<String>::new(),
                 "{modelo:?}, {copias} cópias de {paginas} páginas",
             );

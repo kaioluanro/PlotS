@@ -236,6 +236,75 @@ fn frente_vai_para_o_arquivo_na_fila_de_pdf_e_o_trabalho_termina() {
     std::fs::remove_dir_all(&pasta).unwrap();
 }
 
+/// A página sai desenhada pelo caminho de bitmap compatível. A pasta vem de
+/// `PLOTS_ARQUIVO_SAIDA`, a mesma variável que a janela usa para gravar cada passada.
+#[test]
+#[ignore = "envia à fila de PDF do Windows"]
+fn uma_pagina_sai_com_conteudo_no_arquivo_da_fila_de_pdf() {
+    let Some(fila) = crate::listar_filas()
+        .unwrap()
+        .into_iter()
+        .find(|fila| fila.nome == FILA_DE_PDF)
+    else {
+        eprintln!("fila de PDF ausente: nada foi enviado");
+        return;
+    };
+    let Some(pasta) = std::env::var_os("PLOTS_ARQUIVO_SAIDA").map(std::path::PathBuf::from) else {
+        eprintln!("PLOTS_ARQUIVO_SAIDA não definida: nada foi enviado");
+        return;
+    };
+    let pasta = pasta.join(format!("teste-pagina-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&pasta);
+    std::fs::create_dir_all(&pasta).unwrap();
+    let desenhos = &crate::spooler::DESENHOS_PELA_MEMORIA;
+    desenhos.store(0, std::sync::atomic::Ordering::SeqCst);
+    let pdf = pdf_com_marca(595, 842, 0, None);
+    let origem = crate::abrir_origem(&pdf).unwrap();
+    let dimensoes = origem.dimensoes_paginas().unwrap();
+    let mut backend = BackendWindows::novo(&fila, origem, dimensoes, Some(&pasta)).unwrap();
+    backend.enviar(Passada::Frente, &[original(1)]).unwrap();
+
+    let mut estado = EstadoEnvio::EmAndamento;
+    for _ in 0..600 {
+        estado = backend.consultar().unwrap();
+        if estado != EstadoEnvio::EmAndamento {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    assert_eq!(estado, EstadoEnvio::Concluido);
+
+    let arquivo = pasta.join("lote-0001-frente.pdf");
+    let saida = std::fs::read(&arquivo).unwrap();
+    let lido = Document::load_mem(&saida).unwrap();
+    assert_eq!(lido.get_pages().len(), 1, "{arquivo:?}");
+    let pagina = *lido.get_pages().values().next().unwrap();
+    let conteudo = lido.get_page_content(pagina);
+    eprintln!(
+        "{}: {} página(s), {} bytes de conteúdo, {} desenho(s) pela memória",
+        arquivo
+            .file_name()
+            .and_then(|nome| nome.to_str())
+            .unwrap_or("arquivo"),
+        lido.get_pages().len(),
+        conteudo.len(),
+        desenhos.load(std::sync::atomic::Ordering::SeqCst)
+    );
+    assert!(!conteudo.is_empty(), "a página saiu sem conteúdo");
+    assert!(
+        desenhos.load(std::sync::atomic::Ordering::SeqCst) > 0,
+        "o desenho não passou pelo DC de memória"
+    );
+    assert_eq!(
+        Impressora::abrir(FILA_DE_PDF)
+            .unwrap()
+            .trabalhos_na_fila()
+            .unwrap(),
+        0
+    );
+    std::fs::remove_dir_all(&pasta).unwrap();
+}
+
 #[test]
 #[ignore = "precisa da pdfium.dll e envia à fila de PDF do Windows"]
 fn envio_a_arquivo_parte_do_ajuste_salvo_e_continua_em_uma_face() {

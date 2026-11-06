@@ -1,5 +1,5 @@
 use super::*;
-use plots_windows::plots_print::job::{EstadoEnvio, Passada};
+use plots_windows::plots_print::job::{EstadoEnvio, Job, Passada};
 use std::collections::VecDeque;
 use std::sync::mpsc::RecvTimeoutError;
 use std::time::Instant;
@@ -676,11 +676,12 @@ fn troca_de_papel_chega_no_cartao_do_proximo_lote() {
 
 #[test]
 fn simulacao_pela_thread_entrega_a_sequencia_do_modelo_e_o_resultado() {
+    // A frente isolada segue a primeira passada; o verso, a segunda, que muda com o modelo.
     let casos = [
-        (ModeloImpressora::JatoDeTinta, [5, 3, 1], true, false),
-        (ModeloImpressora::Laser, [1, 3, 5], true, true),
+        (ModeloImpressora::JatoDeTinta, [5, 3, 1], [6, 4, 2], false),
+        (ModeloImpressora::Laser, [5, 3, 1], [2, 4, 6], true),
     ];
-    for (modelo, verso, girada, vira) in casos {
+    for (modelo, frente, verso, vira) in casos {
         let cena = Cena::nova();
         let lotes = planejar(&[A4; 6], None, 10, modelo.perfil()).unwrap();
         let mut id = identidade("sim");
@@ -705,9 +706,10 @@ fn simulacao_pela_thread_entrega_a_sequencia_do_modelo_e_o_resultado() {
         let numeros = |lista: &[FaceDaSequencia]| -> Vec<usize> {
             lista.iter().filter_map(|face| face.numero).collect()
         };
-        assert_eq!(numeros(&sequencia.frente), [6, 4, 2]);
+        assert_eq!(numeros(&sequencia.frente), frente);
         assert_eq!(numeros(&sequencia.verso), verso);
-        assert!(sequencia.verso.iter().all(|face| face.girada == girada));
+        assert!(sequencia.verso.iter().all(|face| face.girada));
+        assert!(sequencia.frente.iter().all(|face| !face.girada));
         assert_eq!(espera.recolocar.as_ref().unwrap().lado, Some("baixo"));
         cena.comandar("sim", Comando::EnviarVerso);
         let fim = cena.esperar("sim", |estado| matches!(estado, EstadoCartao::Concluido));
@@ -1236,17 +1238,22 @@ fn simular_trecho(modelo: ModeloImpressora, pedido: Pedido) -> (Cena, Cartao) {
 fn simulada_envia_o_trecho_com_os_numeros_do_documento_nos_dois_modelos() {
     let pdf = PdfDeTeste::novo("simular", &[CAIXA_A4; 12]);
     let casos = [
-        (ModeloImpressora::JatoDeTinta, [Some(7), Some(5), Some(3)]),
-        (ModeloImpressora::Laser, [Some(3), Some(5), Some(7)]),
+        (
+            ModeloImpressora::JatoDeTinta,
+            [Some(7), Some(5), Some(3)],
+            [Some(8), Some(6), Some(4)],
+        ),
+        (
+            ModeloImpressora::Laser,
+            [Some(7), Some(5), Some(3)],
+            [Some(4), Some(6), Some(8)],
+        ),
     ];
-    for (modelo, verso) in casos {
+    for (modelo, frente, verso) in casos {
         let pedido = Pedido::novo(pdf.caminho.clone(), trecho(3, 8));
         let (cena, espera) = simular_trecho(modelo, pedido);
         let sequencia = espera.sequencia.clone().unwrap();
-        assert_eq!(
-            numeros_da_face(&sequencia.frente),
-            [Some(8), Some(6), Some(4)]
-        );
+        assert_eq!(numeros_da_face(&sequencia.frente), frente);
         assert_eq!(numeros_da_face(&sequencia.verso), verso);
         assert_eq!(espera.total, 1);
         cena.comandar("sim", Comando::EnviarVerso);
@@ -1264,11 +1271,23 @@ fn simulada_envia_o_trecho_com_os_numeros_do_documento_nos_dois_modelos() {
 #[test]
 fn simulada_de_trecho_impar_leva_o_verso_em_branco_e_confere_todas_as_folhas() {
     let pdf = PdfDeTeste::novo("simular-impar", &[CAIXA_A4; 12]);
-    for modelo in [ModeloImpressora::JatoDeTinta, ModeloImpressora::Laser] {
+    for (modelo, frente, verso) in [
+        (
+            ModeloImpressora::JatoDeTinta,
+            [Some(7), Some(5), Some(3)],
+            [None, Some(6), Some(4)],
+        ),
+        (
+            ModeloImpressora::Laser,
+            [Some(7), Some(5), Some(3)],
+            [Some(4), Some(6), None],
+        ),
+    ] {
         let pedido = Pedido::novo(pdf.caminho.clone(), trecho(3, 7));
         let (cena, espera) = simular_trecho(modelo, pedido);
         let sequencia = espera.sequencia.clone().unwrap();
-        assert_eq!(numeros_da_face(&sequencia.frente), [None, Some(6), Some(4)]);
+        assert_eq!(numeros_da_face(&sequencia.frente), frente);
+        assert_eq!(numeros_da_face(&sequencia.verso), verso);
         cena.comandar("sim", Comando::EnviarVerso);
         let fim = cena.esperar("sim", |estado| matches!(estado, EstadoCartao::Concluido));
         assert_eq!(
@@ -1869,6 +1888,190 @@ fn simular_face(cena: &Cena, modelo: ModeloImpressora, pedido: Pedido) -> Cartao
     }));
     esperar_fim(cena, "sim");
     cena.cartoes_de("sim").pop().unwrap()
+}
+
+/// Backend que guarda as páginas de cada passada e o maço que veio de fora.
+#[derive(Default)]
+struct FacesGravadas {
+    enviadas: Arc<Mutex<Vec<(Passada, Vec<Option<usize>>)>>>,
+    de_fora: Arc<Mutex<Vec<Vec<Option<usize>>>>>,
+}
+
+impl Backend for FacesGravadas {
+    type Erro = String;
+
+    fn enviar(&mut self, passada: Passada, paginas: &[Pagina]) -> Result<(), String> {
+        self.enviadas
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push((
+                passada,
+                paginas.iter().map(|pagina| pagina.numero).collect(),
+            ));
+        Ok(())
+    }
+
+    fn consultar(&mut self) -> Result<EstadoEnvio, String> {
+        Ok(EstadoEnvio::Concluido)
+    }
+
+    fn cancelar(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn maco_de_fora(&mut self, _: usize, frentes: &[Pagina]) -> Result<(), String> {
+        self.de_fora
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(frentes.iter().map(|pagina| pagina.numero).collect());
+        Ok(())
+    }
+}
+
+/// Envia a face isolada de um documento e devolve o que foi para a fila.
+fn paginas_da_face(
+    total: usize,
+    alcance: Alcance,
+) -> (Vec<(Passada, Vec<Option<usize>>)>, Vec<Vec<Option<usize>>>) {
+    let lote: Vec<plots_core::Lote> =
+        planejar(&vec![A4; total], None, 10, PerfilImpressora::default())
+            .unwrap()
+            .into_iter()
+            .map(|item| item.lote)
+            .collect();
+    let mut job = Job::novo(FacesGravadas::default(), lote)
+        .unwrap()
+        .com_alcance(alcance);
+    match alcance {
+        Alcance::SoFrentes => {
+            job.enviar_frente().unwrap();
+            assert_eq!(
+                job.atualizar().unwrap(),
+                EstadoJob::Concluido,
+                "{total} página(s): a frente termina o lote sem esperar recolocação"
+            );
+        }
+        Alcance::SoVersos => {
+            job.enviar_verso().unwrap();
+            assert_eq!(
+                job.atualizar().unwrap(),
+                EstadoJob::Concluido,
+                "{total} página(s): o verso termina o lote"
+            );
+        }
+        Alcance::FrenteEVerso => unreachable!(),
+    }
+    let enviadas = job
+        .backend()
+        .enviadas
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone();
+    let de_fora = job
+        .backend()
+        .de_fora
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone();
+    (enviadas, de_fora)
+}
+
+#[test]
+fn frente_isolada_sao_as_impares_e_verso_isolado_tem_as_pares() {
+    for (total, frente) in [(1usize, vec![Some(1)]), (3, vec![Some(1), Some(3)])] {
+        let (enviadas, sem_maco) = paginas_da_face(total, Alcance::SoFrentes);
+        assert_eq!(enviadas, [(Passada::Frente, frente)], "{total}");
+        assert!(sem_maco.is_empty());
+    }
+
+    let (enviadas, de_fora) = paginas_da_face(3, Alcance::SoVersos);
+    assert_eq!(enviadas, [(Passada::Verso, vec![Some(2), None])]);
+    assert_eq!(
+        de_fora,
+        [vec![Some(1), Some(3)]],
+        "o maço do verso é o das frentes"
+    );
+}
+
+#[test]
+fn simulacao_de_uma_pagina_termina_em_frentes_prontas_com_a_pagina_1() {
+    let pdf = PdfDeTeste::novo("uma-face", &[CAIXA_A4]);
+    let cena = Cena::nova();
+    let cartao = simular_face(
+        &cena,
+        ModeloImpressora::Laser,
+        Pedido::novo(pdf.caminho.clone(), None).com_alcance(Alcance::SoFrentes),
+    );
+    assert_eq!(cartao.estado, EstadoCartao::FrentesProntas);
+    assert!(!cartao.tem_verso, "uma página não tem verso");
+    let sequencia = cartao.sequencia.unwrap();
+    assert_eq!(numeros_da_face(&sequencia.frente), [Some(1)]);
+    assert_eq!(numeros_da_face(&sequencia.verso), [None]);
+}
+
+#[test]
+fn simulacao_de_tres_paginas_fecha_o_maco_com_as_faces_certas() {
+    let pdf = PdfDeTeste::novo("tres-faces", &[CAIXA_A4; 3]);
+    let frentes = simular_face(
+        &Cena::nova(),
+        ModeloImpressora::Laser,
+        Pedido::novo(pdf.caminho.clone(), None).com_alcance(Alcance::SoFrentes),
+    );
+    assert_eq!(frentes.estado, EstadoCartao::FrentesProntas);
+    assert!(frentes.tem_verso, "três páginas têm verso");
+    let sequencia = frentes.sequencia.unwrap();
+    // A laser inverte a primeira passada, que é a dos versos; as frentes seguem essa ordem.
+    assert_eq!(numeros_da_face(&sequencia.frente), [Some(3), Some(1)]);
+    assert_eq!(numeros_da_face(&sequencia.verso), [Some(2), None]);
+
+    let versos = simular_face(
+        &Cena::nova(),
+        ModeloImpressora::Laser,
+        Pedido::novo(pdf.caminho.clone(), None).com_alcance(Alcance::SoVersos),
+    );
+    assert_eq!(versos.estado, EstadoCartao::Concluido);
+    let sequencia = versos.sequencia.unwrap();
+    assert_eq!(numeros_da_face(&sequencia.verso), [Some(2), None]);
+    assert_eq!(
+        versos.resultado,
+        Some(Resultado {
+            corretas: 2,
+            folhas: 2
+        })
+    );
+}
+
+#[test]
+fn trecho_de_uma_pagina_tambem_nao_tem_verso() {
+    let pdf = PdfDeTeste::novo("trecho-uma", &[CAIXA_A4; 12]);
+    let cartao = simular_face(
+        &Cena::nova(),
+        ModeloImpressora::Laser,
+        Pedido::novo(pdf.caminho.clone(), trecho(3, 3)).com_alcance(Alcance::SoFrentes),
+    );
+    assert_eq!(cartao.estado, EstadoCartao::FrentesProntas);
+    assert!(!cartao.tem_verso);
+    assert_eq!(
+        numeros_da_face(&cartao.sequencia.unwrap().frente),
+        [Some(3)]
+    );
+}
+
+#[test]
+fn trabalho_so_de_versos_sem_pagina_numerada_vira_erro_com_motivo() {
+    let cena = Cena::nova();
+    iniciar_face(&cena, &[], &[A4], Alcance::SoVersos);
+    let cartao = cena.esperar(
+        "a",
+        |estado| matches!(estado, EstadoCartao::Erro { motivo } if motivo.codigo == "sem_verso"),
+    );
+    let EstadoCartao::Erro { motivo } = cartao.estado else {
+        panic!("o cartao devia mostrar o motivo");
+    };
+    assert_eq!(motivo.texto, "Não há verso neste trabalho.");
+    assert!(!cartao.tem_verso);
+    cena.comandar("a", Comando::Cancelar);
+    esperar_fim(&cena, "a");
 }
 
 #[test]

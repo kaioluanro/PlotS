@@ -76,6 +76,7 @@ function haPassadaIndoParaAFila(abas: readonly Aba[]): boolean {
 function esperaVersos(cartao: Cartao): boolean {
   const { estado } = cartao;
   return (
+    cartao.temVerso !== false &&
     !cartao.loteAutomatico &&
     (estado.tipo === "frentes_prontas" ||
       (cartao.alcance === "so_frentes" &&

@@ -176,8 +176,9 @@ export function CartaoImpressao({
   const linhasDepois = linhas.filter((linha) => linha.depoisDaAcao === true);
   // A figura fica logo antes da frase que ela ilustra.
   const inicioDoGesto = desenho === null ? -1 : linhasAntes.findIndex((linha) => linha.papel === "gesto");
-  // Nas frentes prontas, a fileira de acoes vem logo abaixo do estado, antes do gesto: a confirmacao do verso repete o gesto.
-  const acoesNoTopo = cartao.estado.tipo === "frentes_prontas";
+  // Nas frentes prontas, a fileira de acoes vem logo abaixo do estado, antes do gesto: a confirmacao do verso repete o gesto. Sem verso, não há ação nenhuma para pôr no topo.
+  const acoesNoTopo =
+    cartao.estado.tipo === "frentes_prontas" && (acoes.pedirVerso || acoes.verso.visivel);
   const blocoDeAcoes = (
     <div className={styles.acoes}>
       {acoes.frente && (

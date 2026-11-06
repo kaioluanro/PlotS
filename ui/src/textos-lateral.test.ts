@@ -48,6 +48,7 @@ describe("vocabulario da interface", () => {
     // Dizem o que a fila do Windows fez com as frentes, e a fila é o assunto dessas frases.
     "face.estado.frentesProntas",
     "face.envio.jaSaiu",
+    "face.envio.jaSaiuSemVerso",
     // O trabalho anterior pode seguir na fila do Windows: a fila é o assunto.
     "face.envio.erroAnterior",
   ]);
