@@ -2,6 +2,16 @@
 
 O PlotS segue o [versionamento semântico](https://semver.org/lang/pt-BR/). As versões alfa ainda não têm teste em papel.
 
+## 1.0.0-alpha.5
+
+Gerada em 2026-11-06 (`559a9c8`).
+
+- PlotS: "Frente" passa a mandar as páginas ímpares e "Verso" as pares; um documento de 1 página imprime a página 1 sem folha em branco, sem pedir recolocação e sem segundo trabalho. O cartão e o seletor deixam claro quando não há verso.
+- PlotS: o desenho da página passa por um bitmap compatível em DC de memória e `StretchBlt`, com `SetDIBits` antes de `SelectObject`; o `StretchDIBits` antigo fica só como reserva. É a correção da folha em branco em impressoras reais.
+- PlotS: chave de boca ao lado da engrenagem de cada impressora real. O painel mostra bandeja, resolução/qualidade e cor que o driver declara, aplica no ajuste salvo da fila e volta ao padrão do driver. Papel, face, cópias, escala, orientação e uma página por folha continuam com o PlotS.
+- Pesquisa: `plan/research/pdfjs-printing.md` registra como o PDF.js imprime e o que o PlotS adota; os trechos citados levam a nota de licença.
+- PlotS: entregue em portátil `.zip`, sem instalador.
+
 ## 1.0.0-alpha.4
 
 Gerada em 2026-11-05 (`97643ec`).

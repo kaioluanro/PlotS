@@ -1,6 +1,6 @@
 # Impressão no Windows: faces corretas e desenho compatível
 
-**Estado:** Em andamento
+**Estado:** Concluído no código
 
 ## Objetivo
 
@@ -37,3 +37,22 @@ Corrigir a folha em branco que sai em impressoras reais e fazer "Frente" e "Vers
 ## Pronto quando
 
 Um PDF de 1 página sai na frente, sem folha em branco, e um de 3 páginas tem a frente e o verso nos números certos, com o desenho passando por `StretchBlt`.
+
+
+## Resultado do lote
+
+- `frentes_do_lote` e `versos_do_lote` em `plots-core/src/lib.rs`; o `Job` usa as duas em
+  `Alcance::SoFrentes`/`SoVersos`, e `ErroJob::SemVerso` recusa verso sem página numerada.
+- O envio GDI passou a usar `CreateCompatibleDC` + `CreateCompatibleBitmap` + `SetDIBits`
+  (antes de `SelectObject`) + `StretchBlt`/`HALFTONE`, com queda para `StretchDIBits` só se
+  o caminho de memória falhar.
+- Interface de 1 página: Verso desabilitado com motivo, face forçada para Frente, cartão
+  terminal sem gesto/recolocação e botão “Repetir as frentes”; 3 páginas continua com as duas
+  faces.
+- Evidência: commit `c03d50e` (integrado em `559a9c8`); CI em
+  `%LOCALAPPDATA%\plots-build\integracao-alpha5\saidas\ci.log`; capturas `20` a `29`;
+  `saidas/uso-final/lote-0001-frente.pdf` com a página 1 e `saidas/envio-real-3.log`.
+- Falta: impressora física/driver de fabricante a 600 dpi; o fallback `StretchDIBits` não foi
+  forçado; o cartão real de 3 páginas mostra a contagem de folhas, não os números das páginas
+  (decisão de escopo). O teste do PlotSim foi ajustado só na conferência de nomes das faces,
+  com autorização do coordenador; o produto PlotSim não mudou.

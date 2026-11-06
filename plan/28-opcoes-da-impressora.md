@@ -1,6 +1,6 @@
 # Opções da impressora na lateral
 
-**Estado:** Em andamento
+**Estado:** Concluído no código
 
 ## Objetivo
 
@@ -92,3 +92,22 @@ o painel diz que não há opções ajustáveis e aponta a engrenagem.
 
 A chave de boca abre um painel com as opções que o driver declara, aplica no ajuste da fila e o
 envio seguinte usa o que foi escolhido, sem tocar no padrão do Windows.
+
+
+## Resultado do lote
+
+- `plots-windows/src/opcoes.rs` lê `DC_BINS`/`DC_BINNAMES`, `DC_ENUMRESOLUTIONS` e
+  `DC_COLORDEVICE`; `opcoes_da_fila(fila, salvo)` parte do ajuste salvo ou do padrão.
+- `aplicar_opcoes_da_fila` marca só bandeja, resolução/qualidade e cor, valida com
+  `DocumentPropertiesW`, confere o que voltou e repõe o padrão do driver nos campos que a
+  pessoa deixou em “Padrão da impressora”. Papel, face, cópias, escala, orientação e N-up
+  continuam fora do painel e do ajuste.
+- A chave de boca fica ao lado da engrenagem, só em fila real; o painel aplica, cancela, usa
+  padrão, mostra falha e devolve o foco. O estado vazio e o corpo rolável foram provados.
+- Evidência: commit `559a9c8`; CI em
+  `%LOCALAPPDATA%\plots-build\integracao-alpha5\saidas\ci.log`; capturas em
+  `%LOCALAPPDATA%\plots-build\opcoes-impressora\saidas` (nativas 640×420, temas escuro e
+  cinza) e `falha-antes-padrao.log`.
+- Falta: nenhum driver instalado declara bandeja ou zero opções, então a bandeja real e o
+  estado vazio real não foram exercitados; o envio seguinte usando o `DEVMODE` salvo foi
+  provado nos bytes e na releitura, não em uma impressão.

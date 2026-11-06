@@ -14,6 +14,7 @@ Decisão do usuário em 2026-11-04: numerar as versões. A que acabou de sair é
 - **Nome adotado:** o usuário disse "1-alpha"; a forma semântica é `1.0.0-alpha`, e as seguintes são `1.0.0-alpha.2`, `1.0.0-alpha.3`, até `1.0.0`.
 - **Entrega da alpha.3:** por decisão do usuário em 2026-11-05, sem instalador: portátil em `.zip` com `PlotS.exe`, `pdfium.dll`, `LICENSE`, `THIRD-PARTY-NOTICES` e `RUST-STD-NOTICES.html`. O zip não inclui o PlotSim, que continua em pasta própria; na alpha.3, os dados de uso ficam em `%APPDATA%`, como no programa instalado. Artefato: `%LOCALAPPDATA%\plots-build\alpha3\saidas\PlotS_1.0.0-alpha.3_x64_portatil.zip` (10,36 MB, SHA-256 `C3BEC37A3F338D775690A6687FA36395F55367BF043CE9804A24CEB2E57DD4FC`).
 - **Perfil no portátil (alpha.4):** com `PLOTS-PORTATIL.txt` ao lado do `PlotS.exe`, o `perfis.toml` fica nessa pasta e a primeira abertura importa o de `%APPDATA%` sem apagar o original; o instalado, sem o marcador, continua em `%APPDATA%`. O histórico continua em `%APPDATA%`. O zip não inclui o perfil do usuário. Artefato: `%LOCALAPPDATA%\plots-build\alpha4\saidas\PlotS_1.0.0-alpha.4_x64_portatil.zip` (10,37 MB, SHA-256 `4EB30324865E06CEB7AFC2E76EB0869160BCB2BAF8DC458CA67477B370DE24BB`), pasta `PlotS` fixa, para descompactar uma versão nova por cima sem perder o `perfis.toml`.
+- **Entrega da alpha.5:** em 2026-11-06, com "Frente" = páginas ímpares, "Verso" = pares, 1 página sem folha em branco, desenho por bitmap compatível + `StretchBlt` e a chave de boca com bandeja/resolução/cor. Artefato: `%LOCALAPPDATA%\plots-build\alpha5\saidas\PlotS_1.0.0-alpha.5_x64_portatil.zip` (10,41 MB, SHA-256 `B81EFA6A20D972CF516E5E1F8275EEF4A9D04E84A59173235B6A8E3F45E06C0D`), pasta `PlotS` fixa, sem perfil dentro do zip.
 
 ## Plano de implementação
 
@@ -22,6 +23,7 @@ Decisão do usuário em 2026-11-04: numerar as versões. A que acabou de sair é
 - [x] `master` em `1.0.0-alpha.2`
 - [x] `master` em `1.0.0-alpha.3` e PlotS portátil em `.zip`
 - [x] `master` em `1.0.0-alpha.4` e perfil ao lado do executável no portátil
+- [x] `master` em `1.0.0-alpha.5` e correção da folha em branco + painel de opções no portátil
 
 ## Pronto quando
 

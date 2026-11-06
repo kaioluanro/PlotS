@@ -2,7 +2,7 @@
 
 Data: 2026-11-02. A especificação foi dividida depois em `plan/`, então as linhas de `AGENTS.md` citadas abaixo são da versão anterior. Escopo: especificação em `AGENTS.md` (seções de Fases, Modo simulação, Perfis, Papel, Múltiplas impressoras, Windows e Interface). Nenhum código de produto foi alterado. Nenhum commit. `Cargo.toml`, `Cargo.lock`, `AGENTS.md`, `CLAUDE.md` e `estilo-ui-ux.md` mantêm os mesmos hashes (md5 conferido antes e depois). **Atenção:** o `.gitignore` foi reescrito às 13:56:41, durante a auditoria, por outro processo ou usuário (este agente não o editou). O conteúdo novo acrescenta `/.claude/`, `/.codex/`, `/estilo-ui-ux.md`, `/plan/`, `/AUDIT-*.md` e `/STATUS-MANUAIS.md`, e por isso o `git status` mostra só `AGENTS.md` e `CLAUDE.md`. Não foi revertido; decisão do usuário.
 
-Contagem: **OK 71 · PARTIAL 26 · MISSING 2 · BUG 0 · N/A 4** (103 requisitos)
+Contagem: **OK 72 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4** (106 requisitos)
 
 Reauditoria de 2026-11-04, sobre o `master` `b0c7302`. Catorze linhas mudaram de status e seis tiveram a evidência atualizada. As contagens foram recalculadas a partir da tabela: o total anterior (38/33/20/2) não batia com as linhas, que já somavam 52/32/6/3. Não rodei o app nem fiz teste em papel nesta reauditoria; as mudanças vêm de código, testes e commits. Mudanças de status:
 - PS-A014: OK para N/A (lote saiu da janela, `plan/24`).
@@ -16,6 +16,8 @@ Segunda reauditoria, em 2026-11-04 sobre o `7b16a4f`: acrescentei PS-A094 a PS-A
 Terceira reauditoria, em 2026-11-05 sobre o `c248cf8`: acrescentei PS-A101 e PS-A102 para o que entrou na alpha.3 no PlotS (tema cinza neutro no lugar do branco e alerta no título da confirmação do verso). Os dois são OK; o CI, as capturas e as três revisões estão em `%LOCALAPPDATA%\plots-build\cinza-indesign`.
 
 Quarta reauditoria, em 2026-11-05 sobre o `97643ec`: acrescentei PS-A103 para o perfil na versão portátil (ao lado do executável, com migração única de `%APPDATA%` e o instalado sem marcador intacto). É OK; o CI e o uso real estão em `%LOCALAPPDATA%\plots-build\perfil-portatil`.
+
+Quinta reauditoria, em 2026-11-06 sobre o `559a9c8`: acrescentei PS-A104 a PS-A106 para a correção da folha em branco (frente = ímpares, verso = pares, 1 página sem verso), o desenho GDI por bitmap compatível + `StretchBlt` e a chave de boca com as opções do driver. PS-A104 é OK; PS-A105 e PS-A106 são PARTIAL pelas provas em impressora/driver de fabricante que faltam.
 
 Verificação executada:
 - `cargo test --workspace --locked`: 51 testes passam (9 de integração do CLI, 19 em plots-core, 12 em plots-pdf, 11 em plots-print). Tempo de 30 s.
@@ -141,6 +143,9 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A101 | Interface | O tema claro do PlotS usa o cinza neutro dos painéis, com a mesma hierarquia de superfícies, o tema escuro intacto e a página do PDF branca | OK (`c248cf8`) | `ui/src/theme.css` (`[data-theme='gray']`, `--icon-warning` nos dois temas), `ui/src/theme.ts` (`Tema = "dark" \| "gray"`); `theme.test.ts` e `theme-estilos.test.ts` com falha prévia `saidas/falha-antes.log` (8 falhas). Capturas `cz-01/02/03/07/08/10/14`; contraste em `saidas/contraste.log`; as três revisões aprovaram. |
 | PS-A102 | Interface | A confirmação "Imprimir os versos?" leva um triângulo de alerta amarelo antes do título, só nela, com o nome acessível só pelo texto | OK (`c248cf8`) | `ui/src/confirmacao.ts` (`atencao`), `ui/src/face-do-envio.ts` (`conteudoDoVerso`), `ui/src/components/ConfirmDialog.tsx/.module.css`; `titulo-do-dialogo.test.tsx` e `face-do-envio.test.ts`; capturas `cz-04/05/06/14c`. |
 | PS-A103 | Portabilidade | Com `PLOTS-PORTATIL.txt` ao lado do executável, o `perfis.toml` fica na pasta do programa e a primeira abertura traz o de `%APPDATA%` sem sobrescrever; sem o marcador, o instalado continua em `%APPDATA%` | OK (`97643ec`) | `plots-perfis/src/armazenamento.rs` (`caminho_para`, `migrar_para_portatil`), `src-tauri/src/main.rs`; testes em `plots-perfis/src/testes.rs`; CI em `%LOCALAPPDATA%\plots-build\perfil-portatil\saidas\ci.log`; uso real com SHA-256 do perfil local e do `%APPDATA%` no relatório do lote. |
+| PS-A104 | Impressão | "Frente" manda as páginas ímpares e "Verso" as pares; documento de 1 página termina sem verso e sem recolocação; 3 páginas fecham nas duas faces | OK (`559a9c8`) | `plots-core/src/lib.rs` (`frentes_do_lote`, `versos_do_lote`), `plots-print/src/job.rs` (`ErroJob::SemVerso`), `src-tauri/src/trabalhos.rs`, `ui/src/tabs.ts`/`face-do-envio.ts`/`BlocoFace.tsx`/`cartoes.ts`; testes de 1, 2 e 3 páginas; capturas `20`–`29`; PDF real de 1 página em `saidas/uso-final`. |
+| PS-A105 | Impressão | O desenho GDI usa bitmap compatível em DC de memória e `StretchBlt`, com `SetDIBits` antes de `SelectObject` e queda para `StretchDIBits` | PARTIAL (`559a9c8`) | `plots-windows/src/spooler.rs`; `saidas/envio-real-3.log` (1 página, 418 bytes, 1 desenho pela memória); falta driver de fabricante a 600 dpi e forçar o fallback. |
+| PS-A106 | Interface | Chave de boca ao lado da engrenagem; painel com bandeja, resolução e cor declaradas pelo driver; aplica no ajuste salvo; "Padrão" repõe o padrão; campos do envio fora do painel | PARTIAL (`559a9c8`) | `plots-windows/src/opcoes.rs`/`preferencias_driver.rs`, `src-tauri/src/preferencias.rs`, `ui/src/components/OpcoesDaImpressoraDialog.tsx`/`Sidebar.tsx`; CI, capturas nativas 640×420; falta driver real com bandeja/zero opções e envio usando o `DEVMODE` salvo. |
 
 ## Bugs (com passos de reprodução)
 
