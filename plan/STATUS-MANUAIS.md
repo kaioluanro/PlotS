@@ -33,6 +33,7 @@ Requisitos: OK 72 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4 (106). Detalhes e
 | [Versionamento](26-versionamento.md) | 1 | 0 | 0 | 0 | 0 | Concluído |
 | [Impressão no Windows: faces e desenho](27-impressao-pdfjs.md) | 1 | 1 | 0 | 0 | 0 | Concluído no código; falta impressora real |
 | [Opções da impressora](28-opcoes-da-impressora.md) | 0 | 1 | 0 | 0 | 0 | Concluído no código; falta driver com bandeja |
+| [Cor das imagens impressas](29-cor-das-imagens.md) | - | - | - | - | - | Em andamento |
 
 ## Lotes
 
