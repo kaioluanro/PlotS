@@ -14,6 +14,8 @@ pub struct PdfLido {
     pub assinado: bool,
     /// Impressão dos mesmos bytes que `origem` carrega: confere se o arquivo mudou.
     pub impressao: String,
+    /// Caminho do conteúdo lido: o próprio PDF ou o derivado de uma imagem.
+    pub conteudo: String,
 }
 
 /// Impressão de um conteúdo: FNV-1a de 64 bits sobre todos os bytes, com o tamanho. Qualquer troca
@@ -114,6 +116,7 @@ pub fn ler_pdf_com_bytes(caminho: &str) -> Result<(PdfLido, Vec<u8>), ErroDocume
             dimensoes,
             assinado,
             impressao,
+            conteudo,
         },
         bytes,
     ))

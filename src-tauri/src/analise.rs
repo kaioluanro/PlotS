@@ -5,8 +5,10 @@
 //! vira uma cobertura guardada em memória; o resultado é montado a partir dela, sem repetir a
 //! conta em outro lugar.
 
+use crate::csv_tinta::{self, PaginaDeTinta, SelecaoDeTinta};
 use crate::documento::ErroDocumento;
 use crate::leitura_pdf;
+use crate::mutool::{self, ErroMutool};
 use crate::plotinfo;
 use plots_core::{DimensoesPagina, LIMITE_COPIAS};
 use plots_info::{
@@ -17,6 +19,7 @@ use plots_info::{
 use plots_windows::analise::{ErroAnalise, PaginaRgb, SessaoDeAnalise};
 use serde::Serialize;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use tauri::{AppHandle, Emitter, State};
@@ -32,6 +35,14 @@ const MEMORIA_DE_ANALISES: usize = 32;
 
 /// Quantos conteúdos diferentes o cache de cobertura guarda ao mesmo tempo.
 const MEMORIA_DO_CACHE: usize = 8;
+
+/// Aviso entregue quando o pedido era CMYK e a análise terminou no modo simples.
+const AVISO_SEM_CONVERSOR: &str =
+    "O conversor mutool não está disponível; a análise usa o modo simples.";
+const AVISO_FALHA_DO_CONVERSOR: &str =
+    "O conversor mutool não concluiu a separação CMYK; a análise usa o modo simples.";
+const AVISO_MODO_SIMPLES: &str =
+    "Esta análise foi feita no modo simples, sem a separação CMYK do conversor.";
 
 /// Cobertura de uma página, em percentual por canal.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -161,6 +172,8 @@ pub struct ResumoDoDocumento {
 pub enum ModoUsado {
     /// A fórmula simples sobre os pixels desenhados pela biblioteca.
     Simples,
+    /// A separação feita pelo conversor externo, lida dos PAMs em CMYK.
+    Cmyk,
 }
 
 /// O que a análise entrega ao fim.
@@ -169,6 +182,8 @@ pub enum ModoUsado {
 pub struct ResultadoDaAnalise {
     pub total_de_paginas: usize,
     pub modo_usado: ModoUsado,
+    /// Motivo de o modo simples ter sido usado, quando o pedido era CMYK.
+    pub aviso: Option<String>,
     pub dpi: u32,
     pub perfil: String,
     pub moeda: String,
@@ -236,6 +251,7 @@ pub enum CodigoFalhaAnalise {
     Cancelado,
     Interrompido,
     IniciarTrabalho,
+    Exportacao,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -318,6 +334,22 @@ fn codigo_do_modo(modo: ModoDeCor) -> u8 {
     }
 }
 
+fn modo_do_codigo(codigo: u8) -> ModoUsado {
+    if codigo == codigo_do_modo(ModoDeCor::Cmyk) {
+        ModoUsado::Cmyk
+    } else {
+        ModoUsado::Simples
+    }
+}
+
+fn chave_do_modo(chave: &ChaveDeCache, modo: ModoDeCor) -> ChaveDeCache {
+    ChaveDeCache {
+        impressao: chave.impressao.clone(),
+        dpi: chave.dpi,
+        modo: codigo_do_modo(modo),
+    }
+}
+
 /// O que a thread precisa para desenhar e montar o resultado.
 #[derive(Debug)]
 struct Preparo {
@@ -329,6 +361,8 @@ struct Preparo {
     configuracao: ConfiguracaoDeTinta,
     perfil: PerfilDeTinta,
     copias: usize,
+    /// Conteúdo já resolvido para leitura: o PDF original ou o derivado de uma imagem.
+    pdf: PathBuf,
 }
 
 impl Preparo {
@@ -371,6 +405,7 @@ fn preparar(
         configuracao,
         perfil,
         copias,
+        pdf: PathBuf::from(lido.conteudo),
     })
 }
 
@@ -387,8 +422,13 @@ struct EntradaDeCache {
     uso: u64,
 }
 
+#[derive(Clone)]
 struct Concluida {
     chave: ChaveDeCache,
+    selecao: SelecaoDePaginas,
+    copias: usize,
+    configuracao: ConfiguracaoDeTinta,
+    perfil: PerfilDeTinta,
     uso: u64,
 }
 
@@ -515,18 +555,32 @@ impl Analises {
         Some((entrada.dimensoes.clone(), entrada.coberturas.clone()))
     }
 
-    fn guardar_concluida(&self, id: &str, chave: ChaveDeCache) {
+    fn guardar_concluida(&self, id: &str, chave: ChaveDeCache, preparo: &Preparo) {
         let uso = self.proximo_uso();
         let mut concluidas = self
             .0
             .concluidas
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-        concluidas.insert(id.to_owned(), Concluida { chave, uso });
+        concluidas.insert(
+            id.to_owned(),
+            Concluida {
+                chave,
+                selecao: preparo.selecao.clone(),
+                copias: preparo.copias,
+                configuracao: preparo.configuracao.clone(),
+                perfil: preparo.perfil.clone(),
+                uso,
+            },
+        );
         limitar_por_uso(&mut concluidas, MEMORIA_DE_ANALISES, |entrada| entrada.uso);
     }
 
     fn chave_concluida(&self, id: &str) -> Option<ChaveDeCache> {
+        self.retrato_concluida(id).map(|entrada| entrada.chave)
+    }
+
+    fn retrato_concluida(&self, id: &str) -> Option<Concluida> {
         let uso = self.proximo_uso();
         let mut concluidas = self
             .0
@@ -535,7 +589,33 @@ impl Analises {
             .unwrap_or_else(PoisonError::into_inner);
         let entrada = concluidas.get_mut(id)?;
         entrada.uso = uso;
-        Some(entrada.chave.clone())
+        Some(entrada.clone())
+    }
+
+    /// Guarda a seleção e a configuração da última conta concluída; a exportação usa esse retrato.
+    fn atualizar_concluida(
+        &self,
+        id: &str,
+        chave: ChaveDeCache,
+        selecao: SelecaoDePaginas,
+        copias: usize,
+        configuracao: ConfiguracaoDeTinta,
+        perfil: PerfilDeTinta,
+    ) {
+        let uso = self.proximo_uso();
+        let mut concluidas = self
+            .0
+            .concluidas
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if let Some(entrada) = concluidas.get_mut(id) {
+            entrada.chave = chave;
+            entrada.selecao = selecao;
+            entrada.copias = copias;
+            entrada.configuracao = configuracao;
+            entrada.perfil = perfil;
+            entrada.uso = uso;
+        }
     }
 
     /// Recalcula com o cache já pronto. O perfil vem de quem chama para o cálculo não depender
@@ -555,21 +635,63 @@ impl Analises {
         let base = self
             .chave_concluida(id)
             .ok_or_else(|| FalhaAnalise::novo(CodigoFalhaAnalise::AnaliseDesconhecida))?;
-        let chave = ChaveDeCache {
-            impressao: base.impressao,
+        let chave_pedida = ChaveDeCache {
+            impressao: base.impressao.clone(),
             dpi: configuracao.dpi,
             modo: codigo_do_modo(configuracao.modo),
         };
-        let (dimensoes, coberturas) = self.ler_cache(&chave).ok_or_else(|| {
-            FalhaAnalise::com_detalhe(
-                CodigoFalhaAnalise::CacheAusente,
-                format!(
-                    "{} dpi, modo {}",
-                    configuracao.dpi,
-                    codigo_do_modo(configuracao.modo)
-                ),
-            )
-        })?;
+        let achado = self.ler_cache(&chave_pedida);
+        let (chave, dimensoes, coberturas) = match achado {
+            Some((dimensoes, coberturas)) => {
+                if dimensoes.is_empty() {
+                    return Err(FalhaAnalise::novo(CodigoFalhaAnalise::Documento));
+                }
+                // Uma seleção inválida é recusada antes de a cobertura incompleta aparecer.
+                selecao_de_texto(paginas.unwrap_or(""), dimensoes.len()).map_err(|erro| {
+                    FalhaAnalise::com_detalhe(CodigoFalhaAnalise::SelecaoInvalida, erro)
+                })?;
+                if coberturas.iter().all(Option::is_some) {
+                    (chave_pedida, dimensoes, coberturas)
+                } else if configuracao.modo == ModoDeCor::Cmyk
+                    && base.modo == codigo_do_modo(ModoDeCor::Simples)
+                    && base.dpi == configuracao.dpi
+                {
+                    // A análise anterior caiu no modo simples e está guardada sob essa chave.
+                    let (dimensoes, coberturas) = self.ler_cache(&base).ok_or_else(|| {
+                        FalhaAnalise::com_detalhe(
+                            CodigoFalhaAnalise::CacheAusente,
+                            format!("{} dpi, modo simples", configuracao.dpi),
+                        )
+                    })?;
+                    (base, dimensoes, coberturas)
+                } else {
+                    return Err(FalhaAnalise::novo(CodigoFalhaAnalise::AindaNaoAnalisada));
+                }
+            }
+            None if configuracao.modo == ModoDeCor::Cmyk
+                && base.modo == codigo_do_modo(ModoDeCor::Simples)
+                && base.dpi == configuracao.dpi =>
+            {
+                let (dimensoes, coberturas) = self.ler_cache(&base).ok_or_else(|| {
+                    FalhaAnalise::com_detalhe(
+                        CodigoFalhaAnalise::CacheAusente,
+                        format!("{} dpi, modo simples", configuracao.dpi),
+                    )
+                })?;
+                (base, dimensoes, coberturas)
+            }
+            None => {
+                return Err(FalhaAnalise::com_detalhe(
+                    CodigoFalhaAnalise::CacheAusente,
+                    format!(
+                        "{} dpi, modo {}",
+                        configuracao.dpi,
+                        codigo_do_modo(configuracao.modo)
+                    ),
+                ))
+            }
+        };
+        let modo_usado = modo_do_codigo(chave.modo);
         if dimensoes.is_empty() {
             return Err(FalhaAnalise::novo(CodigoFalhaAnalise::Documento));
         }
@@ -578,15 +700,27 @@ impl Analises {
         let completas: Option<Vec<Cobertura>> = coberturas.iter().copied().collect();
         let completas =
             completas.ok_or_else(|| FalhaAnalise::novo(CodigoFalhaAnalise::AindaNaoAnalisada))?;
-        montar_resultado(
+        let mut resultado = montar_resultado(
             &completas,
             &dimensoes,
             &selecao,
             copias,
             configuracao,
             perfil,
-            ModoUsado::Simples,
-        )
+            modo_usado,
+        )?;
+        if configuracao.modo == ModoDeCor::Cmyk && modo_usado == ModoUsado::Simples {
+            resultado.aviso = Some(AVISO_MODO_SIMPLES.to_owned());
+        }
+        self.atualizar_concluida(
+            id,
+            chave,
+            selecao,
+            copias,
+            configuracao.clone(),
+            perfil.clone(),
+        );
+        Ok(resultado)
     }
 }
 
@@ -790,6 +924,7 @@ pub fn montar_resultado(
     Ok(ResultadoDaAnalise {
         total_de_paginas: total,
         modo_usado,
+        aviso: None,
         dpi: configuracao.dpi,
         perfil: perfil.id.clone(),
         moeda: perfil.moeda.clone(),
@@ -931,6 +1066,7 @@ fn executar<F, E>(
     cancelamento: &AtomicBool,
     fonte: &mut F,
     emissor: &E,
+    conversor: Option<&Path>,
 ) -> Desfecho
 where
     F: FonteDePaginas,
@@ -939,15 +1075,108 @@ where
     if cancelamento.load(Ordering::Relaxed) {
         return Desfecho::Cancelado;
     }
-    let mut coberturas = match analises.abrir_cache(&preparo.chave, &preparo.dimensoes) {
+    let pedida = preparo.chave.clone();
+    let mut chave = pedida.clone();
+    let mut modo = ModoUsado::Simples;
+    let mut aviso = None;
+    let mut coberturas = match analises.abrir_cache(&chave, &preparo.dimensoes) {
         Ok(coberturas) => coberturas,
         Err(falha) => return Desfecho::Falhou(falha),
     };
+    if preparo.configuracao.modo == ModoDeCor::Cmyk {
+        let completo = coberturas.iter().all(Option::is_some);
+        if completo {
+            modo = ModoUsado::Cmyk;
+        } else if conversor.is_some() {
+            modo = ModoUsado::Cmyk;
+        } else {
+            match trocar_para_simples(analises, &pedida, preparo) {
+                Ok((nova_chave, novas)) => {
+                    chave = nova_chave;
+                    coberturas = novas;
+                    aviso = Some(AVISO_SEM_CONVERSOR.to_owned());
+                }
+                Err(falha) => return Desfecho::Falhou(falha),
+            }
+        }
+    }
+
     let total = preparo.total();
     let ordem = match ordem_da_analise(preparo) {
         Ok(ordem) => ordem,
         Err(falha) => return Desfecho::Falhou(falha),
     };
+
+    // Um processo do conversor cobre todas as páginas que ainda faltam. O resultado fica em
+    // memória e entra no cache conforme cada página é publicada; cancelar no meio não guarda um
+    // resultado parcial como se o lote tivesse terminado.
+    let mut do_conversor: HashMap<usize, Cobertura> = HashMap::new();
+    if modo == ModoUsado::Cmyk {
+        let mut faltando = Vec::new();
+        for numero in &ordem {
+            let Some(indice) = numero.checked_sub(1).filter(|indice| *indice < total) else {
+                continue;
+            };
+            if coberturas.get(indice).is_some_and(Option::is_some) {
+                continue;
+            }
+            if let Ok(pagina) = u32::try_from(*numero) {
+                faltando.push(pagina);
+            }
+        }
+        if !faltando.is_empty() {
+            let resultado = match conversor {
+                Some(conversor) => mutool::desenhar_cmyk_com(
+                    conversor,
+                    &preparo.pdf,
+                    &faltando,
+                    preparo.configuracao.dpi,
+                    mutool::LIMITE_PADRAO,
+                    cancelamento,
+                ),
+                None => Err(ErroMutool::Temporario {
+                    detalhe: "conversor ausente depois da conferência".to_owned(),
+                }),
+            };
+            match resultado {
+                Ok(paginas) => {
+                    for pagina in paginas {
+                        if let Some(indice) = usize::try_from(pagina.pagina)
+                            .ok()
+                            .and_then(|numero| numero.checked_sub(1))
+                            .filter(|indice| *indice < total)
+                        {
+                            do_conversor.insert(indice, pagina.cobertura);
+                        }
+                    }
+                    if do_conversor.len() != faltando.len() {
+                        match trocar_para_simples(analises, &pedida, preparo) {
+                            Ok((nova_chave, novas)) => {
+                                chave = nova_chave;
+                                coberturas = novas;
+                                modo = ModoUsado::Simples;
+                                aviso = Some(AVISO_FALHA_DO_CONVERSOR.to_owned());
+                                do_conversor.clear();
+                            }
+                            Err(falha) => return Desfecho::Falhou(falha),
+                        }
+                    }
+                }
+                Err(ErroMutool::Cancelado) => return Desfecho::Cancelado,
+                Err(falha) => match trocar_para_simples(analises, &pedida, preparo) {
+                    Ok((nova_chave, novas)) => {
+                        chave = nova_chave;
+                        coberturas = novas;
+                        modo = ModoUsado::Simples;
+                        aviso = Some(format!("{AVISO_FALHA_DO_CONVERSOR} {falha}"));
+                        do_conversor.clear();
+                    }
+                    Err(falha) => return Desfecho::Falhou(falha),
+                },
+            }
+        }
+    }
+
     let mut selecionada = Vec::new();
     if selecionada.try_reserve_exact(total).is_err() {
         return Desfecho::Falhou(FalhaAnalise::novo(CodigoFalhaAnalise::Interrompido));
@@ -1003,16 +1232,22 @@ where
         if coberturas[indice].is_some() {
             continue;
         }
-        let pagina = match fonte.renderizar(numero, preparo.configuracao.dpi) {
-            Ok(pagina) => pagina,
-            Err(erro) => return Desfecho::Falhou(FalhaAnalise::da_renderizacao(erro)),
+        let cobertura = if let Some(cobertura) = do_conversor.remove(&indice) {
+            cobertura
+        } else {
+            let pagina = match fonte.renderizar(numero, preparo.configuracao.dpi) {
+                Ok(pagina) => pagina,
+                Err(erro) => return Desfecho::Falhou(FalhaAnalise::da_renderizacao(erro)),
+            };
+            let cobertura = match cobertura_da_pagina(&pagina, preparo.configuracao.cinzas_so_preto)
+            {
+                Ok(cobertura) => cobertura,
+                Err(falha) => return Desfecho::Falhou(falha),
+            };
+            drop(pagina);
+            cobertura
         };
-        let cobertura = match cobertura_da_pagina(&pagina, preparo.configuracao.cinzas_so_preto) {
-            Ok(cobertura) => cobertura,
-            Err(falha) => return Desfecho::Falhou(falha),
-        };
-        drop(pagina);
-        analises.gravar_cobertura(&preparo.chave, &preparo.dimensoes, indice, cobertura);
+        analises.gravar_cobertura(&chave, &preparo.dimensoes, indice, cobertura);
         coberturas[indice] = Some(cobertura);
         feitas = feitas.saturating_add(1);
 
@@ -1080,20 +1315,32 @@ where
     let Some(completas) = completas else {
         return Desfecho::Falhou(FalhaAnalise::novo(CodigoFalhaAnalise::AindaNaoAnalisada));
     };
-    let resultado = match montar_resultado(
+    let mut resultado = match montar_resultado(
         &completas,
         &preparo.dimensoes,
         &preparo.selecao,
         preparo.copias,
         &preparo.configuracao,
         &preparo.perfil,
-        ModoUsado::Simples,
+        modo,
     ) {
         Ok(resultado) => resultado,
         Err(falha) => return Desfecho::Falhou(falha),
     };
-    analises.guardar_concluida(id, preparo.chave.clone());
+    resultado.aviso = aviso;
+    analises.guardar_concluida(id, chave, preparo);
     Desfecho::Concluido(resultado)
+}
+
+/// Reabre o cache no modo simples, onde a análise anterior que caiu no fallback foi guardada.
+fn trocar_para_simples(
+    analises: &Analises,
+    pedida: &ChaveDeCache,
+    preparo: &Preparo,
+) -> Result<(ChaveDeCache, Vec<Option<Cobertura>>), FalhaAnalise> {
+    let chave = chave_do_modo(pedida, ModoDeCor::Simples);
+    let coberturas = analises.abrir_cache(&chave, &preparo.dimensoes)?;
+    Ok((chave, coberturas))
 }
 
 fn publicar<E: EmissorDeAnalise>(emissor: &E, id: &str, desfecho: Desfecho) {
@@ -1166,6 +1413,7 @@ impl Analises {
                     cancelamento.as_ref(),
                     &mut sessao,
                     &emissor,
+                    mutool::mutool_do_sistema().as_deref(),
                 );
                 publicar(&emissor, id, desfecho);
             });
@@ -1174,6 +1422,59 @@ impl Analises {
             return Err(FalhaAnalise::novo(CodigoFalhaAnalise::IniciarTrabalho));
         }
         Ok(id)
+    }
+
+    /// Exporta a última análise concluída: uma linha por página da seleção e uma linha de total.
+    fn exportar_csv(&self, id: &str, caminho: &Path) -> Result<(), FalhaAnalise> {
+        let retrato = self
+            .retrato_concluida(id)
+            .ok_or_else(|| FalhaAnalise::novo(CodigoFalhaAnalise::AnaliseDesconhecida))?;
+        let (dimensoes, coberturas) = self.ler_cache(&retrato.chave).ok_or_else(|| {
+            FalhaAnalise::com_detalhe(
+                CodigoFalhaAnalise::CacheAusente,
+                "o resultado da análise não está mais no cache",
+            )
+        })?;
+        if dimensoes.len() != coberturas.len() {
+            return Err(FalhaAnalise::novo(CodigoFalhaAnalise::Calculo));
+        }
+        let completas: Option<Vec<Cobertura>> = coberturas.iter().copied().collect();
+        let Some(completas) = completas else {
+            return Err(FalhaAnalise::novo(CodigoFalhaAnalise::AindaNaoAnalisada));
+        };
+        let mut paginas = Vec::new();
+        paginas
+            .try_reserve_exact(retrato.selecao.quantidade())
+            .map_err(|_| FalhaAnalise::novo(CodigoFalhaAnalise::Interrompido))?;
+        for numero in retrato.selecao.numeros() {
+            let indice = numero
+                .checked_sub(1)
+                .ok_or_else(|| FalhaAnalise::novo(CodigoFalhaAnalise::Calculo))?;
+            let dimensao = *dimensoes
+                .get(indice)
+                .ok_or_else(|| FalhaAnalise::novo(CodigoFalhaAnalise::Calculo))?;
+            let cobertura = *completas
+                .get(indice)
+                .ok_or_else(|| FalhaAnalise::novo(CodigoFalhaAnalise::Calculo))?;
+            let estimativa = estimativa_da_pagina(
+                cobertura,
+                dimensao,
+                &retrato.perfil,
+                retrato.configuracao.qualidade,
+            )
+            .map_err(|erro| FalhaAnalise::com_detalhe(CodigoFalhaAnalise::Calculo, erro))?;
+            let numero = u32::try_from(*numero)
+                .map_err(|_| FalhaAnalise::novo(CodigoFalhaAnalise::Calculo))?;
+            paginas.push(PaginaDeTinta {
+                numero,
+                dimensoes: dimensao,
+                cobertura,
+                tinta: estimativa.tinta,
+                custo: estimativa.custo,
+            });
+        }
+        csv_tinta::gravar_csv(caminho, &SelecaoDeTinta::nova(&paginas, retrato.copias))
+            .map_err(|erro| FalhaAnalise::com_detalhe(CodigoFalhaAnalise::Exportacao, erro))
     }
 }
 
@@ -1233,10 +1534,53 @@ pub fn cancelar_analise(estado: State<'_, Analises>, id: String) -> bool {
     estado.cancelar(&id)
 }
 
+/// Exporta a última análise concluída para um arquivo CSV. O disco pode demorar, por isso a
+/// gravação corre em uma thread própria.
+#[tauri::command]
+pub async fn exportar_csv(
+    estado: State<'_, Analises>,
+    id: String,
+    caminho: String,
+) -> Result<(), FalhaAnalise> {
+    let analises = (*estado).clone();
+    tauri::async_runtime::spawn_blocking(move || analises.exportar_csv(&id, Path::new(&caminho)))
+        .await
+        .unwrap_or_else(|_| Err(FalhaAnalise::novo(CodigoFalhaAnalise::Interrompido)))
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
+    use std::fs;
     use std::sync::atomic::AtomicBool;
+
+    static CONTADOR_DE_PASTAS: AtomicU64 = AtomicU64::new(0);
+
+    struct PastaDeTeste(PathBuf);
+
+    impl PastaDeTeste {
+        fn nova() -> Self {
+            let sequencia = CONTADOR_DE_PASTAS.fetch_add(1, Ordering::Relaxed);
+            let caminho = std::env::temp_dir().join(format!(
+                "plots-analise-teste-{}-{sequencia}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&caminho).expect("criar pasta do teste");
+            Self(caminho)
+        }
+
+        fn gravar(&self, nome: &str, bytes: &[u8]) -> PathBuf {
+            let caminho = self.0.join(nome);
+            fs::write(&caminho, bytes).expect("gravar arquivo do teste");
+            caminho
+        }
+    }
+
+    impl Drop for PastaDeTeste {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
 
     fn dimensoes(total: usize) -> Vec<DimensoesPagina> {
         vec![DimensoesPagina::new(210.0, 297.0); total]
@@ -1554,6 +1898,7 @@ mod testes {
         dimensoes: Vec<DimensoesPagina>,
         coberturas: Vec<Option<Cobertura>>,
     ) {
+        let total = dimensoes.len();
         let mut cache = analises
             .0
             .cache
@@ -1573,7 +1918,17 @@ mod testes {
             .concluidas
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-        concluidas.insert(id.to_owned(), Concluida { chave, uso: 1 });
+        concluidas.insert(
+            id.to_owned(),
+            Concluida {
+                chave,
+                selecao: selecao("", total),
+                copias: 1,
+                configuracao: configuracao(),
+                perfil: perfil("a", 65.0, 1.0),
+                uso: 1,
+            },
+        );
     }
 
     #[test]
@@ -1699,7 +2054,7 @@ mod testes {
     #[derive(Default)]
     struct Coletor {
         progressos: Mutex<Vec<ProgressoDaAnalise>>,
-        paginas: Mutex<Vec<usize>>,
+        paginas: Mutex<Vec<PaginaAnalisada>>,
         fins: Mutex<Vec<FimDaAnalise>>,
         falhas: Mutex<Vec<FalhaDaAnalise>>,
     }
@@ -1716,7 +2071,7 @@ mod testes {
             self.paginas
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
-                .push(evento.pagina);
+                .push(evento.clone());
         }
 
         fn fim(&self, evento: &FimDaAnalise) {
@@ -1779,19 +2134,22 @@ mod testes {
     }
 
     fn preparo_de_teste(total: usize, texto: &str, pagina_atual: Option<usize>) -> Preparo {
+        let mut configuracao = configuracao();
+        configuracao.modo = ModoDeCor::Simples;
         Preparo {
             chave: ChaveDeCache {
                 impressao: "teste".to_owned(),
                 dpi: 150,
-                modo: 0,
+                modo: codigo_do_modo(ModoDeCor::Simples),
             },
             bytes: Vec::new(),
             dimensoes: dimensoes(total),
             selecao: selecao(texto, total),
             pagina_atual,
-            configuracao: configuracao(),
+            configuracao,
             perfil: perfil("a", 65.0, 1.0),
             copias: 1,
+            pdf: PathBuf::new(),
         }
     }
 
@@ -1809,6 +2167,7 @@ mod testes {
             cancelamento.as_ref(),
             &mut fonte,
             &coletor,
+            None,
         );
         assert!(matches!(&desfecho, Desfecho::Cancelado));
         publicar(&coletor, "a1", desfecho);
@@ -1842,6 +2201,7 @@ mod testes {
             cancelamento.as_ref(),
             &mut fonte,
             &coletor,
+            None,
         );
         assert!(matches!(&desfecho, Desfecho::Cancelado));
         publicar(&coletor, "a1", desfecho);
@@ -1881,6 +2241,7 @@ mod testes {
             cancelamento.as_ref(),
             &mut fonte,
             &coletor,
+            None,
         );
         let resultado = match desfecho {
             Desfecho::Concluido(resultado) => resultado,
@@ -1929,6 +2290,7 @@ mod testes {
             cancelamento.as_ref(),
             &mut primeira,
             &coletor,
+            None,
         );
         assert!(matches!(&desfecho, Desfecho::Concluido(_)));
         assert_eq!(primeira.chamadas.len(), 4);
@@ -1942,6 +2304,7 @@ mod testes {
             cancelamento.as_ref(),
             &mut segunda,
             &coletor,
+            None,
         );
         assert!(matches!(&desfecho, Desfecho::Concluido(_)));
         assert!(segunda.chamadas.is_empty());
@@ -1967,6 +2330,7 @@ mod testes {
             cancelamento.as_ref(),
             &mut fonte,
             &coletor,
+            None,
         );
         assert!(matches!(&desfecho, Desfecho::Falhou(_)));
         publicar(&coletor, "a1", desfecho);
@@ -1989,5 +2353,371 @@ mod testes {
                 .count(),
             1
         );
+    }
+
+    fn preparo_cmyk(total: usize, texto: &str, pdf: PathBuf) -> Preparo {
+        let configuracao = configuracao();
+        Preparo {
+            chave: chave_de("teste-cmyk", &configuracao),
+            bytes: Vec::new(),
+            dimensoes: dimensoes(total),
+            selecao: selecao(texto, total),
+            pagina_atual: None,
+            configuracao,
+            perfil: perfil("a", 65.0, 1.0),
+            copias: 1,
+            pdf,
+        }
+    }
+
+    fn paginas_em_csv(linhas: &[&str]) -> Vec<String> {
+        linhas
+            .iter()
+            .skip(1)
+            .filter(|linha| !linha.starts_with("total;"))
+            .map(|linha| linha.split(';').next().unwrap_or_default().to_owned())
+            .collect()
+    }
+
+    #[test]
+    fn sem_conversor_a_analise_usa_o_modo_simples_com_aviso() {
+        let analises = Analises::default();
+        // O caminho não existe, mas o conversor também não: nada tenta abrir o PDF.
+        let preparo = preparo_cmyk(4, "2,3", PathBuf::from("nao-existe.pdf"));
+        let cancelamento = Arc::new(AtomicBool::new(false));
+        let mut fonte = FonteFalsa::nova(cancelamento.clone());
+        let coletor = Coletor::default();
+        let desfecho = executar(
+            &analises,
+            "a1",
+            &preparo,
+            cancelamento.as_ref(),
+            &mut fonte,
+            &coletor,
+            None,
+        );
+        let resultado = match desfecho {
+            Desfecho::Concluido(resultado) => resultado,
+            outro => panic!("{outro:?}"),
+        };
+        assert_eq!(resultado.modo_usado, ModoUsado::Simples);
+        assert_eq!(resultado.aviso.as_deref(), Some(AVISO_SEM_CONVERSOR));
+        assert_eq!(fonte.chamadas, vec![2, 3, 1, 4]);
+        assert_eq!(
+            analises.chave_concluida("a1").map(|chave| chave.modo),
+            Some(codigo_do_modo(ModoDeCor::Simples))
+        );
+        let (_, coberturas) = analises.ler_cache(&preparo.chave).unwrap();
+        assert!(coberturas.iter().all(Option::is_none));
+    }
+
+    #[test]
+    fn conversor_que_falha_cai_no_simples_e_o_recalculo_continua_simples() {
+        let pasta = PastaDeTeste::nova();
+        let pdf = pasta.gravar(
+            "tres.pdf",
+            &crate::mutool::testes::pdf_cmyk(&[0.1, 0.2, 0.3]),
+        );
+        let analises = Analises::default();
+        let preparo = preparo_cmyk(3, "", pdf);
+        let cancelamento = Arc::new(AtomicBool::new(false));
+        let mut fonte = FonteFalsa::nova(cancelamento.clone());
+        let coletor = Coletor::default();
+        let conversor = Path::new("c:/nao/existe/mutool.exe");
+        let desfecho = executar(
+            &analises,
+            "a1",
+            &preparo,
+            cancelamento.as_ref(),
+            &mut fonte,
+            &coletor,
+            Some(conversor),
+        );
+        let resultado = match desfecho {
+            Desfecho::Concluido(resultado) => resultado,
+            outro => panic!("{outro:?}"),
+        };
+        assert_eq!(resultado.modo_usado, ModoUsado::Simples);
+        assert!(
+            resultado
+                .aviso
+                .as_deref()
+                .is_some_and(|aviso| aviso.contains("mutool")),
+            "{:?}",
+            resultado.aviso
+        );
+        assert_eq!(fonte.chamadas, vec![1, 2, 3]);
+        assert_eq!(
+            analises.chave_concluida("a1").map(|chave| chave.modo),
+            Some(codigo_do_modo(ModoDeCor::Simples))
+        );
+
+        let recalculado = analises
+            .recalcular_com_perfil("a1", &preparo.configuracao, None, 1, &preparo.perfil)
+            .expect("a análise no modo simples continua recalculável");
+        assert_eq!(recalculado.modo_usado, ModoUsado::Simples);
+        assert_eq!(recalculado.aviso.as_deref(), Some(AVISO_MODO_SIMPLES));
+
+        let mut simples = preparo.configuracao.clone();
+        simples.modo = ModoDeCor::Simples;
+        let recalculado = analises
+            .recalcular_com_perfil("a1", &simples, None, 1, &preparo.perfil)
+            .expect("o modo simples explícito também lê o cache");
+        assert_eq!(recalculado.modo_usado, ModoUsado::Simples);
+        assert_eq!(recalculado.aviso, None);
+    }
+
+    #[test]
+    fn cancelar_antes_do_conversor_nao_entrega_fim_nem_grava_cache() {
+        let analises = Analises::default();
+        let preparo = preparo_cmyk(3, "", PathBuf::from("nao-existe.pdf"));
+        let cancelamento = Arc::new(AtomicBool::new(true));
+        let mut fonte = FonteFalsa::nova(cancelamento.clone());
+        let coletor = Coletor::default();
+        let desfecho = executar(
+            &analises,
+            "a1",
+            &preparo,
+            cancelamento.as_ref(),
+            &mut fonte,
+            &coletor,
+            Some(Path::new("c:/nao/existe/mutool.exe")),
+        );
+        assert!(matches!(&desfecho, Desfecho::Cancelado));
+        publicar(&coletor, "a1", desfecho);
+        assert!(fonte.chamadas.is_empty());
+        assert!(coletor
+            .fins
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .is_empty());
+        let falhas = coletor
+            .falhas
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        assert_eq!(falhas[0].codigo, CodigoFalhaAnalise::Cancelado);
+        assert!(analises.chave_concluida("a1").is_none());
+        assert!(analises.ler_cache(&preparo.chave).is_none());
+    }
+
+    #[test]
+    fn csv_da_selecao_tem_uma_linha_por_pagina_e_total_com_copias() {
+        let analises = Analises::default();
+        let mut preparo = preparo_de_teste(16, "2,5,7,9", None);
+        preparo.copias = 2;
+        let cancelamento = Arc::new(AtomicBool::new(false));
+        let mut fonte = FonteFalsa::nova(cancelamento.clone());
+        let coletor = Coletor::default();
+        let desfecho = executar(
+            &analises,
+            "a1",
+            &preparo,
+            cancelamento.as_ref(),
+            &mut fonte,
+            &coletor,
+            None,
+        );
+        let resultado = match desfecho {
+            Desfecho::Concluido(resultado) => resultado,
+            outro => panic!("{outro:?}"),
+        };
+        assert_eq!(resultado.selecao.paginas, vec![2, 5, 7, 9]);
+        assert_eq!(resultado.selecao.total_com_copias, 8);
+
+        let pasta = PastaDeTeste::nova();
+        let destino = pasta.0.join("tinta.csv");
+        analises
+            .exportar_csv("a1", &destino)
+            .expect("a seleção deveria virar CSV");
+        let texto = fs::read_to_string(&destino).expect("ler o CSV");
+        let linhas: Vec<&str> = texto.lines().collect();
+        assert_eq!(linhas.len(), 6, "cabeçalho, quatro páginas e total");
+        assert_eq!(linhas[0], csv_tinta::CABECALHO);
+        assert_eq!(paginas_em_csv(&linhas), vec!["2", "5", "7", "9"]);
+
+        let total: Vec<&str> = linhas[5].split(';').collect();
+        assert_eq!(total.len(), 13);
+        assert_eq!(total[0], "total");
+        let total_ml: f64 = total[11].parse().expect("total em mL");
+        let custo: f64 = total[12].parse().expect("custo total");
+        assert!((total_ml - resultado.selecao.tinta.total).abs() < 1e-6);
+        assert!((custo - resultado.selecao.custo.total).abs() < 1e-6);
+
+        // Cada linha de página mostra uma cópia; o total já repete pelas duas cópias.
+        let soma_de_uma_copia: f64 = linhas[1..5]
+            .iter()
+            .map(|linha| {
+                linha
+                    .split(';')
+                    .nth(11)
+                    .expect("total em mL da página")
+                    .parse::<f64>()
+                    .expect("número")
+            })
+            .sum();
+        assert!((total_ml - soma_de_uma_copia * 2.0).abs() < 1e-6);
+
+        // Um recálculo com outra seleção e outras cópias atualiza o retrato usado na exportação.
+        let recalculado = analises
+            .recalcular_com_perfil("a1", &preparo.configuracao, Some("1"), 3, &preparo.perfil)
+            .expect("a nova seleção deveria ser recalculada pelo cache");
+        assert_eq!(recalculado.selecao.total_com_copias, 3);
+        let segundo = pasta.0.join("tinta-recalculada.csv");
+        analises
+            .exportar_csv("a1", &segundo)
+            .expect("o retrato novo deveria ser exportado");
+        let segundo = fs::read_to_string(&segundo).expect("ler o segundo CSV");
+        let linhas: Vec<&str> = segundo.lines().collect();
+        assert_eq!(linhas.len(), 3);
+        assert_eq!(paginas_em_csv(&linhas), vec!["1"]);
+    }
+
+    #[test]
+    fn csv_recusa_analise_desconhecida_e_destino_invalido_sem_apagar_nada() {
+        let analises = Analises::default();
+        let pasta = PastaDeTeste::nova();
+        let destino = pasta.0.join("tinta.csv");
+        let erro = analises.exportar_csv("nao-existe", &destino).unwrap_err();
+        assert_eq!(erro.codigo, CodigoFalhaAnalise::AnaliseDesconhecida);
+        assert!(!destino.exists());
+
+        let preparo = preparo_de_teste(4, "", None);
+        let cancelamento = Arc::new(AtomicBool::new(false));
+        let mut fonte = FonteFalsa::nova(cancelamento.clone());
+        let coletor = Coletor::default();
+        let desfecho = executar(
+            &analises,
+            "a1",
+            &preparo,
+            cancelamento.as_ref(),
+            &mut fonte,
+            &coletor,
+            None,
+        );
+        assert!(matches!(&desfecho, Desfecho::Concluido(_)));
+
+        let subpasta = pasta.0.join("destino");
+        fs::create_dir(&subpasta).expect("criar pasta de destino");
+        let dentro = subpasta.join("importante.txt");
+        fs::write(&dentro, "não apagar").expect("gravar arquivo dentro da pasta");
+        let erro = analises.exportar_csv("a1", &subpasta).unwrap_err();
+        assert_eq!(erro.codigo, CodigoFalhaAnalise::Exportacao);
+        assert_eq!(fs::read_to_string(&dentro).unwrap(), "não apagar");
+    }
+
+    #[test]
+    #[ignore = "depende do mutool real em PLOTS_MUTOOL"]
+    fn conversor_real_entrega_cmyk_e_exporta_o_csv() {
+        let Some(conversor) = mutool::mutool_do_sistema() else {
+            eprintln!("PLOTS_MUTOOL não está configurado; teste do conversor real ignorado");
+            return;
+        };
+        let pasta = PastaDeTeste::nova();
+        let pdf = pasta.gravar(
+            "três páginas ação.pdf",
+            &crate::mutool::testes::pdf_cmyk(&[0.1, 0.2, 0.3]),
+        );
+        let analises = Analises::default();
+        let preparo = preparo_cmyk(3, "", pdf);
+        let cancelamento = Arc::new(AtomicBool::new(false));
+        let mut fonte = FonteFalsa::nova(cancelamento.clone());
+        let coletor = Coletor::default();
+        let desfecho = executar(
+            &analises,
+            "real",
+            &preparo,
+            cancelamento.as_ref(),
+            &mut fonte,
+            &coletor,
+            Some(&conversor),
+        );
+        let resultado = match desfecho {
+            Desfecho::Concluido(resultado) => resultado,
+            outro => panic!("{outro:?}"),
+        };
+        assert!(fonte.chamadas.is_empty(), "o PDFium não deveria desenhar");
+        assert_eq!(resultado.modo_usado, ModoUsado::Cmyk);
+        assert_eq!(resultado.aviso, None);
+
+        let paginas = coletor
+            .paginas
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        assert_eq!(
+            paginas
+                .iter()
+                .map(|pagina| pagina.pagina)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+        let esperado = [
+            25.0 / 255.0 * 100.0,
+            51.0 / 255.0 * 100.0,
+            76.0 / 255.0 * 100.0,
+        ];
+        for (pagina, esperado) in paginas.iter().zip(esperado) {
+            // A 150 dpi a borda da página cai entre pixels e o antialias muda a média em
+            // centésimos; o teste do conversor a 72 dpi confere o byte exato de cada canal.
+            assert!(
+                (pagina.cobertura.c - esperado).abs() < 0.05,
+                "página {}: ciano {:.4}, esperado {:.4}",
+                pagina.pagina,
+                pagina.cobertura.c,
+                esperado
+            );
+            assert_eq!(pagina.cobertura.m, 0.0);
+            assert_eq!(pagina.cobertura.y, 0.0);
+            assert_eq!(pagina.cobertura.k, 0.0);
+        }
+        let medias: Vec<f64> = paginas.iter().map(|pagina| pagina.cobertura.c).collect();
+        drop(paginas);
+
+        let destino = pasta.0.join("tinta.csv");
+        analises
+            .exportar_csv("real", &destino)
+            .expect("o resultado CMYK deveria virar CSV");
+        let texto = fs::read_to_string(&destino).expect("ler o CSV");
+        println!("CSV da análise real:\n{texto}");
+        let linhas: Vec<&str> = texto.lines().collect();
+        assert_eq!(linhas.len(), 1 + 3 + 1);
+        let percentuais: Vec<f64> = linhas[1..4]
+            .iter()
+            .map(|linha| {
+                linha
+                    .split(';')
+                    .nth(3)
+                    .expect("coluna do ciano")
+                    .parse()
+                    .expect("percentual")
+            })
+            .collect();
+        let alvos = [
+            25.0 / 255.0 * 100.0,
+            51.0 / 255.0 * 100.0,
+            76.0 / 255.0 * 100.0,
+        ];
+        for (indice, percentual) in percentuais.iter().enumerate() {
+            let alvo = alvos[indice];
+            assert!(
+                (percentual - alvo).abs() < 0.05,
+                "página {}: CSV {percentual}, esperado {alvo}",
+                indice + 1
+            );
+            assert!((percentual - medias[indice]).abs() < 1e-4);
+        }
+        assert!(linhas[4].starts_with("total;"));
+
+        let recalculado = analises
+            .recalcular_com_perfil("real", &preparo.configuracao, None, 1, &preparo.perfil)
+            .expect("o cache CMYK deveria ser recalculável");
+        assert_eq!(recalculado.modo_usado, ModoUsado::Cmyk);
+        assert_eq!(recalculado.aviso, None);
+
+        let mut simples = preparo.configuracao.clone();
+        simples.modo = ModoDeCor::Simples;
+        let erro = analises
+            .recalcular_com_perfil("real", &simples, None, 1, &preparo.perfil)
+            .unwrap_err();
+        assert_eq!(erro.codigo, CodigoFalhaAnalise::CacheAusente);
     }
 }

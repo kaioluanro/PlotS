@@ -4,6 +4,7 @@ mod abertura;
 mod analise;
 mod calibracao;
 mod comandos_trabalho;
+mod csv_tinta;
 mod documento;
 mod duas_faces;
 mod fechamento;
@@ -16,6 +17,7 @@ mod inversao;
 mod janela;
 mod leitura_pdf;
 mod lote;
+mod mutool;
 mod plotinfo;
 mod preferencias;
 mod tempo_de_impressao;
@@ -183,6 +185,7 @@ fn main() -> ExitCode {
         .invoke_handler(tauri::generate_handler![
             abrir_documento,
             analise::cancelar_analise,
+            analise::exportar_csv,
             analise::iniciar_analise,
             analise::recalcular_analise,
             preferencias::abrir_preferencias,
