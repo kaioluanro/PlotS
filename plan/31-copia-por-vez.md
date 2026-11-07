@@ -52,7 +52,7 @@ cada trabalho antes de mandar o próximo. O verso continua saindo inteiro, num s
 
 ## Resultado
 
-Concluído no código em 2026-11-07, em `09727ac`, com a correção da revisão em `860afbe`.
+Concluído no código em 2026-11-07, em `09727ac`, com as correções da revisão em `860afbe` e `cf39cf5`.
 
 - `plots-core`: `plano_copias_do_intervalo_separadas` e
   `plano_automatico_copias_do_intervalo_juntas`, com o `juntar_lotes` compartilhado. No automático
