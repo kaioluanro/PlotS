@@ -16,6 +16,7 @@ Decisão do usuário em 2026-11-04: numerar as versões. A que acabou de sair é
 - **Perfil no portátil (alpha.4):** com `PLOTS-PORTATIL.txt` ao lado do `PlotS.exe`, o `perfis.toml` fica nessa pasta e a primeira abertura importa o de `%APPDATA%` sem apagar o original; o instalado, sem o marcador, continua em `%APPDATA%`. O histórico continua em `%APPDATA%`. O zip não inclui o perfil do usuário. Artefato: `%LOCALAPPDATA%\plots-build\alpha4\saidas\PlotS_1.0.0-alpha.4_x64_portatil.zip` (10,37 MB, SHA-256 `4EB30324865E06CEB7AFC2E76EB0869160BCB2BAF8DC458CA67477B370DE24BB`), pasta `PlotS` fixa, para descompactar uma versão nova por cima sem perder o `perfis.toml`.
 - **Entrega da alpha.5:** em 2026-11-06, com "Frente" = páginas ímpares, "Verso" = pares, 1 página sem folha em branco, desenho por bitmap compatível + `StretchBlt` e a chave de boca com bandeja/resolução/cor. Artefato: `%LOCALAPPDATA%\plots-build\alpha5\saidas\PlotS_1.0.0-alpha.5_x64_portatil.zip` (10,41 MB, SHA-256 `B81EFA6A20D972CF516E5E1F8275EEF4A9D04E84A59173235B6A8E3F45E06C0D`), pasta `PlotS` fixa, sem perfil dentro do zip.
 - **Entrega da alpha.6:** em 2026-11-06, com a cor das imagens corrigida (o pdfium entregava RGBA e o DIB do GDI lia BGRA; laranja e amarelo saíam azuis). Artefato: `%LOCALAPPDATA%\plots-build\alpha6\saidas\PlotS_1.0.0-alpha.6_x64_portatil.zip` (10,41 MB, SHA-256 `9C89A13C51CE7B8DE962D49AC2EBD6B72823F9D7AA350A0C139B3907AD133E85`), pasta `PlotS` fixa, sem perfil dentro do zip.
+- **Entrega da alpha.7:** em 2026-11-07, com imagens (PNG/JPEG/BMP/GIF/WebP/TIFF), painel PlotInfo, perfis HP/Epson, análise PDFium, `mutool/` CMYK separado e CSV. Artefato: `%LOCALAPPDATA%\plots-build\alpha7\saidas\PlotS_1.0.0-alpha.7_x64_portatil.zip` (42,25 MB, SHA-256 `95084CCD4FFDC462DBD267112E17A2292F54188C16577FAE09D3EB95AA7473FC`), pasta `PlotS` fixa, sem `perfis.toml`/`plotinfo.toml`; leva `mutool/` com AGPL, 26 licenças do `thirdparty`/fontes e a fonte correspondente fora do zip (`mupdf-1.28.5-source.tar.gz`, 68.919.385 bytes, SHA-256 `98A5C10CDA20C3992CDF76FF6B2A1149C32BD79CC796D3F703230B1185B7E934`).
 
 ## Plano de implementação
 
@@ -26,6 +27,7 @@ Decisão do usuário em 2026-11-04: numerar as versões. A que acabou de sair é
 - [x] `master` em `1.0.0-alpha.4` e perfil ao lado do executável no portátil
 - [x] `master` em `1.0.0-alpha.5` e correção da folha em branco + painel de opções no portátil
 - [x] `master` em `1.0.0-alpha.6` e cor das imagens corrigida no portátil
+- [x] `master` em `1.0.0-alpha.7` e portátil com imagens, painel PlotInfo, `mutool/` CMYK e CSV
 
 ## Pronto quando
 

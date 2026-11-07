@@ -365,4 +365,4 @@ Concluído em `15bc485` (painel) e `0f66aa7` (aviso e lotes), em 2026-11-07.
 - CSV restaurado no adaptador (`exportar_csv(id, caminho)`) e no rodapé; o `aviso` do backend é
   traduzido na gaveta. Dpi, modo e "cinzas só com preto" refazem a análise; o recálculo espera o
   fim da primeira análise e respostas inválidas mostram erro; os dois avisos aparecem juntos.
-  UI com 69 arquivos/1.163 testes, `tsc` limpo e build concluído.
+  UI com 69 arquivos/1.165 testes, `tsc` limpo e build concluído.

@@ -81,7 +81,7 @@ Requisitos: OK 75 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4 (109). Detalhes e
 | plotinfo-motor | `be877c1` | concluído no código; `plots-info` com seleção, cobertura, custo e perfis, mais `plotinfo.toml` e comandos |
 | plotinfo-analise | `8a9866f` | concluído no código; PDFium, cache, eventos, recálculo e cancelamento; revisões de código e jurídico aprovadas |
 | plotinfo-mutool | `eab8d30` | concluído no código; mutool separado, CMYK, fallback com aviso e CSV; prova DeviceCMYK e job completo |
-| plotinfo-painel | `15bc485` + `0f66aa7` + `7acd500` | concluído no código; gaveta, resumo, engrenagem, CSV, aviso traduzível, reanálise por dpi/modo/cinzas e acessibilidade; 1.163 testes de UI |
+| plotinfo-painel | `15bc485` + `0f66aa7` + `7acd500` + `a699b22` | concluído no código; gaveta, resumo, engrenagem, CSV, aviso traduzível, reanálise por dpi/modo/cinzas, foco e acessibilidade; 1.165 testes de UI |
 
 **Próximo:**
 
