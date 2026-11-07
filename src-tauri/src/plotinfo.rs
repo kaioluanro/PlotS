@@ -748,7 +748,7 @@ mod testes {
             .clone();
         perfil.nome = "Tanque novo".to_owned();
         let lido = salvar_perfil_em(&pasta.arquivo(), perfil).unwrap();
-        assert_eq!(lido.perfis.perfis().len(), 2);
+        assert_eq!(lido.perfis.perfis().len(), 5);
         assert_eq!(
             lido.perfis
                 .buscar("tanque-generico")
@@ -874,7 +874,7 @@ mod testes {
             perfis: PerfisDeTinta::padrao().perfis().to_vec(),
             aviso: Some(AvisoPlotInfo::ArquivoGrande),
         };
-        assert_eq!(perfis.perfis.len(), 2);
+        assert_eq!(perfis.perfis.len(), 5);
         assert_eq!(perfis.aviso, Some(AvisoPlotInfo::ArquivoGrande));
         let configuracao = EstadoDaConfiguracaoDeTinta {
             configuracao: ConfiguracaoDeTinta::default(),

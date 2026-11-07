@@ -131,10 +131,16 @@ impl PerfisDeTinta {
         Self::default()
     }
 
-    /// O perfil de cartucho e o de tanque, que o programa entrega na primeira abertura.
+    /// Os perfis inclusos, que o programa entrega na primeira abertura.
     pub fn padrao() -> Self {
         Self {
-            perfis: vec![perfil_de_tanque(), perfil_de_cartucho()],
+            perfis: vec![
+                perfil_de_tanque(),
+                perfil_de_cartucho(),
+                perfil_hp_smart_tank_110(),
+                perfil_epson_l3150(),
+                perfil_epson_l6270(),
+            ],
         }
     }
 
@@ -202,6 +208,46 @@ fn perfil_de_cartucho() -> PerfilDeTinta {
         volumes_ml: [8.0, 8.0, 8.0, 8.0],
         rendimentos_paginas: [400, 400, 400, 300],
         precos_ml: [1.2, 1.2, 1.2, 1.8],
+        fatores_qualidade: [0.6, 1.0, 1.3],
+    }
+}
+
+// Os perfis de tanque abaixo usam o volume do frasco como volume de cada canal: no GT51 o frasco
+// informado é o do preto e os frascos coloridos do 504 têm 70 mL. O rendimento é um ponto de
+// partida editável na engrenagem do painel.
+
+fn perfil_hp_smart_tank_110() -> PerfilDeTinta {
+    PerfilDeTinta {
+        id: "hp-smart-tank-110-gt51".to_owned(),
+        nome: "HP Smart Tank 110 (GT51)".to_owned(),
+        moeda: "BRL".to_owned(),
+        volumes_ml: [90.0, 90.0, 90.0, 90.0],
+        rendimentos_paginas: [6500, 6500, 6500, 4500],
+        precos_ml: [30.0 / 90.0, 30.0 / 90.0, 30.0 / 90.0, 30.0 / 90.0],
+        fatores_qualidade: [0.6, 1.0, 1.3],
+    }
+}
+
+fn perfil_epson_l3150() -> PerfilDeTinta {
+    PerfilDeTinta {
+        id: "epson-l3150-544".to_owned(),
+        nome: "Epson EcoTank L3150 (544)".to_owned(),
+        moeda: "BRL".to_owned(),
+        volumes_ml: [65.0, 65.0, 65.0, 65.0],
+        rendimentos_paginas: [6500, 6500, 6500, 4500],
+        precos_ml: [33.0 / 65.0, 33.0 / 65.0, 33.0 / 65.0, 33.0 / 65.0],
+        fatores_qualidade: [0.6, 1.0, 1.3],
+    }
+}
+
+fn perfil_epson_l6270() -> PerfilDeTinta {
+    PerfilDeTinta {
+        id: "epson-l6270-504".to_owned(),
+        nome: "Epson EcoTank L6270 (504)".to_owned(),
+        moeda: "BRL".to_owned(),
+        volumes_ml: [127.0, 127.0, 127.0, 127.0],
+        rendimentos_paginas: [6500, 6500, 6500, 4500],
+        precos_ml: [55.0 / 127.0, 55.0 / 127.0, 55.0 / 127.0, 55.0 / 127.0],
         fatores_qualidade: [0.6, 1.0, 1.3],
     }
 }

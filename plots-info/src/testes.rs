@@ -404,19 +404,29 @@ fn pam_sem_dimensao_e_recusado() {
 // --- perfis ---
 
 #[test]
-fn os_dois_perfis_padrao_sao_validos_e_tem_ids_distintos() {
+fn os_cinco_perfis_padrao_sao_validos_e_tem_ids_distintos() {
     let perfis = PerfisDeTinta::padrao();
-    assert_eq!(perfis.perfis().len(), 2);
+    assert_eq!(perfis.perfis().len(), 5);
     for perfil in perfis.perfis() {
         perfil.validar().unwrap();
     }
-    assert!(perfis.buscar("tanque-generico").is_some());
-    assert!(perfis.buscar("cartucho-generico").is_some());
-    assert_ne!(
-        perfis.perfis()[0].id,
-        perfis.perfis()[1].id,
-        "os identificadores são distintos"
-    );
+    let mut vistos = std::collections::HashSet::new();
+    for perfil in perfis.perfis() {
+        assert!(
+            vistos.insert(perfil.id.as_str()),
+            "o identificador {} se repete",
+            perfil.id
+        );
+    }
+    for id in [
+        "tanque-generico",
+        "cartucho-generico",
+        "hp-smart-tank-110-gt51",
+        "epson-l3150-544",
+        "epson-l6270-504",
+    ] {
+        assert!(perfis.buscar(id).is_some(), "o perfil {id} existe");
+    }
 }
 
 #[test]
@@ -428,7 +438,56 @@ fn busca_por_identificador_encontra_o_perfil() {
             .map(|perfil| &perfil.nome),
         Some(&"Cartucho de jato de tinta genérico".to_owned())
     );
+    for (id, nome) in [
+        ("tanque-generico", "Tanque de tinta genérico"),
+        ("hp-smart-tank-110-gt51", "HP Smart Tank 110 (GT51)"),
+        ("epson-l3150-544", "Epson EcoTank L3150 (544)"),
+        ("epson-l6270-504", "Epson EcoTank L6270 (504)"),
+    ] {
+        assert_eq!(
+            perfis.buscar(id).map(|perfil| perfil.nome.as_str()),
+            Some(nome)
+        );
+    }
     assert!(perfis.buscar("inexistente").is_none());
+}
+
+#[test]
+fn os_perfis_de_impressora_tem_o_volume_e_o_preco_do_frasco() {
+    let perfis = PerfisDeTinta::padrao();
+    let casos = [
+        (
+            "hp-smart-tank-110-gt51",
+            "HP Smart Tank 110 (GT51)",
+            90.0,
+            30.0 / 90.0,
+        ),
+        (
+            "epson-l3150-544",
+            "Epson EcoTank L3150 (544)",
+            65.0,
+            33.0 / 65.0,
+        ),
+        (
+            "epson-l6270-504",
+            "Epson EcoTank L6270 (504)",
+            127.0,
+            55.0 / 127.0,
+        ),
+    ];
+    for (id, nome, volume, preco_ml) in casos {
+        let perfil = perfis
+            .buscar(id)
+            .unwrap_or_else(|| panic!("o perfil {id} existe"));
+        assert_eq!(perfil.nome, nome);
+        assert_eq!(perfil.moeda, "BRL");
+        for canal in 0..perfil.volumes_ml.len() {
+            perto(perfil.volumes_ml[canal], volume);
+            perto(perfil.precos_ml[canal], preco_ml);
+        }
+        assert_eq!(perfil.rendimentos_paginas, [6500, 6500, 6500, 4500]);
+        assert_eq!(perfil.fatores_qualidade, [0.6, 1.0, 1.3]);
+    }
 }
 
 #[test]
@@ -436,10 +495,10 @@ fn guardar_o_mesmo_identificador_substitui_no_lugar() {
     let mut perfis = PerfisDeTinta::padrao();
     let mut perfil = perfil_valido();
     perfis.substituir(perfil.clone()).unwrap();
-    assert_eq!(perfis.perfis().len(), 3);
+    assert_eq!(perfis.perfis().len(), 6);
     perfil.nome = "Outro nome".to_owned();
     assert_eq!(perfis.substituir(perfil.clone()), Ok(true));
-    assert_eq!(perfis.perfis().len(), 3);
+    assert_eq!(perfis.perfis().len(), 6);
     assert_eq!(perfis.buscar("teste").map(|p| &p.nome), Some(&perfil.nome));
 }
 
