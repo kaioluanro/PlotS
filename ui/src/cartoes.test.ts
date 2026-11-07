@@ -104,7 +104,7 @@ describe("botao de enviar a frente", () => {
   it("sem documento fica desabilitado com o motivo", () => {
     const botao = estadoDoEnvio(null, [TRASEIRA], NENHUMA, "pt-BR");
     expect(botao.desabilitado).toBe(true);
-    expect(botao.motivo).toBe("Abra um PDF para imprimir.");
+    expect(botao.motivo).toBe("Abra um documento para imprimir.");
     expect(botao.rotulo).toBe("Imprimir frentes");
   });
 

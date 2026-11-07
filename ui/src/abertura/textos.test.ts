@@ -56,7 +56,7 @@ describe("textos da abertura", () => {
     );
     expect(new Set(porEtapa).size).toBe(3);
     expect(porEtapa[0]).toContain("Atualizar lista");
-    expect(porEtapa[1]).toContain("Abrir PDF");
+    expect(porEtapa[1]).toContain("Abrir arquivo");
     for (const texto of porEtapa) expect(texto).toContain("10 segundos");
   });
 

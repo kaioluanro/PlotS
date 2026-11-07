@@ -8,6 +8,8 @@ mod duas_faces;
 mod fechamento;
 mod grupos;
 mod historico;
+#[cfg(test)]
+mod impressao_imagem_testes;
 mod impressoras;
 mod inversao;
 mod janela;
@@ -28,11 +30,16 @@ use std::sync::{Mutex, PoisonError};
 use std::time::Instant;
 use tauri::{AppHandle, Manager, RunEvent, Runtime, State, Window, WindowEvent};
 
-// Assincrono para que um caminho lento, como um compartilhamento de rede fora do ar, nao congele
-// a janela enquanto o sistema responde.
-#[tauri::command(async)]
-fn abrir_documento(caminho: String) -> Result<Documento, ErroDocumento> {
-    documento::abrir(&caminho)
+// Assincrono porque uma imagem precisa ser decodificada e um caminho lento, como um
+// compartilhamento de rede fora do ar, nao pode congelar a janela enquanto o sistema responde.
+#[tauri::command]
+async fn abrir_documento(caminho: String) -> Result<Documento, ErroDocumento> {
+    let falha = documento::falha_inesperada(&caminho);
+    tauri::async_runtime::spawn_blocking(move || {
+        documento::abrir_para_leitura(&caminho).map(|(documento, _)| documento)
+    })
+    .await
+    .unwrap_or(Err(falha))
 }
 
 /// Le o PDF inteiro. A leitura roda em uma thread propria, e o que a interromper vira recusa.

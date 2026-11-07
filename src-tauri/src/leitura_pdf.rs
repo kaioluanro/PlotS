@@ -1,6 +1,6 @@
 //! Leitura do PDF de um trabalho, com a mesma barreira e o mesmo limite da abertura do documento.
 
-use crate::documento::{abrir, CodigoErro, ErroDocumento, LIMITE_BYTES_PDF};
+use crate::documento::{abrir_para_leitura, CodigoErro, ErroDocumento, LIMITE_BYTES_PDF};
 use plots_core::DimensoesPagina;
 use plots_pdf::{ErroPdf, PdfOrigem};
 use std::fs::File;
@@ -80,14 +80,15 @@ fn ler_bytes(caminho: &str, limite: u64) -> Result<Vec<u8>, CodigoErro> {
     Ok(bytes)
 }
 
-/// Le o PDF. O que o arquivo nao deixar ler vira recusa.
+/// Le o conteudo do documento: o PDF original, ou o PDF derivado de uma imagem. O que o arquivo
+/// nao deixar ler vira recusa.
 pub fn ler_pdf(caminho: &str) -> Result<PdfLido, ErroDocumento> {
-    let documento = abrir(caminho)?;
+    let (documento, conteudo) = abrir_para_leitura(caminho)?;
     let erro = |codigo| ErroDocumento {
         codigo,
         nome: documento.nome.clone(),
     };
-    let bytes = ler_bytes(caminho, LIMITE_BYTES_PDF).map_err(erro)?;
+    let bytes = ler_bytes(&conteudo, LIMITE_BYTES_PDF).map_err(erro)?;
     let origem = PdfOrigem::carregar(&bytes).map_err(|falha| {
         erro(match falha {
             ErroPdf::Criptografado => CodigoErro::Criptografado,

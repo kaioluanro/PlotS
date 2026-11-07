@@ -8,6 +8,7 @@ use plots_core::{Pagina, LIMITE_PAGINAS};
 
 pub mod calibracao;
 pub use calibracao::{pdf_calibracao, PapelCalibracao, PAGINAS_CALIBRACAO};
+pub mod imagem;
 mod opcoes;
 pub use opcoes::OpcoesDaPassada;
 

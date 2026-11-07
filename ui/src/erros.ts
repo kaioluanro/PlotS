@@ -3,9 +3,10 @@ import { t, type Chave } from "./i18n";
 const CHAVES_POR_CODIGO: ReadonlyMap<string, Chave> = new Map<string, Chave>([
   ["nao_encontrado", "erro.nao_encontrado"],
   ["nao_e_arquivo", "erro.nao_e_arquivo"],
-  ["nao_e_pdf", "erro.nao_e_pdf"],
+  ["nao_suportado", "erro.nao_suportado"],
   ["inacessivel", "erro.inacessivel"],
   ["pdf_invalido", "erro.pdf_invalido"],
+  ["imagem_invalida", "erro.imagem_invalida"],
   ["criptografado", "erro.criptografado"],
   ["grande", "erro.grande"],
 ]);

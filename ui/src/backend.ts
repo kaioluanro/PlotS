@@ -41,11 +41,29 @@ export function avisarPedidoDeFechamentoRecebido(): Promise<void> {
   return invoke<void>("pedido_de_fechamento_recebido");
 }
 
+/** Extensões que o seletor oferece; arrasto e linha de comando passam pelo mesmo abrir_documento. */
+export const EXTENSOES_DE_DOCUMENTO = [
+  "pdf",
+  "png",
+  "jpg",
+  "jpeg",
+  "bmp",
+  "gif",
+  "tif",
+  "tiff",
+  "webp",
+] as const;
+
+/** Filtro do seletor, separado para conferir a lista sem abrir a janela do sistema. */
+export function filtroDoSeletor(): { name: string; extensions: string[] } {
+  return { name: t("seletor.filtro"), extensions: [...EXTENSOES_DE_DOCUMENTO] };
+}
+
 export function escolherArquivo(): Promise<string | null> {
   return open({
     multiple: false,
     directory: false,
-    filters: [{ name: t("seletor.filtro"), extensions: ["pdf"] }],
+    filters: [filtroDoSeletor()],
   });
 }
 

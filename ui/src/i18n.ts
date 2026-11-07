@@ -2,7 +2,7 @@ export type Idioma = "pt-BR" | "en";
 
 const ptBR = {
   "barra.abas": "Documentos abertos",
-  "barra.abrir": "Abrir PDF",
+  "barra.abrir": "Abrir arquivo",
   "barra.lateral.mostrar": "Mostrar barra lateral",
   "barra.lateral.ocultar": "Ocultar barra lateral",
   "barra.minimizar": "Minimizar",
@@ -19,7 +19,7 @@ const ptBR = {
   "lateral.maisOpcoes": "Mais opções",
   "lateral.menosOpcoes": "Menos opções",
   "lateral.vazia": "Nenhuma impressora para mostrar. Tente Atualizar lista.",
-  "lateral.semDocumento": "Abra um PDF para marcar impressoras.",
+  "lateral.semDocumento": "Abra um documento para marcar impressoras.",
   "impressora.simulada.traseira": "Simulada — Traseira",
   "impressora.simulada.gaveta": "Simulada — Gaveta",
   "impressora.simulada.automatica": "Simulada — Automática",
@@ -113,7 +113,7 @@ const ptBR = {
     "Não foi possível gravar o modelo de {detalhe}. O perfil salvo não mudou. Confira a permissão do arquivo de perfis e tente de novo.",
   "aviso.comunicacao": "Não foi possível obter a lista de impressoras. Use Atualizar lista.",
   "folhas.contando": "Contando páginas…",
-  "folhas.recusado": "PDF recusado",
+  "folhas.recusado": "Documento recusado",
   "folhas.paginas.um": "{n} pág",
   "folhas.paginas.varios": "{n} pág",
   "imprimir.frente": "Imprimir frentes",
@@ -132,12 +132,12 @@ const ptBR = {
     "Os valores salvos para esta impressora serão trocados pelos do modelo {modelo}. Para recuperá-los, será preciso calibrar de novo.",
   "substituir.cancelar": "Cancelar",
   "substituir.confirmar": "Substituir perfil",
-  "documento.vazioTitulo": "Nenhum PDF aberto",
-  "documento.vazioTexto": "Abra um PDF ou arraste o arquivo para esta janela.",
-  "documento.abrir": "Abrir PDF",
+  "documento.vazioTitulo": "Nenhum documento aberto",
+  "documento.vazioTexto": "Abra um PDF ou uma imagem, ou arraste os arquivos para esta janela.",
+  "documento.abrir": "Abrir arquivo",
   "documento.atalhoAbrir": "Ctrl+O",
   "documento.soltar": "Solte para abrir",
-  "seletor.filtro": "Documentos PDF",
+  "seletor.filtro": "PDF e imagens",
   "confirmar.titulo": "Fechar aba com impressão em andamento?",
   "confirmar.texto": "A impressão de {nome} ainda não terminou.",
   "confirmar.consequencia":
@@ -153,21 +153,23 @@ const ptBR = {
   "erro.nao_encontrado":
     "Não foi possível abrir {nome}: o arquivo não existe. Verifique se ele foi movido ou renomeado.",
   "erro.nao_e_arquivo":
-    "Não foi possível abrir {nome}: o caminho não é um arquivo. Escolha um arquivo PDF.",
-  "erro.nao_e_pdf":
-    "Não foi possível abrir {nome}: não é um PDF. Escolha um arquivo com extensão .pdf.",
+    "Não foi possível abrir {nome}: o caminho não é um arquivo. Escolha um arquivo PDF ou uma imagem.",
+  "erro.nao_suportado":
+    "Não foi possível abrir {nome}: este tipo de arquivo não é aceito. Escolha um PDF ou uma imagem PNG, JPEG, BMP, GIF, WebP ou TIFF.",
   "erro.inacessivel":
     "Não foi possível abrir {nome}: o sistema não permitiu a leitura. Verifique o caminho e a permissão do arquivo.",
   "erro.pdf_invalido":
     "{nome} foi recusado: o PDF está danificado ou usa um recurso que o PlotS não aceita. Salve uma nova cópia pelo programa de origem e abra de novo.",
+  "erro.imagem_invalida":
+    "{nome} foi recusado: a imagem está danificada, vazia ou passa do limite de 100 megapixels por quadro ou de 10 mil quadros no TIFF. Salve uma nova cópia pelo programa de origem ou reduza a imagem e abra de novo.",
   "erro.criptografado":
     "{nome} foi recusado: o PDF está protegido por senha. Se você tiver permissão para isso, salve uma cópia sem senha e abra de novo.",
   "erro.grande":
-    "{nome} foi recusado: o arquivo passa de 1 GB ou não coube na memória. Feche outros programas ou divida o PDF em partes menores e abra de novo.",
+    "{nome} foi recusado: o arquivo passa de 1 GB ou não coube na memória. Feche outros programas, reduza a imagem ou divida o documento em partes menores e abra de novo.",
   "erro.desconhecido": "Não foi possível abrir o documento. Tente de novo.",
   "erro.varios": "{n} arquivos não abriram.",
   "erro.seletor":
-    "Não foi possível mostrar o seletor de arquivo. Tente de novo ou arraste o PDF para a janela.",
+    "Não foi possível mostrar o seletor de arquivo. Tente de novo ou arraste o PDF ou a imagem para a janela.",
   "erro.dispensar": "Dispensar aviso",
   "lote.cortado": "Só os primeiros 32 arquivos foram abertos.",
   "abertura.etapa.impressoras": "Carregando impressoras…",
@@ -179,7 +181,7 @@ const ptBR = {
   "abertura.limite.impressoras":
     "As impressoras demoraram mais de 10 segundos para responder. Se alguma faltar, use o botão Atualizar lista, ao lado de Impressoras.",
   "abertura.limite.documento":
-    "O documento demorou mais de 10 segundos para abrir. Se ele não aparecer, use Abrir PDF.",
+    "O documento demorou mais de 10 segundos para abrir. Se ele não aparecer, use Abrir arquivo.",
   "abertura.limite.componente":
     "A verificação do componente de impressão demorou mais de 10 segundos. Se a impressão falhar, reinstale o PlotS.",
   "abertura.imagem.alt": "PlotS: frente e verso, sempre na ordem. Por Kaio Luan.",
@@ -191,9 +193,9 @@ const ptBR = {
   "cartao.simular.frenteRepetirContagem.aria": "Simular frentes de novo em {n} {impressoras}",
   "cartao.simular.verso": "Simular versos",
   "cartao.imprimir.verso": "Imprimir versos",
-  "cartao.botao.semDocumento": "Abra um PDF para imprimir.",
+  "cartao.botao.semDocumento": "Abra um documento para imprimir.",
   "cartao.botao.contando": "Aguarde a contagem das páginas.",
-  "cartao.botao.recusado": "Este PDF foi recusado, então nada pode ser enviado.",
+  "cartao.botao.recusado": "Este documento foi recusado, então nada pode ser enviado.",
   "cartao.botao.semMarcada": "Marque ao menos uma impressora.",
   "cartao.botao.nenhuma": "Nenhuma marcada pode receber: {lista}.",
   "cartao.botao.foraDaConta": "Fora da contagem: {lista}.",
@@ -307,7 +309,7 @@ const ptBR = {
     "O que já foi entregue à fila continua lá, mas o PlotS deixa de acompanhar. Um envio em curso pode ficar incompleto na fila; confira a fila do Windows.",
   "cartao.motivo.biblioteca":
     "Não foi possível carregar a biblioteca que desenha as páginas (pdfium.dll).",
-  "cartao.motivo.pdf": "Não foi possível preparar este PDF.",
+  "cartao.motivo.pdf": "Não foi possível preparar este documento.",
   "cartao.motivo.desenho": "Não foi possível desenhar as páginas para esta impressora.",
   "cartao.motivo.papel": "O driver não aceitou o tamanho de papel deste trabalho.",
   "cartao.motivo.driver": "O driver não aceitou os ajustes de que o envio precisa.",
@@ -327,7 +329,7 @@ const ptBR = {
     "Esta fila pede o nome de um arquivo em um diálogo, e esta versão não abre esse diálogo.",
   "cartao.motivo.sistema": "O sistema recusou uma etapa do envio.",
   "cartao.motivo.documentoMudou": "O arquivo mudou desde o pedido das frentes, e as folhas já impressas podem não corresponder a ele. Imprima as frentes de novo. Para imprimir só o verso mesmo assim, abra o arquivo em uma aba nova: o PlotS não confere o maço.",
-  "visualizador.carregando": "Abrindo o PDF…",
+  "visualizador.carregando": "Abrindo o documento…",
   "visualizador.documento": "Páginas de {nome}",
   "visualizador.barra": "Controles do documento",
   "visualizador.semPagina": "Página ainda não disponível",
@@ -348,7 +350,7 @@ const ptBR = {
   "visualizador.miniaturas.irErro": "Ir para a página {n}: não foi possível mostrar",
   "visualizador.tentarDeNovo": "Tentar de novo",
   "visualizador.erro.texto":
-    "Não foi possível mostrar este PDF. Tente de novo; se continuar, salve uma nova cópia no programa de origem.",
+    "Não foi possível mostrar este documento. Tente de novo; se continuar, salve uma nova cópia no programa de origem.",
   "intervalo.rotulo": "Páginas",
   "intervalo.ate": "a",
   "intervalo.primeira": "Primeira página a imprimir",
@@ -359,9 +361,9 @@ const ptBR = {
   "intervalo.erro.fora": "Este documento tem {total} páginas: use de 1 a {total}.",
   "intervalo.erro.foraUma": "Este documento tem só a página 1.",
   "intervalo.erro.invertido": "A primeira página não pode vir depois da última.",
-  "intervalo.fechado.semDocumento": "Abra um PDF para escolher as páginas.",
+  "intervalo.fechado.semDocumento": "Abra um documento para escolher as páginas.",
   "intervalo.fechado.contando": "Espere a contagem das páginas.",
-  "intervalo.fechado.recusado": "Este PDF foi recusado, então não há páginas para escolher.",
+  "intervalo.fechado.recusado": "Este documento foi recusado, então não há páginas para escolher.",
   "intervalo.botao.invalido": "Corrija as páginas para imprimir.",
   "intervalo.envio.varias": "Trecho: páginas {inicio} a {fim} de {total}",
   "intervalo.envio.uma": "Trecho: página {inicio} de {total}",
@@ -710,7 +712,7 @@ export type Chave = keyof typeof ptBR;
 
 const en: Record<Chave, string> = {
   "barra.abas": "Open documents",
-  "barra.abrir": "Open PDF",
+  "barra.abrir": "Open file",
   "barra.lateral.mostrar": "Show sidebar",
   "barra.lateral.ocultar": "Hide sidebar",
   "barra.minimizar": "Minimize",
@@ -727,7 +729,7 @@ const en: Record<Chave, string> = {
   "lateral.vazia": "No printers to show. Try Refresh list.",
   "lateral.maisOpcoes": "More options",
   "lateral.menosOpcoes": "Fewer options",
-  "lateral.semDocumento": "Open a PDF to select printers.",
+  "lateral.semDocumento": "Open a document to select printers.",
   "impressora.simulada.traseira": "Simulated — Rear",
   "impressora.simulada.gaveta": "Simulated — Tray",
   "impressora.simulada.automatica": "Simulated — Automatic",
@@ -821,7 +823,7 @@ const en: Record<Chave, string> = {
     "Could not save the model for {detalhe}. The saved profile did not change. Check the permission of the profiles file and try again.",
   "aviso.comunicacao": "Could not get the list of printers. Use Refresh list.",
   "folhas.contando": "Counting pages…",
-  "folhas.recusado": "PDF refused",
+  "folhas.recusado": "Document refused",
   "folhas.paginas.um": "{n} page",
   "folhas.paginas.varios": "{n} pages",
   "imprimir.frente": "Print fronts",
@@ -840,12 +842,12 @@ const en: Record<Chave, string> = {
     "The values saved for this printer will be replaced by those of the {modelo} model. To get them back, you will need to calibrate again.",
   "substituir.cancelar": "Cancel",
   "substituir.confirmar": "Replace profile",
-  "documento.vazioTitulo": "No PDF open",
-  "documento.vazioTexto": "Open a PDF or drag the file into this window.",
-  "documento.abrir": "Open PDF",
+  "documento.vazioTitulo": "No document open",
+  "documento.vazioTexto": "Open a PDF or an image, or drag the files into this window.",
+  "documento.abrir": "Open file",
   "documento.atalhoAbrir": "Ctrl+O",
   "documento.soltar": "Drop to open",
-  "seletor.filtro": "PDF documents",
+  "seletor.filtro": "PDF and images",
   "confirmar.titulo": "Close tab with a print in progress?",
   "confirmar.texto": "The print of {nome} has not finished.",
   "confirmar.consequencia":
@@ -860,19 +862,23 @@ const en: Record<Chave, string> = {
   "confirmar.janela.fechar": "Close window",
   "erro.nao_encontrado":
     "Could not open {nome}: the file does not exist. Check whether it was moved or renamed.",
-  "erro.nao_e_arquivo": "Could not open {nome}: the path is not a file. Choose a PDF file.",
-  "erro.nao_e_pdf": "Could not open {nome}: it is not a PDF. Choose a file with the .pdf extension.",
+  "erro.nao_e_arquivo": "Could not open {nome}: the path is not a file. Choose a PDF file or an image.",
+  "erro.nao_suportado":
+    "Could not open {nome}: this file type is not accepted. Choose a PDF or a PNG, JPEG, BMP, GIF, WebP or TIFF image.",
   "erro.inacessivel":
     "Could not open {nome}: the system did not allow reading it. Check the path and the file permission.",
   "erro.pdf_invalido":
     "{nome} was refused: the PDF is damaged or uses a feature PlotS does not accept. Save a new copy from the original program and open it again.",
+  "erro.imagem_invalida":
+    "{nome} was refused: the image is damaged, empty or over the limit of 100 megapixels per frame or 10,000 frames in a TIFF. Save a new copy from the original program or reduce the image and open it again.",
   "erro.criptografado":
     "{nome} was refused: the PDF is password protected. If you are allowed to, save a copy without a password and open it again.",
   "erro.grande":
-    "{nome} was refused: the file is over 1 GB or did not fit in memory. Close other programs or split the PDF into smaller parts and open it again.",
+    "{nome} was refused: the file is over 1 GB or did not fit in memory. Close other programs, reduce the image or split the document into smaller parts and open it again.",
   "erro.desconhecido": "Could not open the document. Try again.",
   "erro.varios": "{n} files did not open.",
-  "erro.seletor": "Could not show the file picker. Try again or drag the PDF into the window.",
+  "erro.seletor":
+    "Could not show the file picker. Try again or drag the PDF or image into the window.",
   "erro.dispensar": "Dismiss message",
   "lote.cortado": "Only the first 32 files were opened.",
   "abertura.etapa.impressoras": "Loading printers…",
@@ -884,7 +890,7 @@ const en: Record<Chave, string> = {
   "abertura.limite.impressoras":
     "The printers took more than 10 seconds to respond. If one is missing, use the Refresh list button next to Printers.",
   "abertura.limite.documento":
-    "The document took more than 10 seconds to open. If it does not appear, use Open PDF.",
+    "The document took more than 10 seconds to open. If it does not appear, use Open file.",
   "abertura.limite.componente":
     "Checking the printing component took more than 10 seconds. If printing fails, reinstall PlotS.",
   "abertura.imagem.alt": "PlotS: front and back, always in order. By Kaio Luan.",
@@ -896,9 +902,9 @@ const en: Record<Chave, string> = {
   "cartao.simular.frenteRepetirContagem.aria": "Simulate fronts again on {n} {impressoras}",
   "cartao.simular.verso": "Simulate backs",
   "cartao.imprimir.verso": "Print backs",
-  "cartao.botao.semDocumento": "Open a PDF to print.",
+  "cartao.botao.semDocumento": "Open a document to print.",
   "cartao.botao.contando": "Wait for the page count.",
-  "cartao.botao.recusado": "This PDF was refused, so nothing can be sent.",
+  "cartao.botao.recusado": "This document was refused, so nothing can be sent.",
   "cartao.botao.semMarcada": "Select at least one printer.",
   "cartao.botao.nenhuma": "No selected printer can receive: {lista}.",
   "cartao.botao.foraDaConta": "Not counted: {lista}.",
@@ -1013,7 +1019,7 @@ const en: Record<Chave, string> = {
   "cartao.fechar.consequenciaEnviando":
     "Anything already delivered to the queue stays there, but PlotS stops tracking it. A job still being sent may stay incomplete in the queue; check the Windows queue.",
   "cartao.motivo.biblioteca": "Could not load the library that draws the pages (pdfium.dll).",
-  "cartao.motivo.pdf": "Could not prepare this PDF.",
+  "cartao.motivo.pdf": "Could not prepare this document.",
   "cartao.motivo.desenho": "Could not draw the pages for this printer.",
   "cartao.motivo.papel": "The driver did not accept the paper size of this job.",
   "cartao.motivo.driver": "The driver did not accept the settings the job needs.",
@@ -1032,7 +1038,7 @@ const en: Record<Chave, string> = {
     "This queue asks for a file name in a dialog, and this version does not open that dialog.",
   "cartao.motivo.sistema": "The system refused a step of the job.",
   "cartao.motivo.documentoMudou": "The file changed since the fronts were requested, and sheets already printed may not match it. Print the fronts again. To print only the back anyway, open the file in a new tab: PlotS does not check the stack.",
-  "visualizador.carregando": "Opening the PDF…",
+  "visualizador.carregando": "Opening the document…",
   "visualizador.documento": "Pages of {nome}",
   "visualizador.barra": "Document controls",
   "visualizador.semPagina": "Page not available yet",
@@ -1053,7 +1059,7 @@ const en: Record<Chave, string> = {
   "visualizador.miniaturas.irErro": "Go to page {n}: could not be shown",
   "visualizador.tentarDeNovo": "Try again",
   "visualizador.erro.texto":
-    "Could not show this PDF. Try again; if it keeps failing, save a new copy from the original program.",
+    "Could not show this document. Try again; if it keeps failing, save a new copy from the original program.",
   "intervalo.rotulo": "Pages",
   "intervalo.ate": "to",
   "intervalo.primeira": "First page to print",
@@ -1064,9 +1070,9 @@ const en: Record<Chave, string> = {
   "intervalo.erro.fora": "This document has {total} pages: use 1 to {total}.",
   "intervalo.erro.foraUma": "This document only has page 1.",
   "intervalo.erro.invertido": "The first page cannot come after the last one.",
-  "intervalo.fechado.semDocumento": "Open a PDF to choose the pages.",
+  "intervalo.fechado.semDocumento": "Open a document to choose the pages.",
   "intervalo.fechado.contando": "Wait for the pages to be counted.",
-  "intervalo.fechado.recusado": "This PDF was refused, so there are no pages to choose.",
+  "intervalo.fechado.recusado": "This document was refused, so there are no pages to choose.",
   "intervalo.botao.invalido": "Fix the pages to print.",
   "intervalo.envio.varias": "Range: pages {inicio} to {fim} of {total}",
   "intervalo.envio.uma": "Range: page {inicio} of {total}",

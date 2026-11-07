@@ -10,6 +10,8 @@ import {
 export interface Documento {
   caminho: string;
   nome: string;
+  /** O arquivo aberto; abas antigas e testes podem omitir. */
+  tipo?: "pdf" | "imagem";
 }
 
 /** Total de paginas da aba, ou o motivo de o PDF ter sido recusado, ja traduzido. */

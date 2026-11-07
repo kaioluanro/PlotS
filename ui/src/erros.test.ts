@@ -4,7 +4,16 @@ import { t } from "./i18n";
 
 describe("mensagemDeErro", () => {
   it("usa o texto de cada codigo, com o nome do arquivo", () => {
-    for (const codigo of ["nao_encontrado", "nao_e_arquivo", "nao_e_pdf", "inacessivel"] as const) {
+    for (const codigo of [
+      "nao_encontrado",
+      "nao_e_arquivo",
+      "nao_suportado",
+      "inacessivel",
+      "pdf_invalido",
+      "imagem_invalida",
+      "criptografado",
+      "grande",
+    ] as const) {
       expect(mensagemDeErro({ codigo, nome: "a b.pdf" })).toBe(
         t(`erro.${codigo}`, { nome: "a b.pdf" }),
       );
@@ -17,6 +26,6 @@ describe("mensagemDeErro", () => {
     expect(mensagemDeErro(null)).toBe(generica);
     expect(mensagemDeErro({ codigo: "outro", nome: "a.pdf" })).toBe(generica);
     expect(mensagemDeErro({ codigo: "constructor", nome: "a.pdf" })).toBe(generica);
-    expect(mensagemDeErro({ codigo: "nao_e_pdf", nome: 1 })).toBe(generica);
+    expect(mensagemDeErro({ codigo: "nao_suportado", nome: 1 })).toBe(generica);
   });
 });
