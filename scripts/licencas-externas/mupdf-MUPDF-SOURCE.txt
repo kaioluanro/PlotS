@@ -1,0 +1,29 @@
+MuPDF 1.28.5 / mutool.exe
+==========================
+
+Este pacote inclui o executavel separado mutool.exe (MuPDF 1.28.5), distribuido sob a GNU
+Affero General Public License 3.0 (AGPL-3.0). O codigo do PlotS continua sob MIT; a AGPL vale
+somente para o mutool.exe e para o codigo-fonte correspondente.
+
+Binario oficial: mupdf-1.28.5-windows.zip
+  bytes: 94292330
+  sha256: 13476a53e84f5527983158acb6442c7853b3cdc022f3b24880780dcfba1fcc99
+mutool.exe extraido:
+  bytes: 46476800
+  sha256: 1ff045eeab80a108a39760578001a547a31e8b663905f064088c4b2f82cbcf7f
+Fonte correspondente: mupdf-1.28.5-source.tar.gz
+  bytes: 68919385
+  sha256: 98a5c10cda20c3992cdf76ff6b2a1149c32bd79cc796d3f703230b1185b7e934
+  disponivel gratuitamente em:
+  https://github.com/ArtifexSoftware/mupdf-downloads/releases/download/1.28.5/mupdf-1.28.5-source.tar.gz
+  (a mesma versao, com os componentes de thirdparty/)
+
+O texto integral da AGPL-3.0 esta em AGPL-3.0.txt. As licencas dos componentes de thirdparty/
+que acompanham o MuPDF estao em licencas/. O mutool.exe nao foi modificado. A AGPL permite
+substituir o binario; o PlotS nao recusa um mutool modificado em tempo de execucao.
+
+MuPDF e Artifex sao marcas da Artifex Software, Inc.; o PlotS nao tem vinculo, patrocinio nem
+endosso da Artifex.
+
+O PlotS usa o mutool apenas como processo separado, pela linha de comando, sem ligacao de
+codigo. O modo simples do PlotS (PDFium + formula por cor) continua disponivel sem este binario.

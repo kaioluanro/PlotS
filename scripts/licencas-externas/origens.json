@@ -42,8 +42,14 @@
       "versao": "1.0.3800.47",
       "origem": "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/1.0.3800.47/microsoft.web.webview2.1.0.3800.47.nupkg (LICENSE.txt e NOTICE.txt do pacote; sha256 do nupkg 56c9f26bdd07916a2d1949fb58a5c7e434dfa1173577dca879206050c4e718db)",
       "arquivos": [
-        { "arquivo": "webview2-sdk-LICENSE.txt", "sha256": "0af8f1b807512aae39c2ac1aa4d0cae65cabecb6fd554b8439a5162a0d6eca55" },
-        { "arquivo": "webview2-sdk-NOTICE.txt", "sha256": "106423785c5b7eba0a8e61d1837f2132e9c828e20ad530f565d981c1df60dd90" }
+        {
+          "arquivo": "webview2-sdk-LICENSE.txt",
+          "sha256": "0af8f1b807512aae39c2ac1aa4d0cae65cabecb6fd554b8439a5162a0d6eca55"
+        },
+        {
+          "arquivo": "webview2-sdk-NOTICE.txt",
+          "sha256": "106423785c5b7eba0a8e61d1837f2132e9c828e20ad530f565d981c1df60dd90"
+        }
       ]
     },
     {
@@ -51,7 +57,10 @@
       "versao": "revisão 97b436da4c33663581d394f4ee0a5977fc38c2f4 do ramo chromium/8125 do PDFium",
       "origem": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libcxx/+/97b436da4c33663581d394f4ee0a5977fc38c2f4/LICENSE.TXT",
       "arquivos": [
-        { "arquivo": "libcxx-LICENSE.TXT", "sha256": "539dd7aed86e8a4f12cbdd0e6c50c189c7d74847e4fecc64ce2c6ee3a01da38b" }
+        {
+          "arquivo": "libcxx-LICENSE.TXT",
+          "sha256": "539dd7aed86e8a4f12cbdd0e6c50c189c7d74847e4fecc64ce2c6ee3a01da38b"
+        }
       ]
     },
     {
@@ -59,7 +68,10 @@
       "versao": "revisão 09351f6ec00c2b65f2d03585ae6da07098b024dc do ramo chromium/8125 do PDFium",
       "origem": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libcxxabi/+/09351f6ec00c2b65f2d03585ae6da07098b024dc/LICENSE.TXT",
       "arquivos": [
-        { "arquivo": "libcxxabi-LICENSE.TXT", "sha256": "e2b35be49f7284a45b7baca8fc7b3ab7440e7902392b2528a457816b5bb2a15c" }
+        {
+          "arquivo": "libcxxabi-LICENSE.TXT",
+          "sha256": "e2b35be49f7284a45b7baca8fc7b3ab7440e7902392b2528a457816b5bb2a15c"
+        }
       ]
     },
     {
@@ -67,7 +79,10 @@
       "versao": "3.13",
       "origem": "arquivo COPYING de nsis-3.13.zip, baixado pelo tauri-bundler de https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.13/nsis-3.13.zip; código-fonte em https://nsis.sourceforge.io/Download",
       "arquivos": [
-        { "arquivo": "nsis-COPYING", "sha256": "388357c1215ff403c5ebde3a5ecd273e68f8b79a579996775245d1ee65442aba" }
+        {
+          "arquivo": "nsis-COPYING",
+          "sha256": "388357c1215ff403c5ebde3a5ecd273e68f8b79a579996775245d1ee65442aba"
+        }
       ]
     },
     {
@@ -75,8 +90,121 @@
       "versao": "0.5.3, a versão que a CLI do Tauri 2.12.4 baixou ao gerar o instalador",
       "origem": "https://raw.githubusercontent.com/tauri-apps/nsis-tauri-utils/13d9edd27b69310e108d6fbd49f90992f8a05390/ (LICENSE_MIT e LICENSE_APACHE-2.0, commit da tag nsis_tauri_utils-v0.5.3)",
       "arquivos": [
-        { "arquivo": "nsis-tauri-utils-LICENSE_MIT", "sha256": "1c1020fa10a6bf318717e82c911bcc54ebdfb9bb280460ae332bcb2f82f57fbe" },
-        { "arquivo": "nsis-tauri-utils-LICENSE_APACHE-2.0", "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594" }
+        {
+          "arquivo": "nsis-tauri-utils-LICENSE_MIT",
+          "sha256": "1c1020fa10a6bf318717e82c911bcc54ebdfb9bb280460ae332bcb2f82f57fbe"
+        },
+        {
+          "arquivo": "nsis-tauri-utils-LICENSE_APACHE-2.0",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        }
+      ]
+    },
+    {
+      "titulo": "MuPDF 1.28.5 (mutool.exe) e bibliotecas de thirdparty/",
+      "versao": "1.28.5",
+      "origem": "https://github.com/ArtifexSoftware/mupdf-downloads/releases/download/1.28.5/mupdf-1.28.5-source.tar.gz (sha256 98a5c10cda20c3992cdf76ff6b2a1149c32bd79cc796d3f703230b1185b7e934), com os textos de thirdparty/",
+      "arquivos": [
+        {
+          "arquivo": "mupdf-COPYING.txt",
+          "sha256": "57c8ff33c9c0cfc3ef00e650a1cc910d7ee479a8bc509f6c9209a7c2a11399d6"
+        },
+        {
+          "arquivo": "mupdf-MUPDF-SOURCE.txt",
+          "sha256": "9f5cada8542d037190573c75be9d03bc87f674cb2480172767db4db91e18f7a9"
+        },
+        {
+          "arquivo": "mupdf-brotli-LICENSE",
+          "sha256": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94"
+        },
+        {
+          "arquivo": "mupdf-cmark-gfm-COPYING",
+          "sha256": "c22e885f33b821bddb24cf007145e5540655b6c0f403e49e6c76a93c28e6d9a9"
+        },
+        {
+          "arquivo": "mupdf-curl-COPYING",
+          "sha256": "8c8824f50e73a021f5dde1fccbf69685939247399a33a32abab1fa448c9ddabb"
+        },
+        {
+          "arquivo": "mupdf-extract-COPYING",
+          "sha256": "57c8ff33c9c0cfc3ef00e650a1cc910d7ee479a8bc509f6c9209a7c2a11399d6"
+        },
+        {
+          "arquivo": "mupdf-freeglut-COPYING",
+          "sha256": "b6593d5ec4c113a274abb85b10e8615895cb0ddb89f7912af5fe5aa8df38a275"
+        },
+        {
+          "arquivo": "mupdf-freetype-LICENSE.TXT",
+          "sha256": "bd36c8b474855fa294c2ec5c184544478ef3720aad37d65a6296a4f264fd2d3b"
+        },
+        {
+          "arquivo": "mupdf-freetype-FTL.TXT",
+          "sha256": "5a5ee54c5001bbad1cdc1a57cc3dd4c42199b2da09d39c7ee41fab002d02967f"
+        },
+        {
+          "arquivo": "mupdf-gumbo-parser-COPYING",
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+        },
+        {
+          "arquivo": "mupdf-harfbuzz-COPYING",
+          "sha256": "ba8f810f2455c2f08e2d56bb49b72f37fcf68f1f4fade38977cfd7372050ad64"
+        },
+        {
+          "arquivo": "mupdf-jbig2dec-COPYING",
+          "sha256": "57c8ff33c9c0cfc3ef00e650a1cc910d7ee479a8bc509f6c9209a7c2a11399d6"
+        },
+        {
+          "arquivo": "mupdf-jbig2dec-LICENSE",
+          "sha256": "1bf5258afe453934484fd0cea97508b72301633a6a78b0ae8a9ee44ac78f26d9"
+        },
+        {
+          "arquivo": "mupdf-lcms2-LICENSE",
+          "sha256": "74fe8934cee0e63e8368d4a6b3a703b603e753a62b75b75273572e98a57ebf75"
+        },
+        {
+          "arquivo": "mupdf-leptonica-README.md",
+          "sha256": "a77abccb78c6ff1612c7c9549db0f1c4ec88f9124ee3140388f4a76b5376434f"
+        },
+        {
+          "arquivo": "mupdf-libjpeg-README",
+          "sha256": "913af09f785683accdf660b85dcf27fdd567d4ad649daa95cb8771b040db79d1"
+        },
+        {
+          "arquivo": "mupdf-mujs-COPYING",
+          "sha256": "0ca9b4fbfbcab8ac7d32475890d866efc02f4cffb6b6da5c0e9a0615cc3d82fe"
+        },
+        {
+          "arquivo": "mupdf-openjpeg-LICENSE",
+          "sha256": "a6af136f3e15038a666b61f376612a07d9a4e48cb7c01adbf3e33b3f14ab49b6"
+        },
+        {
+          "arquivo": "mupdf-tesseract-LICENSE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "arquivo": "mupdf-zint-LICENSE",
+          "sha256": "d69af7f2442fcde1c3372cbbb43907fa1f4b3a91ef3899be69dd3a726dc255a4"
+        },
+        {
+          "arquivo": "mupdf-zint-COPYING",
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+        },
+        {
+          "arquivo": "mupdf-zint-COPYING",
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+        },
+        {
+          "arquivo": "mupdf-zint-COPYING",
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+        },
+        {
+          "arquivo": "mupdf-zlib-LICENSE",
+          "sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2"
+        },
+        {
+          "arquivo": "mupdf-zxing-cpp-LICENSE",
+          "sha256": "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08"
+        }
       ]
     }
   ]
