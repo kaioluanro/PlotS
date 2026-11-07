@@ -111,7 +111,7 @@
         },
         {
           "arquivo": "mupdf-MUPDF-SOURCE.txt",
-          "sha256": "c18bb5e2901cb08a9381a11216fabb65be06181d017d95f25d434182b6704f63"
+          "sha256": "f0cca82bde6a60aad91e11b19d94c46d9e569ed771f2331fb0e03a3eb52119a8"
         },
         {
           "arquivo": "mupdf-brotli-LICENSE",
@@ -196,6 +196,26 @@
         {
           "arquivo": "mupdf-harfbuzz-ms-use-COPYING",
           "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+        },
+        {
+          "arquivo": "mupdf-fontes-urw-OFL.txt",
+          "sha256": "3b709798a0943cbf824ed21b6b2c735e482cf6cb8fa11441e57381c2650253ca"
+        },
+        {
+          "arquivo": "mupdf-fontes-noto-COPYING",
+          "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+        },
+        {
+          "arquivo": "mupdf-fontes-sil-OFL.txt",
+          "sha256": "73dfe0817e50210df5ee60d551515b9ebef9156522e45d166ca5f0a2456f1f39"
+        },
+        {
+          "arquivo": "mupdf-fontes-han-LICENSE.txt",
+          "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+        },
+        {
+          "arquivo": "mupdf-zint-BSD-3.txt",
+          "sha256": "8147c82b696c6a8e70e82e14f826ad8c9963a00b2c30dfbbd0743d8177d6a027"
         }
       ]
     }

@@ -267,6 +267,15 @@ describe("secao pagina", () => {
     expect(html).toContain(traduzir("pt-BR", "plotinfo.total"));
   });
 
+  it("mostra o aviso dos perfis e o aviso do modo simples juntos", () => {
+    const html = painel({
+      avisoDosPerfis: "O arquivo de perfis foi lido com um aviso.",
+      aviso: "O pedido era CMYK, mas o mutool não foi encontrado.",
+    });
+    expect(html).toContain("O arquivo de perfis foi lido com um aviso.");
+    expect(html).toContain("O pedido era CMYK, mas o mutool não foi encontrado.");
+  });
+
   it("pagina em branco tem o aviso e os zeros reais", () => {
     const html = painel({}, { paginaAtual: 2 });
     expect(html).toContain(traduzir("pt-BR", "plotinfo.pagina.emBranco"));
@@ -434,6 +443,9 @@ describe("folha da gaveta", () => {
     const botao = regra(css, ".botaoIcone");
     expect(botao).toMatch(/width:\s*28px/);
     expect(botao).toMatch(/height:\s*28px/);
+    expect(regra(css, ".tentarDeNovo")).toMatch(/min-height:\s*28px/);
+    const visualizador = await lerCss("./visualizador/Visualizador.module.css");
+    expect(regra(visualizador, ".resumo")).toMatch(/min-height:\s*28px/);
     expect(css).toContain(":focus-visible");
     expect(css).toContain("@media (forced-colors: active)");
   });

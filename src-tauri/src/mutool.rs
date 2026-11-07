@@ -197,10 +197,11 @@ pub fn desenhar_cmyk_com(
     pdf: &Path,
     paginas: &[u32],
     dpi: u32,
+    cinzas_so_preto: bool,
     limite: Duration,
     cancelado: &AtomicBool,
 ) -> Result<Vec<PaginaCmyk>, ErroMutool> {
-    desenhar_cmyk_em(None, mutool, pdf, paginas, dpi, limite, cancelado)
+    desenhar_cmyk_em(None, mutool, pdf, paginas, dpi, cinzas_so_preto, limite, cancelado)
 }
 
 fn desenhar_cmyk_em(
@@ -209,6 +210,7 @@ fn desenhar_cmyk_em(
     pdf: &Path,
     paginas: &[u32],
     dpi: u32,
+    cinzas_so_preto: bool,
     limite: Duration,
     cancelado: &AtomicBool,
 ) -> Result<Vec<PaginaCmyk>, ErroMutool> {
@@ -232,7 +234,7 @@ fn desenhar_cmyk_em(
     argumentos.push(pdf.as_os_str().to_owned());
     argumentos.push(OsString::from(intervalo));
     rodar_processo(mutool.as_os_str(), &argumentos, limite, cancelado)?;
-    ler_paginas(&pasta.caminho, &ordenadas)
+    ler_paginas(&pasta.caminho, &ordenadas, cinzas_so_preto)
 }
 
 fn validar(pdf: &Path, paginas: &[u32], dpi: u32) -> Result<Vec<u32>, ErroMutool> {
@@ -397,12 +399,16 @@ pub fn nome_do_pam(pagina: u32) -> String {
     format!("p-{pagina:04}.pam")
 }
 
-fn ler_paginas(pasta: &Path, paginas: &[u32]) -> Result<Vec<PaginaCmyk>, ErroMutool> {
+fn ler_paginas(
+    pasta: &Path,
+    paginas: &[u32],
+    cinzas_so_preto: bool,
+) -> Result<Vec<PaginaCmyk>, ErroMutool> {
     let mut resultado = Vec::with_capacity(paginas.len());
     for &pagina in paginas {
         let caminho = pasta.join(nome_do_pam(pagina));
         let bytes = ler_pam(&caminho, pagina)?;
-        let cobertura = cobertura_de_pam(&bytes).map_err(|falha| ErroMutool::PamInvalido {
+        let cobertura = cobertura_de_pam(&bytes, cinzas_so_preto).map_err(|falha| ErroMutool::PamInvalido {
             pagina,
             motivo: falha.to_string(),
         })?;
@@ -698,6 +704,7 @@ pub(crate) mod testes {
             &pdf,
             &[2, 3],
             72,
+            false,
             Duration::from_secs(120),
             &AtomicBool::new(false),
         )
@@ -714,6 +721,7 @@ pub(crate) mod testes {
             &pdf,
             &[1, 2, 3],
             72,
+            false,
             Duration::from_secs(120),
             &AtomicBool::new(false),
         )

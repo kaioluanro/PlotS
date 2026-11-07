@@ -329,7 +329,7 @@ fn pam(largura: usize, altura: usize, profundidade: u32, maxval: u32, dados: &[u
 #[test]
 fn pam_cmyk_traz_a_media_de_cada_canal() {
     let bytes = pam(1, 1, 4, 255, &[102, 0, 0, 0]);
-    let cobertura = cobertura_de_pam(&bytes).unwrap();
+    let cobertura = cobertura_de_pam(&bytes, false).unwrap();
     perto(cobertura.c, 40.0);
     perto(cobertura.m, 0.0);
     perto(cobertura.y, 0.0);
@@ -337,9 +337,27 @@ fn pam_cmyk_traz_a_media_de_cada_canal() {
 }
 
 #[test]
+fn pam_com_cinzas_so_preto_leva_cmy_iguais_para_o_preto() {
+    let bytes = pam(2, 1, 4, 255, &[100, 100, 100, 0, 50, 50, 50, 10]);
+    let normal = cobertura_de_pam(&bytes, false).unwrap();
+    perto(normal.c, 150.0 / 2.0 / 255.0 * 100.0);
+    perto(normal.k, 10.0 / 2.0 / 255.0 * 100.0);
+    let preto = cobertura_de_pam(&bytes, true).unwrap();
+    perto(preto.c, 0.0);
+    perto(preto.m, 0.0);
+    perto(preto.y, 0.0);
+    perto(preto.k, 160.0 / 2.0 / 255.0 * 100.0);
+
+    let cinza_impuro = pam(1, 1, 4, 255, &[100, 50, 50, 0]);
+    let mantido = cobertura_de_pam(&cinza_impuro, true).unwrap();
+    perto(mantido.c, 100.0 / 255.0 * 100.0);
+    perto(mantido.m, 50.0 / 255.0 * 100.0);
+}
+
+#[test]
 fn pam_soma_os_pixels_de_cada_canal() {
     let bytes = pam(2, 1, 4, 255, &[255, 0, 0, 0, 0, 255, 0, 0]);
-    let cobertura = cobertura_de_pam(&bytes).unwrap();
+    let cobertura = cobertura_de_pam(&bytes, false).unwrap();
     perto(cobertura.c, 50.0);
     perto(cobertura.m, 50.0);
     perto(cobertura.y, 0.0);
@@ -350,7 +368,7 @@ fn pam_soma_os_pixels_de_cada_canal() {
 fn pam_de_profundidade_diferente_e_recusado() {
     let bytes = pam(1, 1, 3, 255, &[0, 0, 0]);
     assert_eq!(
-        cobertura_de_pam(&bytes),
+        cobertura_de_pam(&bytes, false),
         Err(ErroCobertura::ProfundidadeNaoSuportada { profundidade: 3 })
     );
 }
@@ -359,7 +377,7 @@ fn pam_de_profundidade_diferente_e_recusado() {
 fn pam_de_maxval_diferente_e_recusado() {
     let bytes = pam(1, 1, 4, 65535, &[0; 8]);
     assert_eq!(
-        cobertura_de_pam(&bytes),
+        cobertura_de_pam(&bytes, false),
         Err(ErroCobertura::MaxvalNaoSuportado { maxval: 65535 })
     );
 }
@@ -368,7 +386,7 @@ fn pam_de_maxval_diferente_e_recusado() {
 fn pam_com_dados_de_tamanho_errado_e_recusado() {
     let bytes = pam(2, 2, 4, 255, &[0; 15]);
     assert_eq!(
-        cobertura_de_pam(&bytes),
+        cobertura_de_pam(&bytes, false),
         Err(ErroCobertura::TamanhoInvalido {
             esperado: 16,
             recebido: 15
@@ -379,7 +397,7 @@ fn pam_com_dados_de_tamanho_errado_e_recusado() {
 #[test]
 fn pam_sem_o_marcador_p7_e_recusado() {
     assert_eq!(
-        cobertura_de_pam(b"P6\nWIDTH 1\nHEIGHT 1\nDEPTH 4\nMAXVAL 255\nENDHDR\n"),
+        cobertura_de_pam(b"P6\nWIDTH 1\nHEIGHT 1\nDEPTH 4\nMAXVAL 255\nENDHDR\n", false),
         Err(ErroCobertura::MagicInvalido)
     );
 }
@@ -387,7 +405,7 @@ fn pam_sem_o_marcador_p7_e_recusado() {
 #[test]
 fn pam_sem_endhdr_e_recusado() {
     assert_eq!(
-        cobertura_de_pam(b"P7\nWIDTH 1\nHEIGHT 1\nDEPTH 4\nMAXVAL 255\n"),
+        cobertura_de_pam(b"P7\nWIDTH 1\nHEIGHT 1\nDEPTH 4\nMAXVAL 255\n", false),
         Err(ErroCobertura::CabecalhoInvalido)
     );
 }
@@ -396,7 +414,7 @@ fn pam_sem_endhdr_e_recusado() {
 fn pam_sem_dimensao_e_recusado() {
     let bytes = pam(0, 1, 4, 255, &[]);
     assert_eq!(
-        cobertura_de_pam(&bytes),
+        cobertura_de_pam(&bytes, false),
         Err(ErroCobertura::DimensaoInvalida)
     );
 }

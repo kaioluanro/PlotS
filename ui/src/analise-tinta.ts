@@ -18,7 +18,7 @@ import { idiomaAtual, traduzir, type Chave, type Idioma } from "./i18n";
  *   configuracao_de_tinta() -> { configuracao, aviso }
  *   definir_configuracao_de_tinta(configuracao) -> { configuracao, aviso }
  *
- * O CSV sai por `exportar_csv` (B3). O mutool entra no caminho CMYK quando disponivel; sem ele,
+ * O CSV sai por `exportar_csv`. O mutool entra no caminho CMYK quando disponivel; sem ele,
  * a analise cai no modo simples e `modoUsado` diz qual foi usado.
  *
  * Eventos (camelCase):
@@ -595,7 +595,11 @@ export async function ouvirAnaliseDeTinta(
       if (bruto === null || !idConfere(bruto.id, idAtual())) return;
       const id = typeof bruto.id === "string" ? bruto.id : (idAtual() ?? "");
       const resultado = normalizarResultado(bruto.resultado, id, nomeDeReserva);
-      if (resultado !== null) ouvintes.aoFim(resultado);
+      if (resultado !== null) {
+        ouvintes.aoFim(resultado);
+      } else {
+        ouvintes.aoFalha(traduzir(idiomaAtual, "plotinfo.erro.resposta"));
+      }
     }),
     registrar(EVENTOS_DA_TINTA.falha, (payload) => {
       const bruto = objeto(payload);
@@ -803,12 +807,12 @@ export function resumoDaBarra(resultado: ResultadoDaAnalise): ResumoDaBarra {
   };
 }
 
-const PAPEIS: ReadonlyArray<{ nome: string; largura: number; altura: number }> = [
-  { nome: "A4", largura: 210, altura: 297 },
-  { nome: "A3", largura: 297, altura: 420 },
-  { nome: "A5", largura: 148, altura: 210 },
-  { nome: "Carta", largura: 215.9, altura: 279.4 },
-  { nome: "Ofício", largura: 215.9, altura: 355.6 },
+const PAPEIS: ReadonlyArray<{ chave: Chave; largura: number; altura: number }> = [
+  { chave: "plotinfo.papel.a4", largura: 210, altura: 297 },
+  { chave: "plotinfo.papel.a3", largura: 297, altura: 420 },
+  { chave: "plotinfo.papel.a5", largura: 148, altura: 210 },
+  { chave: "plotinfo.papel.carta", largura: 215.9, altura: 279.4 },
+  { chave: "plotinfo.papel.oficio", largura: 215.9, altura: 355.6 },
 ];
 
 /** Nome do papel pela medida, nas duas orientacoes; fora da tabela, mostra a medida. */
@@ -818,7 +822,7 @@ export function rotuloDoPapel(largura: number, altura: number, idioma: Idioma = 
       Math.abs(largura - papel.largura) <= 2 && Math.abs(altura - papel.altura) <= 2;
     const girada =
       Math.abs(largura - papel.altura) <= 2 && Math.abs(altura - papel.largura) <= 2;
-    if (mesma || girada) return papel.nome;
+    if (mesma || girada) return traduzir(idioma, papel.chave);
   }
   return traduzir(idioma, "plotinfo.papel.medida", {
     largura: formatarNumero(largura, idioma, 0),

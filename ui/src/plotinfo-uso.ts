@@ -119,6 +119,7 @@ export function useTintaDoDocumento(
 
   const idAtual = useRef<string | null>(null);
   const selecaoEnviada = useRef<string | null>(null);
+  const coberturaAnalisada = useRef<string | null>(null);
   const copiasAtuais = lerCopiasDoPainel(painel.copiasTexto);
 
   const painelRef = useRef(painel);
@@ -133,6 +134,10 @@ export function useTintaDoDocumento(
   abaRef.current = aba;
 
   const idDaAba = aba?.id ?? null;
+  const chaveDaCobertura = useMemo(() => {
+    if (configuracao === null) return null;
+    return `${configuracao.dpi}|${configuracao.modo}|${configuracao.cinzas_so_preto}`;
+  }, [configuracao]);
 
   // Trocar de documento zera a leitura: a selecao do painel vale para o documento aberto.
   useEffect(() => {
@@ -146,6 +151,7 @@ export function useTintaDoDocumento(
     setRecalculando(false);
     idAtual.current = null;
     selecaoEnviada.current = null;
+    coberturaAnalisada.current = null;
     despacharPainel({ tipo: "reiniciar" });
   }, [idDaAba]);
 
@@ -214,10 +220,15 @@ export function useTintaDoDocumento(
     if (configuracaoAtual === null || configuracaoAtual.perfil === "") return undefined;
     if (idAtual.current !== null) return undefined;
     const copiasIniciais = copiasRef.current;
-    if (copiasIniciais === null) return undefined;
+    if (copiasIniciais === null) {
+      setErro(t("plotinfo.erro.copias"));
+      setSituacao("erro");
+      return undefined;
+    }
 
     let ativo = true;
     let cancelarEventos: (() => void) | null = null;
+    coberturaAnalisada.current = chaveDaCobertura;
     setSituacao("analisando");
     setErro(null);
     setProgresso(null);
@@ -292,7 +303,7 @@ export function useTintaDoDocumento(
     };
     // A configuracao entra por ref: trocar perfil, qualidade ou dpi recalcula, nao reanalisa.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aberto, prontoParaAnalisar, idDaAba, aba?.documento.caminho, aba?.paginas.estado, tentativa]);
+  }, [aberto, prontoParaAnalisar, idDaAba, aba?.documento.caminho, aba?.paginas.estado, tentativa, chaveDaCobertura]);
 
   const chaveAtual = useMemo(() => {
     if (configuracao === null) return null;
@@ -301,8 +312,17 @@ export function useTintaDoDocumento(
   }, [configuracao, copiasAtuais, painel.paginasTexto]);
 
   // Cada mudanca de campo ou de configuracao chama o recalculo; o backend continua a fonte da selecao.
+  // Dpi, modo e cinzas mudam a cobertura: nesse caso a analise e refeita, nao recalculada.
   useEffect(() => {
     if (!aberto || chaveAtual === null || idAtual.current === null) return undefined;
+    if (situacao !== "pronto") {
+      setRecalculando(false);
+      return undefined;
+    }
+    if (coberturaAnalisada.current !== chaveDaCobertura) {
+      setRecalculando(false);
+      return undefined;
+    }
     if (copiasAtuais === null) {
       setErro(t("plotinfo.erro.copias"));
       setRecalculando(false);
@@ -327,12 +347,15 @@ export function useTintaDoDocumento(
             id,
             abaRef.current?.documento.nome ?? "",
           );
-          if (novo !== null) {
-            setResultado(novo);
-            setAviso(mensagemDeAviso(novo.aviso));
-            setSituacao("pronto");
-            setProgresso(null);
+          if (novo === null) {
+            setErro(t("plotinfo.erro.resposta"));
+            setRecalculando(false);
+            return;
           }
+          setResultado(novo);
+          setAviso(mensagemDeAviso(novo.aviso));
+          setSituacao("pronto");
+          setProgresso(null);
           selecaoEnviada.current = chaveAtual;
           setErro(null);
           setRecalculando(false);
@@ -344,7 +367,7 @@ export function useTintaDoDocumento(
         });
     }, 250);
     return () => window.clearTimeout(prazo);
-  }, [aberto, chaveAtual, copiasAtuais]);
+  }, [aberto, chaveAtual, copiasAtuais, situacao, chaveDaCobertura]);
 
   const definirPaginas = useCallback((valor: string) => {
     despacharPainel({ tipo: "paginas", valor });
@@ -358,8 +381,15 @@ export function useTintaDoDocumento(
     } else {
       // So o erro do campo sai; uma falha da analise continua visivel.
       setErro((atual) => (atual === erroDeCopias ? null : atual));
+      if (
+        aberto &&
+        idAtual.current === null &&
+        abaRef.current?.paginas.estado === "conhecido"
+      ) {
+        setTentativa((atual) => atual + 1);
+      }
     }
-  }, []);
+  }, [aberto]);
 
   const tentarDeNovo = useCallback(() => {
     setErro(null);

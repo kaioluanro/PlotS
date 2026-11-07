@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const CRATES = [
-  "plots-core", "plots-print", "plots-cli", "plots-pdf", "plots-perfis", "plots-windows", "src-tauri",
+  "plots-core", "plots-print", "plots-cli", "plots-pdf", "plots-perfis", "plots-info", "plots-windows", "src-tauri",
   "PlotSim/plotsim-physics", "PlotSim/plotsim-core", "PlotSim/plotsim-suite", "PlotSim/app",
 ].map((pasta) => `${pasta}/Cargo.toml`);
 const JSONS = ["src-tauri/tauri.conf.json", "PlotSim/app/tauri.conf.json", "ui/package.json", "PlotSim/app/ui/package.json"];

@@ -324,6 +324,7 @@ fn chave_de(impressao: &str, configuracao: &ConfiguracaoDeTinta) -> ChaveDeCache
         impressao: impressao.to_owned(),
         dpi: configuracao.dpi,
         modo: codigo_do_modo(configuracao.modo),
+        cinzas_so_preto: configuracao.cinzas_so_preto,
     }
 }
 
@@ -347,6 +348,7 @@ fn chave_do_modo(chave: &ChaveDeCache, modo: ModoDeCor) -> ChaveDeCache {
         impressao: chave.impressao.clone(),
         dpi: chave.dpi,
         modo: codigo_do_modo(modo),
+        cinzas_so_preto: chave.cinzas_so_preto,
     }
 }
 
@@ -414,6 +416,7 @@ struct ChaveDeCache {
     impressao: String,
     dpi: u32,
     modo: u8,
+    cinzas_so_preto: bool,
 }
 
 struct EntradaDeCache {
@@ -639,6 +642,7 @@ impl Analises {
             impressao: base.impressao.clone(),
             dpi: configuracao.dpi,
             modo: codigo_do_modo(configuracao.modo),
+            cinzas_so_preto: configuracao.cinzas_so_preto,
         };
         let achado = self.ler_cache(&chave_pedida);
         let (chave, dimensoes, coberturas) = match achado {
@@ -1194,6 +1198,7 @@ where
                         &preparo.pdf,
                         &lote,
                         preparo.configuracao.dpi,
+                        preparo.configuracao.cinzas_so_preto,
                         mutool::LIMITE_PADRAO,
                         cancelamento,
                     ),
@@ -2008,6 +2013,7 @@ mod testes {
             impressao: "conteudo".to_owned(),
             dpi: 150,
             modo: 0,
+            cinzas_so_preto: true,
         };
         semear_cache(
             &analises,
@@ -2046,6 +2052,7 @@ mod testes {
             impressao: "conteudo".to_owned(),
             dpi: 150,
             modo: 0,
+            cinzas_so_preto: true,
         };
         semear_cache(
             &analises,
@@ -2085,6 +2092,7 @@ mod testes {
             impressao: "conteudo".to_owned(),
             dpi: 150,
             modo: 0,
+            cinzas_so_preto: true,
         };
         let mut coberturas = coberturas_de_teste(total)
             .into_iter()
@@ -2208,6 +2216,7 @@ mod testes {
                 impressao: "teste".to_owned(),
                 dpi: 150,
                 modo: codigo_do_modo(ModoDeCor::Simples),
+                cinzas_so_preto: configuracao.cinzas_so_preto,
             },
             bytes: Vec::new(),
             dimensoes: dimensoes(total),

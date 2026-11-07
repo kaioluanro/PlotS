@@ -378,6 +378,9 @@ describe("numeros e rotulos", () => {
     expect(rotuloDoPapel(297, 210, "pt-BR")).toBe("A4");
     expect(rotuloDoPapel(215.9, 279.4, "pt-BR")).toBe("Carta");
     expect(rotuloDoPapel(100, 100, "pt-BR")).toBe("100 × 100 mm");
+    expect(rotuloDoPapel(215.9, 279.4, "en")).toBe("Letter");
+    expect(rotuloDoPapel(215.9, 355.6, "en")).toBe("Legal");
+    expect(rotuloDoPapel(148, 210, "en")).toBe("A5");
   });
 
   it("o resumo da barra leva o total com copias, os mL e o custo da selecao", () => {

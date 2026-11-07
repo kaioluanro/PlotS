@@ -153,7 +153,7 @@ fn cmyk_do_pixel(r: u8, g: u8, b: u8, cinzas_so_preto: bool) -> [f64; CANAIS] {
 /// Os quatro bytes de cada pixel são C, M, Y e K, e a cobertura é a média de cada byte dividida
 /// pelo valor máximo. Um PAM com outra profundidade, outro `MAXVAL` ou dados de tamanho diferente
 /// é recusado antes de qualquer média.
-pub fn cobertura_de_pam(bytes: &[u8]) -> Result<Cobertura, ErroCobertura> {
+pub fn cobertura_de_pam(bytes: &[u8], cinzas_so_preto: bool) -> Result<Cobertura, ErroCobertura> {
     let Some((primeira, mut posicao)) = proxima_linha(bytes, 0) else {
         return Err(ErroCobertura::CabecalhoInvalido);
     };
@@ -222,8 +222,20 @@ pub fn cobertura_de_pam(bytes: &[u8]) -> Result<Cobertura, ErroCobertura> {
 
     let mut soma = [0u128; CANAIS];
     for pixel in dados.chunks_exact(4) {
-        for (acumulado, valor) in soma.iter_mut().zip(pixel) {
-            *acumulado += u128::from(*valor);
+        let (mut c, mut m, mut y, mut k) = (
+            u128::from(pixel[0]),
+            u128::from(pixel[1]),
+            u128::from(pixel[2]),
+            u128::from(pixel[3]),
+        );
+        if cinzas_so_preto && c == m && m == y {
+            k = (k + c).min(255);
+            c = 0;
+            m = 0;
+            y = 0;
+        }
+        for (acumulado, valor) in soma.iter_mut().zip([c, m, y, k]) {
+            *acumulado += valor;
         }
     }
     let divisor = pixels as f64 * 255.0;

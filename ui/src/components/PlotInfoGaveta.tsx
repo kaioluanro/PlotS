@@ -231,8 +231,15 @@ export function PainelDeTinta({
             </div>
           </div>
         )}
-        {(tinta.avisoDosPerfis ?? tinta.aviso) !== null && (
-          <p className={styles.aviso}>{tinta.avisoDosPerfis ?? tinta.aviso}</p>
+        {(tinta.avisoDosPerfis !== null || tinta.aviso !== null) && (
+          <div className={styles.avisos}>
+            {tinta.avisoDosPerfis !== null && (
+              <p className={styles.aviso}>{tinta.avisoDosPerfis}</p>
+            )}
+            {tinta.aviso !== null && (
+              <p className={styles.aviso}>{tinta.aviso}</p>
+            )}
+          </div>
         )}
         {tinta.mensagem !== null && (
           <p className={styles.sucesso} role="status">

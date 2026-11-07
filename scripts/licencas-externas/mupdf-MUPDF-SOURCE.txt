@@ -42,7 +42,11 @@ Componentes de thirdparty/ no binario e seus textos em licencas/:
   freetype (LICENSE.TXT e FTL.TXT), gumbo-parser (COPYING), harfbuzz (COPYING e ms-use/COPYING),
   jbig2dec (COPYING e LICENSE), lcms2 (LICENSE), leptonica (license.txt), libjpeg (README),
   mujs (COPYING), openjpeg (LICENSE), tesseract (LICENSE), zint (LICENSE, BSD-3-Clause para a
-  biblioteca), zlib (LICENSE) e zxing-cpp (LICENSE).
+  biblioteca, e BSD-3.txt com o texto das clausulas), zlib (LICENSE) e zxing-cpp (LICENSE).
+
+As fontes embutidas no mutool.exe — URW++ (Nimbus Roman/Sans e Standard Symbols), Noto, Charis SIL
+e Source Han — estao sob SIL Open Font License 1.1; os textos estao em licencas/ (fontes-urw,
+fontes-noto, fontes-sil e fontes-han).
 
 O mutool.exe oficial usa o runtime Microsoft Visual C++ 2015-2022 (x64). Se o runtime nao estiver
 instalado no Windows, o conversor nao inicia e o PlotS cai no modo simples com aviso; o modo
