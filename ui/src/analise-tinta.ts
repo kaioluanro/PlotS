@@ -136,6 +136,8 @@ export interface ResultadoDaAnalise {
   qualidade: Qualidade;
   copias: number;
   documento_inteiro: boolean;
+  /** Codigo do motivo do modo simples, traduzido na gaveta; nulo quando nao ha aviso. */
+  aviso: string | null;
   selecao: ResumoDeTinta;
   documento: ResumoDoDocumento;
 }
@@ -466,6 +468,7 @@ export function normalizarResultado(
     qualidade: q,
     copias,
     documento_inteiro: documentoInteiro,
+    aviso: texto(bruto.aviso),
     selecao,
     documento,
   };
@@ -503,6 +506,9 @@ const CHAVES_DE_AVISO: Readonly<Record<string, Chave>> = {
   versao_desconhecida: "plotinfo.aviso.versaoDesconhecida",
   perfil_ignorado: "plotinfo.aviso.perfilIgnorado",
   configuracao_ignorada: "plotinfo.aviso.configuracaoIgnorada",
+  sem_conversor: "plotinfo.aviso.semConversor",
+  falha_do_conversor: "plotinfo.aviso.falhaDoConversor",
+  modo_simples: "plotinfo.aviso.modoSimples",
 };
 
 /** O aviso do arquivo de perfis e um codigo; a interface mostra a frase inteira. */

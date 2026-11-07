@@ -260,6 +260,17 @@ describe("leitura do resultado", () => {
     ).toBeNull();
   });
 
+  it("leva o codigo do aviso de fallback para a gaveta traduzir", () => {
+    const resultado = normalizarResultado(
+      resultadoCru({ aviso: "sem_conversor" }),
+      "job-1",
+      "reserva.pdf",
+    );
+    expect(resultado?.aviso).toBe("sem_conversor");
+    expect(mensagemDeAviso(resultado?.aviso ?? null)).toContain("mutool");
+    expect(mensagemDeAviso("modo_simples")).toContain("modo simples");
+  });
+
   it("leva o total com copias que o backend calculou", () => {
     const resultado = normalizarResultado(
       resultadoCru({ selecao: resumoCru({ totalComCopias: 144 }) }),

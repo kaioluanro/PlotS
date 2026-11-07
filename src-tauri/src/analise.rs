@@ -36,13 +36,11 @@ const MEMORIA_DE_ANALISES: usize = 32;
 /// Quantos conteúdos diferentes o cache de cobertura guarda ao mesmo tempo.
 const MEMORIA_DO_CACHE: usize = 8;
 
-/// Aviso entregue quando o pedido era CMYK e a análise terminou no modo simples.
-const AVISO_SEM_CONVERSOR: &str =
-    "O conversor mutool não está disponível; a análise usa o modo simples.";
-const AVISO_FALHA_DO_CONVERSOR: &str =
-    "O conversor mutool não concluiu a separação CMYK; a análise usa o modo simples.";
-const AVISO_MODO_SIMPLES: &str =
-    "Esta análise foi feita no modo simples, sem a separação CMYK do conversor.";
+/// Código de aviso entregue quando o pedido era CMYK e a análise terminou no modo simples.
+/// A interface traduz o código; o detalhe técnico vai em `aviso_detalhe`.
+const AVISO_SEM_CONVERSOR: &str = "sem_conversor";
+const AVISO_FALHA_DO_CONVERSOR: &str = "falha_do_conversor";
+const AVISO_MODO_SIMPLES: &str = "modo_simples";
 
 /// Cobertura de uma página, em percentual por canal.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -182,8 +180,10 @@ pub enum ModoUsado {
 pub struct ResultadoDaAnalise {
     pub total_de_paginas: usize,
     pub modo_usado: ModoUsado,
-    /// Motivo de o modo simples ter sido usado, quando o pedido era CMYK.
+    /// Código do motivo de o modo simples ter sido usado, quando o pedido era CMYK.
     pub aviso: Option<String>,
+    /// Detalhe técnico do aviso, para diagnóstico; não substitui a mensagem traduzida.
+    pub aviso_detalhe: Option<String>,
     pub dpi: u32,
     pub perfil: String,
     pub moeda: String,
@@ -925,6 +925,7 @@ pub fn montar_resultado(
         total_de_paginas: total,
         modo_usado,
         aviso: None,
+        aviso_detalhe: None,
         dpi: configuracao.dpi,
         perfil: perfil.id.clone(),
         moeda: perfil.moeda.clone(),
@@ -1059,6 +1060,56 @@ fn ordem_da_analise(preparo: &Preparo) -> Result<Vec<usize>, FalhaAnalise> {
     Ok(ordem)
 }
 
+/// Teto aproximado de bytes por lote do conversor.
+const LOTE_DO_CONVERSOR_BYTES: u64 = 256 * 1024 * 1024;
+/// Teto de páginas por lote, mesmo quando as páginas são pequenas.
+const LOTE_DO_CONVERSOR_PAGINAS: usize = 32;
+
+/// Divide as páginas que faltam em lotes que cabem no teto de disco do conversor. A estimativa
+/// usa a medida de cada página e o dpi; página sem medida vai sozinha, para nunca somar um valor
+/// desconhecido ao lote.
+fn lotes_do_conversor(
+    faltando: &[u32],
+    dimensoes: &[DimensoesPagina],
+    dpi: u32,
+) -> Vec<Vec<u32>> {
+    let mut lotes = Vec::new();
+    let mut lote = Vec::new();
+    let mut bytes = 0u64;
+    for pagina in faltando {
+        let estimativa = dimensoes
+            .get(usize::try_from(*pagina).unwrap_or(usize::MAX).saturating_sub(1))
+            .map_or(LOTE_DO_CONVERSOR_BYTES, |medida| {
+                bytes_do_pam(medida.largura_mm, medida.altura_mm, dpi)
+            });
+        let cabe = lote.is_empty()
+            || (lote.len() < LOTE_DO_CONVERSOR_PAGINAS
+                && bytes.saturating_add(estimativa) <= LOTE_DO_CONVERSOR_BYTES);
+        if !cabe {
+            lotes.push(std::mem::take(&mut lote));
+            bytes = 0;
+        }
+        lote.push(*pagina);
+        bytes = bytes.saturating_add(estimativa);
+    }
+    if !lote.is_empty() {
+        lotes.push(lote);
+    }
+    lotes
+}
+
+/// Bytes aproximados de um PAM CMYK (4 canais) para a medida e o dpi pedidos.
+fn bytes_do_pam(largura_mm: f64, altura_mm: f64, dpi: u32) -> u64 {
+    let pixels = (largura_mm / 25.4 * f64::from(dpi)).ceil().max(1.0)
+        * (altura_mm / 25.4 * f64::from(dpi)).ceil().max(1.0);
+    let bytes = pixels * 4.0 + 1024.0;
+    if !bytes.is_finite() || bytes >= u64::MAX as f64 {
+        u64::MAX
+    } else {
+        bytes as u64
+    }
+}
+
 fn executar<F, E>(
     analises: &Analises,
     id: &str,
@@ -1079,6 +1130,7 @@ where
     let mut chave = pedida.clone();
     let mut modo = ModoUsado::Simples;
     let mut aviso = None;
+    let mut aviso_detalhe = None;
     let mut coberturas = match analises.abrir_cache(&chave, &preparo.dimensoes) {
         Ok(coberturas) => coberturas,
         Err(falha) => return Desfecho::Falhou(falha),
@@ -1107,9 +1159,10 @@ where
         Err(falha) => return Desfecho::Falhou(falha),
     };
 
-    // Um processo do conversor cobre todas as páginas que ainda faltam. O resultado fica em
-    // memória e entra no cache conforme cada página é publicada; cancelar no meio não guarda um
-    // resultado parcial como se o lote tivesse terminado.
+    // O conversor trabalha em lotes com teto de bytes estimados: um documento longo a 300 dpi
+    // não pode encher o disco com todos os PAMs de uma vez. O resultado fica em memória e entra
+    // no cache conforme cada página é publicada; cancelar no meio não guarda um resultado parcial
+    // como se o lote tivesse terminado.
     let mut do_conversor: HashMap<usize, Cobertura> = HashMap::new();
     if modo == ModoUsado::Cmyk {
         let mut faltando = Vec::new();
@@ -1125,54 +1178,67 @@ where
             }
         }
         if !faltando.is_empty() {
-            let resultado = match conversor {
-                Some(conversor) => mutool::desenhar_cmyk_com(
-                    conversor,
-                    &preparo.pdf,
-                    &faltando,
-                    preparo.configuracao.dpi,
-                    mutool::LIMITE_PADRAO,
-                    cancelamento,
-                ),
-                None => Err(ErroMutool::Temporario {
-                    detalhe: "conversor ausente depois da conferência".to_owned(),
-                }),
-            };
-            match resultado {
-                Ok(paginas) => {
-                    for pagina in paginas {
-                        if let Some(indice) = usize::try_from(pagina.pagina)
-                            .ok()
-                            .and_then(|numero| numero.checked_sub(1))
-                            .filter(|indice| *indice < total)
-                        {
-                            do_conversor.insert(indice, pagina.cobertura);
+            let lotes = lotes_do_conversor(
+                &faltando,
+                &preparo.dimensoes,
+                preparo.configuracao.dpi,
+            );
+            let mut falha_do_conversor: Option<ErroMutool> = None;
+            for lote in lotes {
+                if cancelamento.load(Ordering::Relaxed) {
+                    return Desfecho::Cancelado;
+                }
+                let resultado = match conversor {
+                    Some(conversor) => mutool::desenhar_cmyk_com(
+                        conversor,
+                        &preparo.pdf,
+                        &lote,
+                        preparo.configuracao.dpi,
+                        mutool::LIMITE_PADRAO,
+                        cancelamento,
+                    ),
+                    None => Err(ErroMutool::Temporario {
+                        detalhe: "conversor ausente depois da conferência".to_owned(),
+                    }),
+                };
+                match resultado {
+                    Ok(paginas) => {
+                        let antes = do_conversor.len();
+                        for pagina in paginas {
+                            if let Some(indice) = usize::try_from(pagina.pagina)
+                                .ok()
+                                .and_then(|numero| numero.checked_sub(1))
+                                .filter(|indice| *indice < total)
+                            {
+                                do_conversor.insert(indice, pagina.cobertura);
+                            }
+                        }
+                        if do_conversor.len() - antes != lote.len() {
+                            falha_do_conversor = Some(ErroMutool::PamFaltando {
+                                pagina: lote.first().copied().unwrap_or(1),
+                            });
+                            break;
                         }
                     }
-                    if do_conversor.len() != faltando.len() {
-                        match trocar_para_simples(analises, &pedida, preparo) {
-                            Ok((nova_chave, novas)) => {
-                                chave = nova_chave;
-                                coberturas = novas;
-                                modo = ModoUsado::Simples;
-                                aviso = Some(AVISO_FALHA_DO_CONVERSOR.to_owned());
-                                do_conversor.clear();
-                            }
-                            Err(falha) => return Desfecho::Falhou(falha),
-                        }
+                    Err(ErroMutool::Cancelado) => return Desfecho::Cancelado,
+                    Err(falha) => {
+                        falha_do_conversor = Some(falha);
+                        break;
                     }
                 }
-                Err(ErroMutool::Cancelado) => return Desfecho::Cancelado,
-                Err(falha) => match trocar_para_simples(analises, &pedida, preparo) {
+            }
+            if let Some(falha) = falha_do_conversor {
+                match trocar_para_simples(analises, &pedida, preparo) {
                     Ok((nova_chave, novas)) => {
                         chave = nova_chave;
                         coberturas = novas;
                         modo = ModoUsado::Simples;
-                        aviso = Some(format!("{AVISO_FALHA_DO_CONVERSOR} {falha}"));
+                        aviso = Some(AVISO_FALHA_DO_CONVERSOR.to_owned());
+                        aviso_detalhe = Some(falha.to_string());
                         do_conversor.clear();
                     }
                     Err(falha) => return Desfecho::Falhou(falha),
-                },
+                }
             }
         }
     }
@@ -1328,6 +1394,7 @@ where
         Err(falha) => return Desfecho::Falhou(falha),
     };
     resultado.aviso = aviso;
+    resultado.aviso_detalhe = aviso_detalhe;
     analises.guardar_concluida(id, chave, preparo);
     Desfecho::Concluido(resultado)
 }
@@ -2438,13 +2505,14 @@ mod testes {
             outro => panic!("{outro:?}"),
         };
         assert_eq!(resultado.modo_usado, ModoUsado::Simples);
+        assert_eq!(resultado.aviso.as_deref(), Some(AVISO_FALHA_DO_CONVERSOR));
         assert!(
             resultado
-                .aviso
+                .aviso_detalhe
                 .as_deref()
-                .is_some_and(|aviso| aviso.contains("mutool")),
+                .is_some_and(|detalhe| detalhe.contains("mutool")),
             "{:?}",
-            resultado.aviso
+            resultado.aviso_detalhe
         );
         assert_eq!(fonte.chamadas, vec![1, 2, 3]);
         assert_eq!(
@@ -2719,5 +2787,52 @@ mod testes {
             .recalcular_com_perfil("real", &simples, None, 1, &preparo.perfil)
             .unwrap_err();
         assert_eq!(erro.codigo, CodigoFalhaAnalise::CacheAusente);
+    }
+
+    #[test]
+    fn o_conversor_recebe_lotes_limitados_por_bytes_e_por_paginas() {
+        let a4 = DimensoesPagina::new(210.0, 297.0);
+        let dimensoes = vec![a4; 100];
+        let paginas: Vec<u32> = (1..=100).collect();
+        let lotes = lotes_do_conversor(&paginas, &dimensoes, 300);
+        assert!(lotes.len() > 1);
+        assert_eq!(
+            lotes.iter().flatten().copied().collect::<Vec<_>>(),
+            paginas
+        );
+        let estimativa = bytes_do_pam(210.0, 297.0, 300);
+        for lote in &lotes {
+            assert!(lote.len() <= LOTE_DO_CONVERSOR_PAGINAS);
+            let total = (lote.len() as u64).saturating_mul(estimativa);
+            assert!(total <= LOTE_DO_CONVERSOR_BYTES, "{total} bytes");
+        }
+    }
+
+    #[test]
+    fn paginas_pequenas_cabem_no_mesmo_lote_ate_o_teto_de_quantidade() {
+        let dimensoes = vec![DimensoesPagina::new(10.0, 10.0); 40];
+        let paginas: Vec<u32> = (1..=40).collect();
+        let lotes = lotes_do_conversor(&paginas, &dimensoes, 72);
+        assert_eq!(lotes.len(), 2);
+        assert_eq!(lotes[0].len(), LOTE_DO_CONVERSOR_PAGINAS);
+        assert_eq!(lotes[1].len(), 40 - LOTE_DO_CONVERSOR_PAGINAS);
+    }
+
+    #[test]
+    fn pagina_sem_medida_ou_com_medida_invalida_vai_sozinha_no_lote() {
+        let sem_medida =
+            lotes_do_conversor(&[1, 2, 3], &[DimensoesPagina::new(210.0, 297.0)], 300);
+        assert_eq!(sem_medida, vec![vec![1], vec![2], vec![3]]);
+        let invalida = vec![DimensoesPagina::new(f64::NAN, f64::INFINITY); 3];
+        let lotes = lotes_do_conversor(&[1, 2, 3], &invalida, 300);
+        assert_eq!(lotes, vec![vec![1], vec![2], vec![3]]);
+    }
+
+    #[test]
+    fn a_estimativa_do_pam_acompanha_a_medida_e_o_dpi() {
+        let a4_150 = bytes_do_pam(210.0, 297.0, 150);
+        let a4_300 = bytes_do_pam(210.0, 297.0, 300);
+        assert!((8_000_000..9_000_000).contains(&a4_150), "{a4_150}");
+        assert!((32_000_000..36_000_000).contains(&a4_300), "{a4_300}");
     }
 }

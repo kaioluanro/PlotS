@@ -237,6 +237,7 @@ export function useTintaDoDocumento(
           aoFim(resultadoNovo) {
             if (!ativo) return;
             setResultado(resultadoNovo);
+            setAviso(mensagemDeAviso(resultadoNovo.aviso));
             setProgresso(null);
             setRecalculando(false);
             setSituacao("pronto");
@@ -328,6 +329,7 @@ export function useTintaDoDocumento(
           );
           if (novo !== null) {
             setResultado(novo);
+            setAviso(mensagemDeAviso(novo.aviso));
             setSituacao("pronto");
             setProgresso(null);
           }

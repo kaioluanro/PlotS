@@ -72,6 +72,7 @@ const RESULTADO: ResultadoDaAnalise = {
   qualidade: "normal",
   copias: 12,
   documento_inteiro: false,
+  aviso: null,
   selecao: {
     paginas: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
     quantidade: 12,
