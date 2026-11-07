@@ -260,6 +260,7 @@ pub fn iniciar_impressao(
     marca_controle: Option<MarcaRecebida>,
     face: FaceRecebida,
     copias: Option<u32>,
+    uma_copia_por_vez: Option<bool>,
 ) -> Vec<String> {
     let emitir: Emissor = Arc::new(move |cartao| {
         // Sem janela nao ha quem mostrar; o trabalho segue e termina sozinho.
@@ -304,6 +305,7 @@ pub fn iniciar_impressao(
                                 .com_controle(marca_controle.map(Into::into))
                                 .com_impressao_esperada(impressao.clone())
                                 .com_aba(aba)
+                                .com_uma_copia_por_vez(uma_copia_por_vez.unwrap_or(false))
                                 .com_copias(copias.map_or(1, |valor| {
                                     usize::try_from(valor).unwrap_or(usize::MAX)
                                 }))

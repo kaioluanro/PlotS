@@ -8,6 +8,7 @@ import styles from "./Sidebar.module.css";
 
 interface Props {
   blocoFace: ReactNode;
+  blocoSequencia?: ReactNode;
   campoCopias: ReactNode;
   botao: EstadoDoEnvio;
   /** Falso enquanto o texto da quantidade nao e um numero de 1 a 999: o envio espera a correcao. */
@@ -23,6 +24,7 @@ interface Props {
  */
 export function GrupoDeEnvio({
   blocoFace,
+  blocoSequencia = null,
   campoCopias,
   botao,
   copiasValidas,
@@ -38,6 +40,7 @@ export function GrupoDeEnvio({
   return (
     <div className={styles.grupoEnvio}>
       {blocoFace}
+      {blocoSequencia}
       {campoCopias}
       <button
         ref={botaoRef}

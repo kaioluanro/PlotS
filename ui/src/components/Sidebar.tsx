@@ -94,6 +94,7 @@ interface Props {
   blocoGrupos: ReactNode;
   blocoAjuste: ReactNode;
   blocoFace: ReactNode;
+  blocoSequencia?: ReactNode;
   campoCopias: ReactNode;
   /** Falso enquanto a quantidade digitada nao e um numero de 1 a 999: o envio fica parado. */
   copiasValidas?: boolean;
@@ -122,6 +123,7 @@ export function Sidebar({
   blocoGrupos,
   blocoAjuste,
   blocoFace,
+  blocoSequencia = null,
   campoCopias,
   copiasValidas = true,
   esperasDoRodape,
@@ -310,6 +312,7 @@ export function Sidebar({
         </div>
         <GrupoDeEnvio
           blocoFace={blocoFace}
+          blocoSequencia={blocoSequencia}
           campoCopias={campoCopias}
           botao={botao}
           copiasValidas={copiasValidas}

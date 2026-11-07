@@ -10,9 +10,11 @@ use crate::leitura_pdf;
 use crate::tempo_de_impressao::{Cronometro, Medida, Relogio};
 use plots_core::distribuicao::ModoDistribuicao;
 use plots_core::{
-    frentes_do_lote, plano_automatico_copias_do_intervalo, plano_copias_do_intervalo,
-    versos_do_lote, DimensoesPagina, FormatoPapel, IntervaloPaginas, LotePapel, ModeloImpressora,
-    OrdemPassadas, Pagina, Papel, PerfilImpressora, RepartoAutomatico,
+    frentes_do_lote, plano_automatico_copias_do_intervalo,
+    plano_automatico_copias_do_intervalo_juntas, plano_copias_do_intervalo,
+    plano_copias_do_intervalo_separadas, versos_do_lote, DimensoesPagina, FormatoPapel,
+    IntervaloPaginas, LotePapel, ModeloImpressora, OrdemPassadas, Pagina, Papel, PerfilImpressora,
+    RepartoAutomatico,
 };
 use plots_perfis::historico::ResultadoDoEnvio;
 use plots_windows::plots_print::fluxo::{
@@ -309,6 +311,8 @@ pub struct Cartao {
     pub tem_verso: bool,
     /// A cópia que o lote atual imprime, a partir de 1. `None` quando o lote mistura cópias.
     pub copia: Option<usize>,
+    /// O plano foi separado por cópia: a interface mostra "Cópia N de M" também no fluxo manual.
+    pub por_copia: bool,
     /// Quantas cópias o trabalho inteiro imprime.
     pub copias: usize,
 }
@@ -364,6 +368,7 @@ impl Identidade {
             alcance: "frente_e_verso",
             tem_verso: true,
             copia: None,
+            por_copia: false,
             copias: 1,
         }
     }
@@ -393,6 +398,8 @@ pub struct Preparo<B: Backend> {
     pub condutor: Condutor<B>,
     pub recolocar: Recolocar,
     pub vira_para_ler: bool,
+    /// O plano foi separado por cópia e o próximo lote da frente sai sem clique.
+    pub uma_copia_por_vez: bool,
 }
 
 struct Andamento<'a, B: Backend> {
@@ -401,6 +408,8 @@ struct Andamento<'a, B: Backend> {
     emitir: &'a Emissor,
     recolocar: Recolocar,
     vira_para_ler: bool,
+    /// Na frente, o próximo lote é a próxima cópia e sai sozinho.
+    uma_copia_por_vez: bool,
     resultado: Option<Resultado>,
     aviso: Option<AvisoAberto>,
     /// Sem consultas ate o usuario decidir: a fila nao responde ou nao confirmou a tempo.
@@ -468,6 +477,7 @@ where
             .condutor
             .lote()
             .and_then(|item| copia_unica(&item.lote.paginas));
+        cartao.por_copia = self.uma_copia_por_vez && self.condutor.alcance() == Alcance::SoFrentes;
         cartao.copias = copias_do_trabalho(self.condutor.lotes());
         cartao.troca_de_papel = self
             .condutor
@@ -748,6 +758,14 @@ where
                 if self.condutor.proximo_segue_sozinho() {
                     return self.enviar(PassadaDoCartao::DuasFaces);
                 }
+                // Na frente, cada lote e uma copia: a proxima sai so depois da confirmacao acima.
+                // Trocar de papel continua pedindo a pessoa, para nao imprimir no papel errado.
+                if self.uma_copia_por_vez
+                    && self.condutor.alcance() == Alcance::SoFrentes
+                    && self.condutor.troca_de_papel().is_none()
+                {
+                    return self.enviar(self.primeira_passada());
+                }
                 self.publicar(if self.condutor.alcance() == Alcance::SoVersos {
                     EstadoCartao::Aguardando
                 } else {
@@ -843,6 +861,7 @@ where
         emitir,
         recolocar: preparo.recolocar,
         vira_para_ler: preparo.vira_para_ler,
+        uma_copia_por_vez: preparo.uma_copia_por_vez,
         resultado: None,
         aviso: None,
         parado: false,
@@ -1184,6 +1203,8 @@ pub struct Pedido {
     pub driver_da_simulada: DriverDaSimulada,
     /// Cópias do documento: cada uma sai inteira, com as suas folhas fechadas.
     pub copias: usize,
+    /// Na frente, cada cópia vira um trabalho e a próxima só sai depois da fila confirmar.
+    pub uma_copia_por_vez: bool,
     /// Impressão do documento guardada pela frente desta aba: o verso só sai se o arquivo ainda for o mesmo.
     pub impressao_esperada: Option<String>,
     /// Aba do documento: a frente que prepara com este pedido guarda a impressão que leu para ela.
@@ -1207,9 +1228,15 @@ impl Pedido {
             controle: None,
             driver_da_simulada: DriverDaSimulada::default(),
             copias: 1,
+            uma_copia_por_vez: false,
             impressao_esperada: None,
             aba: None,
         }
+    }
+
+    pub fn com_uma_copia_por_vez(mut self, uma_copia_por_vez: bool) -> Self {
+        self.uma_copia_por_vez = uma_copia_por_vez;
+        self
     }
 
     pub fn com_impressao_esperada(mut self, impressao: Option<String>) -> Self {
@@ -1297,15 +1324,30 @@ pub(crate) fn planejar_pedido(
         .map(|papel| papel.dimensoes_no_papel(dimensoes));
     let medidas = ajustadas.as_deref().unwrap_or(dimensoes);
     let ordem = OrdemPassadas::default();
+    // O verso é sempre um maço só; a separação por cópia vale para as frentes.
+    let separar = pedido.uma_copia_por_vez && pedido.alcance != Alcance::SoVersos;
     let plano = if automatico {
-        plano_automatico_copias_do_intervalo(
-            medidas,
-            pedido.intervalo,
-            pedido.copias,
-            ordem,
-            perfil,
-            RepartoAutomatico::PorTrechoDePapel,
-        )
+        if separar {
+            plano_automatico_copias_do_intervalo(
+                medidas,
+                pedido.intervalo,
+                pedido.copias,
+                ordem,
+                perfil,
+                RepartoAutomatico::PorTrechoDePapel,
+            )
+        } else {
+            plano_automatico_copias_do_intervalo_juntas(
+                medidas,
+                pedido.intervalo,
+                pedido.copias,
+                ordem,
+                perfil,
+                RepartoAutomatico::PorTrechoDePapel,
+            )
+        }
+    } else if separar {
+        plano_copias_do_intervalo_separadas(medidas, pedido.intervalo, pedido.copias, ordem, perfil)
     } else {
         plano_copias_do_intervalo(medidas, pedido.intervalo, pedido.copias, ordem, perfil)
     }
@@ -1397,7 +1439,13 @@ pub fn preparar_simulada(
         SimGuiado::novo(Mecanica::do_modelo(modelo), modelo.gesto().into()),
         driver.inverte,
     );
-    let preparo = preparo_simulado(modelo, backend, lotes, pedido.alcance)?;
+    let preparo = preparo_simulado(
+        modelo,
+        backend,
+        lotes,
+        pedido.alcance,
+        pedido.uma_copia_por_vez,
+    )?;
     guardar_frente_lida(pedido, &lido.impressao);
     Ok(preparo)
 }
@@ -1420,7 +1468,13 @@ pub fn preparar_simulada_automatica(
         SimGuiado::automatica(Mecanica::do_modelo(modelo), modelo.gesto().into(), medidas),
         false,
     );
-    let preparo = preparo_simulado(modelo, backend, lotes, pedido.alcance)?;
+    let preparo = preparo_simulado(
+        modelo,
+        backend,
+        lotes,
+        pedido.alcance,
+        pedido.uma_copia_por_vez,
+    )?;
     guardar_frente_lida(pedido, &lido.impressao);
     Ok(preparo)
 }
@@ -1430,6 +1484,7 @@ fn preparo_simulado(
     backend: DriverDeTeste<SimGuiado>,
     lotes: Vec<LoteDoFluxo>,
     alcance: Alcance,
+    uma_copia_por_vez: bool,
 ) -> Result<Preparo<DriverDeTeste<SimGuiado>>, Motivo> {
     let condutor = Condutor::novo(backend, lotes, ESPERA_SIMULADA)
         .map_err(|erro| motivo_do_job(&erro))?
@@ -1439,6 +1494,7 @@ fn preparo_simulado(
         condutor,
         recolocar: Recolocar::da_instrucao(Instrucao::do_modelo(modelo)),
         vira_para_ler,
+        uma_copia_por_vez,
     })
 }
 
@@ -1494,6 +1550,7 @@ pub fn preparar_fila(
         condutor,
         recolocar,
         vira_para_ler,
+        uma_copia_por_vez: pedido.uma_copia_por_vez,
     })
 }
 

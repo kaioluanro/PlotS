@@ -57,6 +57,13 @@ export function copiasDaFace(aba: Pick<Aba, "copias">, face: FaceDoEnvio): numbe
   return aba.copias?.[face] ?? 1;
 }
 
+/** Abas sem o campo foram abertas antes da opção; o padrão do produto é uma cópia por vez. */
+export function umaCopiaPorVezDaAba(
+  aba: Pick<Aba, "umaCopiaPorVez"> | null,
+): boolean {
+  return aba?.umaCopiaPorVez ?? true;
+}
+
 export interface Aba {
   id: number;
   documento: Documento;
@@ -75,6 +82,8 @@ export interface Aba {
   frentesProntas: readonly string[];
   /** Quantas cópias sai de cada face. O Verso começa com o número da Frente. */
   copias?: CopiasDaAba;
+  /** Na frente, cada cópia sai em um trabalho e a próxima só depois da fila confirmar. */
+  umaCopiaPorVez?: boolean;
   paginas: PaginasDaAba;
   /** Um cartao por impressora; trocar de aba troca a lista, e os trabalhos seguem. */
   cartoes: readonly Cartao[];
@@ -113,6 +122,7 @@ export type AcaoAbas =
   | { tipo: "definir_intervalo"; id: number; intervalo: RascunhoIntervalo | null }
   | { tipo: "definir_face"; id: number; face: FaceDoEnvio }
   | { tipo: "definir_copias"; id: number; face: FaceDoEnvio; valor: number }
+  | { tipo: "definir_uma_copia_por_vez"; id: number; ligado: boolean }
   | { tipo: "definir_papel_ajuste"; id: number; papel: PapelDeAjuste | null }
   | { tipo: "definir_controle"; id: number; ligado: boolean }
   | { tipo: "aplicar_grupo"; id: number; impressoras: readonly string[] }
@@ -206,6 +216,7 @@ export function reduzirAbas(estado: EstadoAbas, acao: AcaoAbas): EstadoAbas {
         frenteEnviada: null,
         frentesProntas: [],
         copias: { frente: 1, verso: 1 },
+        umaCopiaPorVez: true,
         paginas: { estado: "contando" },
         cartoes: [],
       };
@@ -268,6 +279,8 @@ export function reduzirAbas(estado: EstadoAbas, acao: AcaoAbas): EstadoAbas {
               : { ...atuais, verso: acao.valor },
         };
       });
+    case "definir_uma_copia_por_vez":
+      return mudarAba(estado, acao.id, (aba) => ({ ...aba, umaCopiaPorVez: acao.ligado }));
     case "definir_papel_ajuste":
       return mudarAba(estado, acao.id, (aba) => ({ ...aba, papelDeAjuste: acao.papel }));
     case "definir_controle":

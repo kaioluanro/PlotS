@@ -63,6 +63,27 @@ describe("grupo de envio: envio em andamento", () => {
   });
 });
 
+describe("grupo de envio: ordem dos blocos", () => {
+  it("a sequencia fica entre a face e a quantidade", () => {
+    const markup = renderToStaticMarkup(
+      <GrupoDeEnvio
+        blocoFace={<p>bloco face</p>}
+        blocoSequencia={<p>bloco sequencia</p>}
+        campoCopias={<p>campo copias</p>}
+        botao={ESTADO}
+        copiasValidas
+        aoImprimir={() => undefined}
+      />,
+    );
+    const face = markup.indexOf("bloco face");
+    const sequencia = markup.indexOf("bloco sequencia");
+    const copias = markup.indexOf("campo copias");
+    expect(face).toBeGreaterThanOrEqual(0);
+    expect(sequencia).toBeGreaterThan(face);
+    expect(copias).toBeGreaterThan(sequencia);
+  });
+});
+
 describe("grupo de envio: nome por extenso", () => {
   it("o botao leva o nome com a contagem por extenso, e o rotulo visivel continua", () => {
     const markup = grupo({});

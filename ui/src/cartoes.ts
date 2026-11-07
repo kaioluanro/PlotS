@@ -81,6 +81,8 @@ export interface Cartao {
   loteAutomatico?: boolean;
   anteriorAutomatico?: boolean;
   temAutomatico?: boolean;
+  /** O plano foi separado por cópia: o cartão mostra "Cópia N de M" também no fluxo manual. */
+  porCopia?: boolean;
 }
 
 /** De qual a qual pagina vai um lote, com os numeros do documento. */
@@ -431,7 +433,9 @@ export function textoDasPaginas(faixa: FaixaDoLote, idioma: Idioma = idiomaAtual
  * Lote misturado, ou lote que nao e automatico, nao leva numero de copia.
  */
 export function copiaDoLote(cartao: Cartao): number | null {
-  return cartao.loteAutomatico === true && cartao.copia != null && (cartao.copias ?? 1) > 1
+  return (cartao.loteAutomatico === true || cartao.porCopia === true) &&
+    cartao.copia != null &&
+    (cartao.copias ?? 1) > 1
     ? cartao.copia
     : null;
 }
@@ -451,7 +455,7 @@ export function linhaDaCopia(cartao: Cartao, idioma: Idioma = idiomaAtual): stri
   const tt = trechosPorCopia(cartao);
   if (cartao.estado.tipo === "concluido") {
     // Uma copia por lote: as folhas do ultimo lote sao as de uma copia, e o total sai da multiplicacao.
-    if (!(cartao.temAutomatico === true && copias > 1 && tt === 1)) return null;
+    if (!((cartao.temAutomatico === true || cartao.porCopia === true) && copias > 1 && tt === 1)) return null;
     return traduzir(idioma, "cartao.copia.concluido", {
       total: String(copias),
       folhas: textoDasFolhas((cartao.folhasDoLote ?? 0) * copias, idioma),
@@ -1026,6 +1030,8 @@ export interface EscolhasDoEnvio {
   papel?: string | null;
   /** Copias da face que sai: com duas ou mais, a primeira linha mostra o numero. */
   copias?: number;
+  /** As frentes saem uma copia por vez; a confirmacao avisa antes de enviar. */
+  umaCopiaPorVez?: boolean;
   /** O que vem entre a rota e as instrucoes gerais: folha de controle, driver e velocidade. */
   notasDoMeio?: readonly string[];
 }
@@ -1115,6 +1121,9 @@ export function linhasDoEnvio(
     notas.push(traduzir(idioma, "cartao.envio.separado", { a: String(a), b: String(b) }));
   }
   if (resumo.assinado) notas.push(traduzir(idioma, "cartao.envio.assinado"));
+  if (escolhas.umaCopiaPorVez === true && (escolhas.copias ?? 1) > 1) {
+    notas.push(traduzir(idioma, "sequencia.nota"));
+  }
   if (reais.some((impressora) => impressora.modo === "jato" || impressora.modo === "laser")) {
     notas.push(traduzir(idioma, "modo.seletor.nota"));
   }

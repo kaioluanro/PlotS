@@ -910,6 +910,30 @@ pub fn plano_copias_do_intervalo(
     ordem_passadas: OrdemPassadas,
     perfil: PerfilImpressora,
 ) -> Result<Vec<LotePapel>, ErroPapel> {
+    plano_copias_do_intervalo_com_modo(paginas, intervalo, copias, ordem_passadas, perfil, true)
+}
+
+/// Cópias do documento em lotes separados: cada cópia fica no seu próprio lote, para o envio
+/// poder mandar uma de cada vez e esperar a fila confirmar antes da próxima. A ordem das
+/// passadas e o giro do perfil valem para cada cópia, como se ela fosse um maço fechado.
+pub fn plano_copias_do_intervalo_separadas(
+    paginas: &[DimensoesPagina],
+    intervalo: Option<IntervaloPaginas>,
+    copias: usize,
+    ordem_passadas: OrdemPassadas,
+    perfil: PerfilImpressora,
+) -> Result<Vec<LotePapel>, ErroPapel> {
+    plano_copias_do_intervalo_com_modo(paginas, intervalo, copias, ordem_passadas, perfil, false)
+}
+
+fn plano_copias_do_intervalo_com_modo(
+    paginas: &[DimensoesPagina],
+    intervalo: Option<IntervaloPaginas>,
+    copias: usize,
+    ordem_passadas: OrdemPassadas,
+    perfil: PerfilImpressora,
+    juntar: bool,
+) -> Result<Vec<LotePapel>, ErroPapel> {
     if !(1..=LIMITE_COPIAS).contains(&copias) {
         return Err(ErroPapel::CopiasInvalidas { copias });
     }
@@ -932,18 +956,11 @@ pub fn plano_copias_do_intervalo(
             plano_em_trechos_do_intervalo(paginas, intervalo, ordem_passadas, sem_ajuste_do_perfil)?
         {
             da_copia(&mut lote, copia);
-            match lotes.last_mut() {
-                Some(anterior)
-                    if anterior.papel == lote.papel && anterior.duas_faces == lote.duas_faces =>
-                {
-                    anterior.paginas.extend(lote.paginas);
-                    anterior.copias.extend(lote.copias);
-                    anterior.passada1.extend(lote.passada1);
-                    anterior.passada2.extend(lote.passada2);
-                }
-                _ => lotes.push(lote),
-            }
+            lotes.push(lote);
         }
+    }
+    if juntar {
+        juntar_lotes(&mut lotes)?;
     }
     for lote in &mut lotes {
         if perfil.passada1_inversa {
@@ -961,6 +978,46 @@ pub fn plano_copias_do_intervalo(
     Ok(lotes)
 }
 
+/// Junta lotes vizinhos do mesmo papel e do mesmo fluxo, preservando a ordem das páginas e das
+/// cópias. É o que transforma várias cópias em um maço só.
+fn juntar_lotes(lotes: &mut Vec<LotePapel>) -> Result<(), ErroPapel> {
+    let mut juntos: Vec<LotePapel> = Vec::new();
+    juntos
+        .try_reserve_exact(lotes.len())
+        .map_err(|_| ErroPapel::ReservaFalhou)?;
+    for lote in lotes.drain(..) {
+        match juntos.last_mut() {
+            Some(anterior)
+                if anterior.papel == lote.papel && anterior.duas_faces == lote.duas_faces =>
+            {
+                anterior
+                    .paginas
+                    .try_reserve(lote.paginas.len())
+                    .map_err(|_| ErroPapel::ReservaFalhou)?;
+                anterior
+                    .copias
+                    .try_reserve(lote.copias.len())
+                    .map_err(|_| ErroPapel::ReservaFalhou)?;
+                anterior
+                    .passada1
+                    .try_reserve(lote.passada1.len())
+                    .map_err(|_| ErroPapel::ReservaFalhou)?;
+                anterior
+                    .passada2
+                    .try_reserve(lote.passada2.len())
+                    .map_err(|_| ErroPapel::ReservaFalhou)?;
+                anterior.paginas.extend(lote.paginas);
+                anterior.copias.extend(lote.copias);
+                anterior.passada1.extend(lote.passada1);
+                anterior.passada2.extend(lote.passada2);
+            }
+            _ => juntos.push(lote),
+        }
+    }
+    *lotes = juntos;
+    Ok(())
+}
+
 /// Cópias para a impressora que imprime as duas faces sozinha. Cada cópia sai como um trabalho
 /// próprio, com as páginas do trecho em ordem: a impressora fecha a última folha de uma cópia ímpar
 /// com o verso em branco, e nenhuma página se junta a outra cópia. Não se usa a cópia do driver.
@@ -971,6 +1028,47 @@ pub fn plano_automatico_copias_do_intervalo(
     ordem_passadas: OrdemPassadas,
     perfil: PerfilImpressora,
     reparto: RepartoAutomatico,
+) -> Result<Vec<LotePapel>, ErroPapel> {
+    plano_automatico_copias_do_intervalo_com_modo(
+        paginas,
+        intervalo,
+        copias,
+        ordem_passadas,
+        perfil,
+        reparto,
+        false,
+    )
+}
+
+/// Cópias para a impressora que imprime as duas faces sozinha, todas no mesmo trabalho quando
+/// o papel e o fluxo permitem. É o comportamento de quem desmarca "uma cópia por vez".
+pub fn plano_automatico_copias_do_intervalo_juntas(
+    paginas: &[DimensoesPagina],
+    intervalo: Option<IntervaloPaginas>,
+    copias: usize,
+    ordem_passadas: OrdemPassadas,
+    perfil: PerfilImpressora,
+    reparto: RepartoAutomatico,
+) -> Result<Vec<LotePapel>, ErroPapel> {
+    plano_automatico_copias_do_intervalo_com_modo(
+        paginas,
+        intervalo,
+        copias,
+        ordem_passadas,
+        perfil,
+        reparto,
+        true,
+    )
+}
+
+fn plano_automatico_copias_do_intervalo_com_modo(
+    paginas: &[DimensoesPagina],
+    intervalo: Option<IntervaloPaginas>,
+    copias: usize,
+    ordem_passadas: OrdemPassadas,
+    perfil: PerfilImpressora,
+    reparto: RepartoAutomatico,
+    juntar: bool,
 ) -> Result<Vec<LotePapel>, ErroPapel> {
     if !(1..=LIMITE_COPIAS).contains(&copias) {
         return Err(ErroPapel::CopiasInvalidas { copias });
@@ -996,6 +1094,9 @@ pub fn plano_automatico_copias_do_intervalo(
         lotes[inicio..]
             .iter_mut()
             .for_each(|lote| da_copia(lote, copia));
+    }
+    if juntar {
+        juntar_lotes(&mut lotes)?;
     }
     Ok(lotes)
 }
@@ -1168,6 +1269,103 @@ mod tests {
         )
         .unwrap();
         assert_eq!(um, esperado);
+    }
+
+    #[test]
+    fn copias_separadas_ficam_em_um_lote_por_copia() {
+        let perfil = PerfilImpressora::default();
+        let lotes = plano_copias_do_intervalo_separadas(
+            &[A4; 3],
+            None,
+            3,
+            OrdemPassadas::ParesPrimeiro,
+            perfil,
+        )
+        .unwrap();
+        assert_eq!(lotes.len(), 3);
+        for (indice, lote) in lotes.iter().enumerate() {
+            assert_eq!(
+                lote.paginas,
+                [Some(1), Some(2), Some(3), None],
+                "cópia {indice}"
+            );
+            assert!(
+                lote.copias.iter().all(|copia| *copia == indice),
+                "cópia {indice}"
+            );
+            let (passada1, passada2) = numeros_das_passadas(lote);
+            assert_eq!(passada1, [Some(2), None], "cópia {indice}");
+            assert_eq!(passada2, [Some(1), Some(3)], "cópia {indice}");
+        }
+    }
+
+    #[test]
+    fn copias_separadas_aplicam_a_inversao_do_perfil_em_cada_copia() {
+        let mut perfil = PerfilImpressora::default();
+        perfil.passada1_inversa = true;
+        perfil.passada2_inversa = true;
+        let lotes = plano_copias_do_intervalo_separadas(
+            &[A4; 4],
+            None,
+            2,
+            OrdemPassadas::default(),
+            perfil,
+        )
+        .unwrap();
+        assert_eq!(lotes.len(), 2);
+        for lote in &lotes {
+            let (passada1, passada2) = numeros_das_passadas(lote);
+            assert_eq!(passada1, [Some(4), Some(2)]);
+            assert_eq!(passada2, [Some(3), Some(1)]);
+        }
+    }
+
+    #[test]
+    fn automatico_juntas_poe_as_copias_no_mesmo_trabalho() {
+        let perfil = PerfilImpressora::default();
+        let lotes = plano_automatico_copias_do_intervalo_juntas(
+            &[A4; 4],
+            None,
+            3,
+            OrdemPassadas::default(),
+            perfil,
+            RepartoAutomatico::PorTrechoDePapel,
+        )
+        .unwrap();
+        assert_eq!(lotes.len(), 1);
+        assert!(lotes[0].duas_faces);
+        assert_eq!(lotes[0].paginas.len(), 12);
+        assert_eq!(lotes[0].copias, [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2]);
+        let numeros: Vec<Option<usize>> = lotes[0].passada1.iter().map(|p| p.numero).collect();
+        let esperado: Vec<Option<usize>> = (0..3).flat_map(|_| (1..=4).map(Some)).collect();
+        assert_eq!(numeros, esperado);
+    }
+
+    #[test]
+    fn automatico_separadas_nao_juntam_copias_de_papeis_diferentes() {
+        let perfil = PerfilImpressora::default();
+        let mut misto = vec![A4; 2];
+        misto.push(A5);
+        let separadas = plano_automatico_copias_do_intervalo(
+            &misto,
+            None,
+            2,
+            OrdemPassadas::default(),
+            perfil,
+            RepartoAutomatico::PorTrechoDePapel,
+        )
+        .unwrap();
+        let juntas = plano_automatico_copias_do_intervalo_juntas(
+            &misto,
+            None,
+            2,
+            OrdemPassadas::default(),
+            perfil,
+            RepartoAutomatico::PorTrechoDePapel,
+        )
+        .unwrap();
+        assert_eq!(separadas, juntas);
+        assert_eq!(juntas.len(), 4);
     }
 
     fn numeros_das_passadas(lote: &LotePapel) -> (Vec<Option<usize>>, Vec<Option<usize>>) {

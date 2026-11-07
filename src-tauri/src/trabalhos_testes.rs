@@ -68,6 +68,43 @@ fn ajustar_papel_planeja_documento_misto_em_um_formato() {
     assert_eq!(lotes[0].papel.formato, plots_core::FormatoPapel::A4);
 }
 
+#[test]
+fn uma_copia_por_vez_separa_as_frentes_manuais_e_o_automatico() {
+    let perfil = PerfilImpressora::default();
+    let manual = Pedido::novo("documento.pdf".into(), None).com_copias(3);
+    let junto = planejar_pedido(&[A4; 2], &manual, perfil, false).unwrap();
+    assert_eq!(junto.len(), 1, "sem a opção, as frentes vão num maço só");
+    let separado = planejar_pedido(
+        &[A4; 2],
+        &manual.clone().com_uma_copia_por_vez(true),
+        perfil,
+        false,
+    )
+    .unwrap();
+    assert_eq!(separado.len(), 3, "com a opção, uma frente por cópia");
+    for (indice, lote) in separado.iter().enumerate() {
+        assert!(
+            lote.lote
+                .paginas
+                .iter()
+                .all(|pagina| pagina.copia == indice),
+            "cópia {indice}"
+        );
+    }
+
+    let automatico = manual.clone().com_alcance(Alcance::SoFrentes);
+    let junto = planejar_pedido(&[A4; 2], &automatico, perfil, true).unwrap();
+    assert_eq!(junto.len(), 1, "sem a opção, o automático junta as cópias");
+    let separado = planejar_pedido(
+        &[A4; 2],
+        &automatico.com_uma_copia_por_vez(true),
+        perfil,
+        true,
+    )
+    .unwrap();
+    assert_eq!(separado.len(), 3, "com a opção, uma cópia por trabalho");
+}
+
 impl ParaMotivo for String {
     fn para_motivo(&self) -> Motivo {
         Motivo::novo("sistema", self.clone())
@@ -90,6 +127,7 @@ enum Leitura {
 struct Falso {
     enviados: Arc<Mutex<Vec<Passada>>>,
     cancelados: Arc<Mutex<u32>>,
+    eventos: Arc<Mutex<Vec<&'static str>>>,
     leituras: VecDeque<Leitura>,
     motivo: Option<String>,
     condicao: Option<CondicaoDoAviso>,
@@ -104,6 +142,10 @@ impl Backend for Falso {
         if self.recusa_ao_enviar {
             return Err("recusado".to_string());
         }
+        self.eventos
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push("enviar");
         self.enviados
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -111,6 +153,10 @@ impl Backend for Falso {
         Ok(())
     }
     fn consultar(&mut self) -> Result<EstadoEnvio, String> {
+        self.eventos
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push("consultar");
         self.motivo = None;
         self.condicao = None;
         self.mensagem = None;
@@ -177,6 +223,7 @@ struct Cena {
     cartoes: Arc<Mutex<Vec<Cartao>>>,
     enviados: Arc<Mutex<Vec<Passada>>>,
     cancelados: Arc<Mutex<u32>>,
+    eventos: Arc<Mutex<Vec<&'static str>>>,
 }
 
 fn identidade(impressora: &str) -> Identidade {
@@ -195,6 +242,7 @@ impl Cena {
             cartoes: Arc::default(),
             enviados: Arc::default(),
             cancelados: Arc::default(),
+            eventos: Arc::default(),
         }
     }
 
@@ -224,6 +272,7 @@ impl Cena {
         self.gerente
             .iniciar(identidade(impressora), self.emissor(), move || {
                 Ok(Preparo {
+                    uma_copia_por_vez: false,
                     condutor: Condutor::novo(
                         backend,
                         lotes,
@@ -248,6 +297,7 @@ impl Cena {
         Falso {
             enviados: Arc::clone(&self.enviados),
             cancelados: Arc::clone(&self.cancelados),
+            eventos: Arc::clone(&self.eventos),
             leituras: leituras.iter().copied().collect(),
             motivo: None,
             condicao: None,
@@ -265,6 +315,7 @@ impl Cena {
             .iniciar(identidade(impressora), self.emissor(), move || {
                 let _ = liberar.recv();
                 Ok(Preparo {
+                    uma_copia_por_vez: false,
                     condutor: Condutor::novo(
                         backend,
                         lotes,
@@ -280,6 +331,45 @@ impl Cena {
             })
     }
 
+    /// Plano separado por cópia: a frente de cada uma sai em um trabalho e o próximo só depois
+    /// da confirmação da fila.
+    fn iniciar_uma_copia_por_vez(
+        &self,
+        impressora: &str,
+        leituras: &[Leitura],
+        dimensoes: &[DimensoesPagina],
+        copias: usize,
+    ) -> bool {
+        let backend = self.backend(leituras, false, false);
+        let plano = plots_core::plano_copias_do_intervalo_separadas(
+            dimensoes,
+            None,
+            copias,
+            OrdemPassadas::default(),
+            PerfilImpressora::default(),
+        )
+        .unwrap();
+        let lotes = fluxo::lotes_do_plano(&plano);
+        self.gerente
+            .iniciar(identidade(impressora), self.emissor(), move || {
+                Ok(Preparo {
+                    uma_copia_por_vez: true,
+                    condutor: Condutor::novo(
+                        backend,
+                        lotes,
+                        Espera {
+                            intervalo: Duration::from_millis(2),
+                            consultas: 1_000,
+                        },
+                    )
+                    .map_err(|erro| motivo_do_job(&erro))?
+                    .com_alcance(Alcance::SoFrentes),
+                    recolocar: recolocar_do_perfil(Some(ModeloImpressora::Laser), None),
+                    vira_para_ler: true,
+                })
+            })
+    }
+
     // Trabalho que ja esta na fila e cuja fila recusa o cancelamento.
     fn iniciar_recusando_cancelamento(&self, impressora: &str, leituras: &[Leitura]) -> bool {
         let backend = self.backend(leituras, false, true);
@@ -287,6 +377,7 @@ impl Cena {
         self.gerente
             .iniciar(identidade(impressora), self.emissor(), move || {
                 Ok(Preparo {
+                    uma_copia_por_vez: false,
                     condutor: Condutor::novo(
                         backend,
                         lotes,
@@ -331,6 +422,13 @@ impl Cena {
 
     fn enviados(&self) -> Vec<Passada> {
         self.enviados
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    fn eventos(&self) -> Vec<&'static str> {
+        self.eventos
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone()
@@ -688,6 +786,7 @@ fn simulacao_pela_thread_entrega_a_sequencia_do_modelo_e_o_resultado() {
         id.simulada = true;
         cena.gerente.iniciar(id, cena.emissor(), move || {
             Ok(Preparo {
+                uma_copia_por_vez: false,
                 condutor: Condutor::novo(
                     SimGuiado::novo(Mecanica::do_modelo(modelo), modelo.gesto().into()),
                     lotes,
@@ -1355,6 +1454,7 @@ fn reimprimir_refaz_o_mesmo_trecho_ja_planejado() {
         .gerente
         .iniciar(identidade("a"), cena.emissor(), move || {
             Ok(Preparo {
+                uma_copia_por_vez: false,
                 condutor: Condutor::novo(
                     backend,
                     lotes,
@@ -1491,6 +1591,7 @@ impl Cena {
         self.gerente
             .iniciar(identidade(impressora), self.emissor(), move || {
                 Ok(Preparo {
+                    uma_copia_por_vez: false,
                     condutor: Condutor::novo(
                         backend,
                         lotes,
@@ -1627,6 +1728,7 @@ fn recusa_das_duas_faces_nao_envia_nada_e_libera_a_impressora() {
     );
     cena.gerente.iniciar(id, cena.emissor(), move || {
         Ok(Preparo {
+            uma_copia_por_vez: false,
             condutor: Condutor::novo(sem_recurso, plano, ESPERA_SIMULADA)
                 .map_err(|erro| motivo_do_job(&erro))?,
             recolocar: Recolocar::da_instrucao(Instrucao::do_modelo(ModeloImpressora::JatoDeTinta)),
@@ -1672,6 +1774,7 @@ fn recusa_depois_de_um_lote_ja_enviado_diz_em_que_lote_parou() {
     );
     cena.gerente.iniciar(id, cena.emissor(), move || {
         Ok(Preparo {
+            uma_copia_por_vez: false,
             condutor: Condutor::novo(backend, plano, ESPERA_SIMULADA)
                 .map_err(|erro| motivo_do_job(&erro))?,
             recolocar: Recolocar::da_instrucao(Instrucao::do_modelo(ModeloImpressora::JatoDeTinta)),
@@ -2134,6 +2237,7 @@ fn iniciar_face(
         .gerente
         .iniciar(identidade("a"), cena.emissor(), move || {
             Ok(Preparo {
+                uma_copia_por_vez: false,
                 condutor: Condutor::novo(
                     backend,
                     lotes,
@@ -2324,7 +2428,9 @@ fn copias_do_pedido_formam_um_lote_so_e_o_numero_fora_do_limite_e_recusado() {
 
 #[test]
 fn automatico_com_copias_sai_em_um_trabalho_por_copia_e_o_resumo_conta_todos() {
-    let pedido = Pedido::novo("x.pdf".to_owned(), None).com_copias(3);
+    let pedido = Pedido::novo("x.pdf".to_owned(), None)
+        .com_copias(3)
+        .com_uma_copia_por_vez(true);
     let lotes = planejar_pedido(&[A4; 3], &pedido, PerfilImpressora::default(), true).unwrap();
     assert_eq!(lotes.len(), 3);
     assert!(lotes.iter().all(|item| item.lote.duas_faces));
@@ -2465,6 +2571,43 @@ fn verso_recusa_quando_o_pdf_lido_nao_bate_com_a_frente() {
         .err()
         .expect("o verso e recusado");
     assert_eq!(erro.codigo, "documento_mudou");
+}
+
+#[test]
+fn uma_copia_por_vez_envia_a_proxima_so_depois_da_confirmacao() {
+    let cena = Cena::nova();
+    let leituras = [
+        Leitura::Estado(EstadoEnvio::EmAndamento),
+        Leitura::Estado(EstadoEnvio::Concluido),
+        Leitura::Estado(EstadoEnvio::EmAndamento),
+        Leitura::Estado(EstadoEnvio::Concluido),
+        Leitura::Estado(EstadoEnvio::EmAndamento),
+        Leitura::Estado(EstadoEnvio::Concluido),
+    ];
+    assert!(cena.iniciar_uma_copia_por_vez("a", &leituras, &[A4; 2], 3));
+    cena.esperar_envios(3);
+    let fim = cena.esperar("a", |estado| matches!(estado, EstadoCartao::FrentesProntas));
+    assert_eq!(fim.copias, 3);
+    assert!(fim.por_copia);
+    assert_eq!(
+        cena.enviados(),
+        vec![Passada::Frente, Passada::Frente, Passada::Frente]
+    );
+    assert_eq!(
+        cena.eventos(),
+        vec![
+            "enviar",
+            "consultar",
+            "consultar",
+            "enviar",
+            "consultar",
+            "consultar",
+            "enviar",
+            "consultar",
+            "consultar",
+        ],
+        "a próxima cópia só sai depois do segundo consultar, que confirma a anterior"
+    );
 }
 
 #[test]

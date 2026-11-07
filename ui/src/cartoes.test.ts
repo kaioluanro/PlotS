@@ -237,6 +237,21 @@ describe("confirmacao do envio", () => {
     );
   });
 
+  it("a nota de uma copia por vez aparece so com mais de uma copia", () => {
+    const uma = linhasDoEnvio([fila("Sala")], resumo, "pt-BR", new Set(), {
+      copias: 1,
+      umaCopiaPorVez: true,
+    });
+    expect(uma.notas.join(" ")).not.toContain("Uma cópia por vez");
+    const varias = linhasDoEnvio([fila("Sala")], resumo, "pt-BR", new Set(), {
+      copias: 3,
+      umaCopiaPorVez: true,
+    });
+    expect(varias.notas).toContain(
+      "Uma cópia por vez: a próxima só sai depois que a impressora confirmar a anterior.",
+    );
+  });
+
   it("em ingles, com um so trecho e sem simulada, nao cita lote", () => {
     const { linhas, notas } = linhasDoEnvio(
       [fila("Room", { modo: "personalizado" })],

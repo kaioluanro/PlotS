@@ -26,7 +26,8 @@ import { PainelDeAvisos } from "./components/PainelDeAvisos";
 import { BlocoAjuste } from "./components/BlocoAjuste";
 import { BlocoFace } from "./components/BlocoFace";
 import { CampoCopias } from "./components/CampoCopias";
-import { copiasDaFace, temVersoDaAba } from "./tabs";
+import { CampoSequencia } from "./components/CampoSequencia";
+import { copiasDaFace, temVersoDaAba, umaCopiaPorVezDaAba } from "./tabs";
 import { BlocoGrupos } from "./components/BlocoGrupos";
 import { HistoricoDialog } from "./components/HistoricoDialog";
 import { CalibracaoDialog } from "./components/CalibracaoDialog";
@@ -317,6 +318,7 @@ export function App() {
       papel,
       aba.controle ? idiomaAtual : null,
       copiasDaFace(aba, face),
+      umaCopiaPorVezDaAba(aba),
     )
       .then((aceitas) => {
         // Quem nao foi aceito ja tinha um trabalho: o cartao diz isso, em vez de sumir em silencio.
@@ -604,6 +606,7 @@ export function App() {
         const { linhas, notas } = linhasDoEnvio(destinos, resumo, undefined, undefined, {
           papel: papelAjustado,
           copias: copiasDaFace(aba, face),
+          umaCopiaPorVez: umaCopiaPorVezDaAba(aba),
           notasDoMeio: [
             ...notasDasOpcoes({
               controle: aba.controle,
@@ -763,6 +766,18 @@ export function App() {
               />
             }
             blocoGrupos={<BlocoGrupos aba={abaAtiva} grupos={grupos} />}
+            blocoSequencia={
+              abaAtiva !== null ? (
+                <CampoSequencia
+                  face={faceDaAbaAtiva}
+                  ligada={umaCopiaPorVezDaAba(abaAtiva)}
+                  aoDefinir={(ligado) => {
+                    if (idAtiva !== null)
+                      despachar({ tipo: "definir_uma_copia_por_vez", id: idAtiva, ligado });
+                  }}
+                />
+              ) : null
+            }
             campoCopias={
               abaAtiva !== null ? (
                 <CampoCopias

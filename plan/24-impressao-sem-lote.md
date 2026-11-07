@@ -8,7 +8,7 @@ Decisão do usuário em 2026-11-03: remover "Folhas por lote" da janela e deixar
 
 ## Comportamento
 
-- **Um fluxo só na janela:** todas as frentes saem em um trabalho contínuo, sem clique no meio. O cartão espera sem prazo e oferece "Imprimir versos", que envia um trabalho só, com a frase e a figura do gesto.
+- **Um fluxo só na janela:** com a caixinha **Uma cópia por vez** desmarcada, todas as frentes saem em um trabalho contínuo, sem clique no meio. Com ela marcada (o padrão), cada cópia da frente é um trabalho e a próxima só sai depois que a impressora confirma a anterior; o verso continua em um trabalho só. O cartão espera sem prazo e oferece "Imprimir versos", que envia um trabalho só, com a frase e a figura do gesto.
 - **Confirmação do verso:** o diálogo "Imprimir os versos?" leva um triângulo de alerta amarelo antes do título, só nele, porque o passo seguinte gasta papel (`c248cf8`). O corpo, os botões e o gesto não mudam.
 - **Papéis mistos:** um trecho por papel; a troca de papel para o envio e é dita antes.
 - **Todas as impressoras marcadas imprimem a mesma coisa.** A divisão sai da janela, por decisão do usuário em 2026-11-03; o núcleo e o PlotSim seguem testando a repartição.
@@ -32,6 +32,7 @@ Decisão do usuário em 2026-11-03: remover "Folhas por lote" da janela e deixar
 - [x] Triângulo de alerta no título da confirmação do verso, só nele (`c248cf8`)
 - [x] Envio simultâneo não perde trabalho no driver que falha com dois trabalhos juntos: uma fila por vez nesse driver, e o registro do Windows transforma trabalho descartado em erro com Reimprimir (`7b16a4f`)
 - [x] Papel misto mantém o lado do documento; o par de tamanhos diferentes se separa com o verso em branco, avisado na análise (`7b16a4f`)
+- [x] "Uma cópia por vez" acima da Quantidade: separa as frentes por cópia, avança depois da confirmação e mantém o verso junto (`31-copia-por-vez`)
 
 ## Pronto quando
 

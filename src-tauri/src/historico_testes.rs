@@ -443,6 +443,7 @@ impl Palco {
             .gerente
             .iniciar_medido(identidade, emitir, relogio, fim, move || {
                 Ok(Preparo {
+                    uma_copia_por_vez: false,
                     condutor: Condutor::novo(
                         backend,
                         lotes,

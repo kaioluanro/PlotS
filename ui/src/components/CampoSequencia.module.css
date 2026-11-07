@@ -1,0 +1,44 @@
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.rotulo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.rotulo input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.rotulo:has(:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.dica {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 10px;
+  line-height: 14px;
+}
+
+/* Em altura curta a dica some; a caixinha e o rótulo continuam. */
+@media (max-height: 560px) {
+  .dica {
+    display: none;
+  }
+}

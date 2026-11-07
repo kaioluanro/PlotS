@@ -37,6 +37,7 @@ export function iniciarImpressao(
   papelDeAjuste: PapelDeAjuste | null = null,
   marcaControle: Idioma | null = null,
   copias = 1,
+  umaCopiaPorVez = true,
 ): Promise<string[]> {
   return invoke<string[]>("iniciar_impressao", {
     aba,
@@ -47,6 +48,7 @@ export function iniciarImpressao(
     papelDeAjuste,
     marcaControle,
     copias,
+    umaCopiaPorVez,
   });
 }
 

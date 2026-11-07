@@ -60,6 +60,20 @@ describe("copias no cartao: linha do lote automatico", () => {
     expect(copiaDoLote(cartao({ loteAutomatico: false }))).toBeNull();
   });
 
+  it("lote manual separado por copia leva o numero da copia", () => {
+    const manual = cartao({
+      loteAutomatico: false,
+      temAutomatico: false,
+      porCopia: true,
+      lote: 1,
+      total: 3,
+      copia: 1,
+      copias: 3,
+    });
+    expect(copiaDoLote(manual)).toBe(1);
+    expect(linhaDaCopia(manual, "en")).toContain("Copy 1 of 3");
+  });
+
   it("os trechos por copia nunca caem abaixo de um, nem com zero copias ou zero lotes", () => {
     expect(trechosPorCopia(cartao({ copias: 2, total: 2 }))).toBe(1);
     expect(trechosPorCopia(cartao({ copias: 2, total: 4 }))).toBe(2);

@@ -348,6 +348,7 @@ fn preparar_simulada(
         condutor,
         recolocar: Recolocar::calibrado(teste.perfil, false),
         vira_para_ler: false,
+        uma_copia_por_vez: false,
     })
 }
 
@@ -411,6 +412,7 @@ fn preparar_fila(
         condutor,
         recolocar: Recolocar::calibrado(teste.perfil, false),
         vira_para_ler: false,
+        uma_copia_por_vez: false,
     })
 }
 

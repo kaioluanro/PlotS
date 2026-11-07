@@ -1,6 +1,6 @@
 # STATUS
 
-Requisitos: OK 75 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4 (109). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
+Requisitos: OK 76 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4 (110). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
 
 | Plano | OK | PARTIAL | MISSING | BUG | N/A | Estado |
 |---|---|---|---|---|---|---|
@@ -35,6 +35,7 @@ Requisitos: OK 75 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4 (109). Detalhes e
 | [Opções da impressora](28-opcoes-da-impressora.md) | 0 | 1 | 0 | 0 | 0 | Concluído no código; falta driver com bandeja |
 | [Cor das imagens impressas](29-cor-das-imagens.md) | 1 | 0 | 0 | 0 | 0 | Concluído no código; falta impressora real |
 | [PlotInfo: imagens e custo de tinta](30-plotinfo.md) | 1 | 0 | 0 | 0 | 0 | Concluído no código; falta impressora real e prova de tinta em papel |
+| [Impressão de uma cópia por vez](31-copia-por-vez.md) | 1 | 0 | 0 | 0 | 0 | Concluído no código; falta impressora real |
 
 ## Lotes
 
@@ -82,6 +83,7 @@ Requisitos: OK 75 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4 (109). Detalhes e
 | plotinfo-analise | `8a9866f` | concluído no código; PDFium, cache, eventos, recálculo e cancelamento; revisões de código e jurídico aprovadas |
 | plotinfo-mutool | `eab8d30` | concluído no código; mutool separado, CMYK, fallback com aviso e CSV; prova DeviceCMYK e job completo |
 | plotinfo-painel | `15bc485` + `0f66aa7` + `7acd500` + `a699b22` + `8bfd509` | concluído no código; gaveta, resumo alternável, engrenagem, CSV liberado, aviso traduzível, reanálise por dpi/modo/cinzas, foco e acessibilidade; 1.165 testes de UI |
+| copia-por-vez | em andamento | caixinha acima da Quantidade, frentes uma cópia por vez, automático junto/separado e cartão com “Cópia N de M”; 1.173 testes de UI |
 
 **Próximo:**
 
@@ -97,6 +99,7 @@ Requisitos: OK 75 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4 (109). Detalhes e
 10. Feito em 2026-11-07: B1 do PlotInfo (`be877c1`), com a crate `plots-info` (seleção, cobertura, custo, perfis e preço por mL) e o `plotinfo.toml` com cinco comandos. CI verde; faltavam a análise, o mutool e o painel.
 11. Feito em 2026-11-07: B2/B3/C do PlotInfo (`8a9866f`, `eab8d30`, `15bc485`, `0f66aa7`, `a699b22`, `8bfd509`), com análise PDFium, mutool/CSV, painel com gaveta/engrenagem, aviso traduzível, reanálise por dpi/modo/cinzas, CSV liberado e acessibilidade. Revisões de código e jurídico; falta a impressora real e a prova de tinta em papel.
 12. Feito em 2026-11-07: `1.0.0-alpha.7` (`8bfd509`), portátil de 42,25 MB com `mutool/`, AGPL, 26 licenças do `thirdparty`/fontes, fonte fora do zip e SHA-256 `52449AF1…`; zip sem `perfis.toml`/`plotinfo.toml`, aberto e fechado com a versão certa. Falta testar em impressora real e provar a tinta em papel.
+13. Feito em 2026-11-07: impressão de uma cópia por vez (`31-copia-por-vez`), com a caixinha acima da Quantidade, frentes separadas por cópia, avanço depois da confirmação da impressora, verso junto e automático junto/separado. CI verde, 1.173 testes de UI e build concluído. Falta conferir em impressora real.
 
 Depois da primeira versão: impressora virtual, Linux e macOS, divisão por velocidade (`15-multiplas-impressoras`) e medir se o Graphify economiza tokens, com 3 perguntas respondidas com e sem ele.
 

@@ -1,10 +1,18 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { CampoCopias } from "./components/CampoCopias";
+import { CampoSequencia } from "./components/CampoSequencia";
 import { conteudoDoVerso } from "./face-do-envio";
 import type { ResumoDoEnvio } from "./cartoes";
 import type { Impressora } from "./impressoras";
-import { copiasDaFace, ehQuantidadeDeCopias, reduzirAbas, type Aba, type EstadoAbas } from "./tabs";
+import {
+  copiasDaFace,
+  ehQuantidadeDeCopias,
+  reduzirAbas,
+  umaCopiaPorVezDaAba,
+  type Aba,
+  type EstadoAbas,
+} from "./tabs";
 
 const DOC = { caminho: "x.pdf", paginas: 4 } as unknown as Aba["documento"];
 
@@ -71,6 +79,43 @@ describe("quantidade de copias: redutor", () => {
 
   it("aba sem o campo, de antes, vale uma copia", () => {
     expect(copiasDaFace({} as Pick<Aba, "copias">, "verso")).toBe(1);
+  });
+});
+
+describe("uma copia por vez", () => {
+  it("comeca marcada em cada aba e o redutor desmarca e marca de novo", () => {
+    const estado = estadoComAba();
+    expect(umaCopiaPorVezDaAba(estado.abas[0] as Aba)).toBe(true);
+    const desmarcada = reduzirAbas(estado, {
+      tipo: "definir_uma_copia_por_vez",
+      id: 1,
+      ligado: false,
+    });
+    expect(umaCopiaPorVezDaAba(desmarcada.abas[0] as Aba)).toBe(false);
+    const remarcada = reduzirAbas(desmarcada, {
+      tipo: "definir_uma_copia_por_vez",
+      id: 1,
+      ligado: true,
+    });
+    expect(umaCopiaPorVezDaAba(remarcada.abas[0] as Aba)).toBe(true);
+  });
+
+  it("aba antiga sem o campo vale marcada", () => {
+    expect(umaCopiaPorVezDaAba({} as Pick<Aba, "umaCopiaPorVez">)).toBe(true);
+    expect(umaCopiaPorVezDaAba(null)).toBe(true);
+  });
+
+  it("a caixinha fica acima da quantidade e a dica muda no verso", () => {
+    const frente = renderToStaticMarkup(
+      <CampoSequencia face="frente" ligada aoDefinir={() => undefined} />,
+    );
+    expect(frente).toContain('type="checkbox"');
+    expect(frente).toContain("Uma cópia por vez");
+    expect(frente).toContain("cada cópia é um trabalho");
+    const verso = renderToStaticMarkup(
+      <CampoSequencia face="verso" ligada aoDefinir={() => undefined} />,
+    );
+    expect(verso).toContain("No verso, as cópias saem juntas");
   });
 });
 
