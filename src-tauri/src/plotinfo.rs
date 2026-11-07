@@ -417,6 +417,12 @@ fn definir_configuracao_em(
     Ok(lido)
 }
 
+/// Perfil de tinta guardado com este identificador exato. A leitura é a mesma dos comandos: sem
+/// arquivo, valem os perfis padrão.
+pub(crate) fn perfil_guardado(id: &str) -> Option<PerfilDeTinta> {
+    ler_do_padrao().perfis.buscar(id).cloned()
+}
+
 /// Perfis de tinta guardados, ou os padrão quando não há arquivo.
 #[tauri::command]
 pub async fn perfis_de_tinta() -> EstadoDosPerfisDeTinta {

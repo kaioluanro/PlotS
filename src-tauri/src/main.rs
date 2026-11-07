@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod abertura;
+mod analise;
 mod calibracao;
 mod comandos_trabalho;
 mod documento;
@@ -152,6 +153,7 @@ fn main() -> ExitCode {
         .manage(Mutex::new(abertura::Estado::default()))
         .manage(trabalhos::Gerente::default())
         .manage(historico::Diarios::default())
+        .manage(analise::Analises::default())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // O perfil do portátil acompanha a pasta do executável; a primeira abertura traz o
@@ -180,6 +182,9 @@ fn main() -> ExitCode {
         })
         .invoke_handler(tauri::generate_handler![
             abrir_documento,
+            analise::cancelar_analise,
+            analise::iniciar_analise,
+            analise::recalcular_analise,
             preferencias::abrir_preferencias,
             preferencias::aplicar_opcoes_da_impressora,
             preferencias::estado_das_preferencias,

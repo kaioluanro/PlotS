@@ -8,6 +8,7 @@
 
 pub use plots_print;
 
+pub mod analise;
 mod erro;
 mod estado;
 mod opcoes;
@@ -31,6 +32,10 @@ mod sistema;
 #[cfg(windows)]
 mod spooler;
 
+pub use analise::{
+    rasterizar_paginas, ErroAnalise, PaginaRgb, SessaoDeAnalise, DPI_MAXIMO,
+    LIMITE_BYTES_DA_ANALISE,
+};
 #[cfg(windows)]
 pub use backend::BackendWindows;
 pub use erro::{ErroEnvio, COMANDO_BAIXAR_BIBLIOTECA};

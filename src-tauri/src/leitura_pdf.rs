@@ -83,6 +83,12 @@ fn ler_bytes(caminho: &str, limite: u64) -> Result<Vec<u8>, CodigoErro> {
 /// Le o conteudo do documento: o PDF original, ou o PDF derivado de uma imagem. O que o arquivo
 /// nao deixar ler vira recusa.
 pub fn ler_pdf(caminho: &str) -> Result<PdfLido, ErroDocumento> {
+    ler_pdf_com_bytes(caminho).map(|(lido, _)| lido)
+}
+
+/// Igual a [`ler_pdf`], devolvendo também os bytes lidos. A análise de tinta precisa dos mesmos
+/// bytes que produziram a impressão do conteúdo, sem abrir o arquivo uma segunda vez.
+pub fn ler_pdf_com_bytes(caminho: &str) -> Result<(PdfLido, Vec<u8>), ErroDocumento> {
     let (documento, conteudo) = abrir_para_leitura(caminho)?;
     let erro = |codigo| ErroDocumento {
         codigo,
@@ -102,12 +108,15 @@ pub fn ler_pdf(caminho: &str) -> Result<PdfLido, ErroDocumento> {
     let assinado = origem
         .tem_assinatura_aplicada()
         .map_err(|_| erro(CodigoErro::PdfInvalido))?;
-    Ok(PdfLido {
-        origem,
-        dimensoes,
-        assinado,
-        impressao,
-    })
+    Ok((
+        PdfLido {
+            origem,
+            dimensoes,
+            assinado,
+            impressao,
+        },
+        bytes,
+    ))
 }
 
 #[cfg(test)]
@@ -141,6 +150,23 @@ mod testes {
         let caminho = caminho_temporario("falso.pdf", b"nao sou pdf");
         let erro = ler_pdf(&caminho.to_string_lossy()).err().unwrap();
         assert_eq!(erro.codigo, CodigoErro::PdfInvalido);
+        std::fs::remove_file(caminho).unwrap();
+    }
+
+    #[test]
+    fn a_leitura_com_bytes_devolve_o_mesmo_conteudo_que_a_impressao_descreve() {
+        let pdf = plots_pdf::pdf_calibracao(plots_pdf::PapelCalibracao::A4).unwrap();
+        let caminho = std::env::temp_dir().join(format!(
+            "plots-app-analise-{}-{}.pdf",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::write(&caminho, &pdf).unwrap();
+        let (lido, bytes) = ler_pdf_com_bytes(&caminho.to_string_lossy()).unwrap();
+        assert_eq!(bytes, pdf);
+        assert_eq!(lido.impressao, impressao_dos_bytes(&pdf));
+        assert!(!lido.dimensoes.is_empty());
+        assert!(!lido.assinado);
         std::fs::remove_file(caminho).unwrap();
     }
 }

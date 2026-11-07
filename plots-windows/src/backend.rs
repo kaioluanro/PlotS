@@ -36,7 +36,10 @@ use std::sync::OnceLock;
 static BIBLIOTECA: OnceLock<Pdfium> = OnceLock::new();
 
 /// Carrega a biblioteca só pelo caminho explícito: a pasta indicada ou ao lado do executável.
-fn biblioteca() -> Result<&'static Pdfium, ErroEnvio> {
+///
+/// A análise de tinta usa a mesma instância: duas inicializações no mesmo processo são recusadas
+/// pela própria biblioteca.
+pub(crate) fn biblioteca() -> Result<&'static Pdfium, ErroEnvio> {
     if let Some(pronta) = BIBLIOTECA.get() {
         return Ok(pronta);
     }
