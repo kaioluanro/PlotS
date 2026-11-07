@@ -267,6 +267,13 @@ describe("secao pagina", () => {
     expect(html).toContain(traduzir("pt-BR", "plotinfo.total"));
   });
 
+  it("erro de selecao marca o campo de paginas e liga a mensagem", () => {
+    const html = painel({ erro: traduzir("pt-BR", "plotinfo.erro.selecao") });
+    expect(html).toContain('aria-invalid="true"');
+    expect(html).toContain('aria-describedby="plotinfo-erro-paginas"');
+    expect(html).toContain('id="plotinfo-erro-paginas"');
+  });
+
   it("mostra o aviso dos perfis e o aviso do modo simples juntos", () => {
     const html = painel({
       avisoDosPerfis: "O arquivo de perfis foi lido com um aviso.",

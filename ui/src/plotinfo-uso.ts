@@ -438,8 +438,8 @@ export function useTintaDoDocumento(
       if (caminho === null) return;
       await exportarCsv(id, caminho);
       setMensagem(t("plotinfo.aviso.csvExportado", { caminho }));
-    } catch (falha) {
-      setErro(t("plotinfo.erro.csv", { motivo: motivoDaFalha(falha) }));
+    } catch {
+      setErro(t("plotinfo.erro.csvSimples"));
     } finally {
       setExportando(false);
     }

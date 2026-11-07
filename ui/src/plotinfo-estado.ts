@@ -5,6 +5,7 @@ import {
   type PerfilDeTinta,
   type ValoresPorCanal,
 } from "./analise-tinta";
+import { idiomaAtual } from "./i18n";
 
 /** Os dois campos que pertencem so a gaveta. O estado das abas nao aparece aqui de proposito. */
 export interface EstadoDoPainelDeTinta {
@@ -63,7 +64,11 @@ function valorValido(
 }
 
 function formatarValor(valor: number): string {
-  return Number.isFinite(valor) ? String(valor).replace(".", ",") : "";
+  if (!Number.isFinite(valor)) return "";
+  return new Intl.NumberFormat(idiomaAtual === "en" ? "en-US" : "pt-BR", {
+    maximumFractionDigits: 6,
+    useGrouping: false,
+  }).format(valor);
 }
 
 export interface RascunhoDoPerfil {

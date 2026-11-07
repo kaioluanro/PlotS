@@ -126,7 +126,10 @@ function useCarga(documento: Documento, tentativa: number): Carga {
 interface ResumoDaBarraProps {
   resumo: ResumoDaBarra;
   aoAbrir: () => void;
+  aberto: boolean;
 }
+
+export const ID_RESUMO_PLOTINFO = "resumo-plotinfo";
 
 export function textoDoResumo(resumo: ResumoDaBarra): string {
   return t("plotinfo.resumo.curto", {
@@ -136,7 +139,7 @@ export function textoDoResumo(resumo: ResumoDaBarra): string {
   });
 }
 
-export function BotaoDoResumo({ resumo, aoAbrir }: ResumoDaBarraProps) {
+export function BotaoDoResumo({ resumo, aoAbrir, aberto }: ResumoDaBarraProps) {
   const texto = textoDoResumo(resumo);
   const rotulo = t("plotinfo.resumo.rotulo", {
     paginas: String(resumo.totalPaginas),
@@ -146,9 +149,11 @@ export function BotaoDoResumo({ resumo, aoAbrir }: ResumoDaBarraProps) {
   return (
     <button
       type="button"
+      id={ID_RESUMO_PLOTINFO}
       className={styles.resumo}
       aria-label={rotulo}
       title={rotulo}
+      aria-expanded={aberto}
       aria-controls={ID_GAVETA_PLOTINFO}
       onClick={aoAbrir}
     >
@@ -216,6 +221,7 @@ interface PropsBarra {
   miniaturas: boolean;
   resumoTinta: ResumoDaBarra | null;
   aoAbrirTinta?: () => void;
+  plotInfoAberto?: boolean;
   aoDiminuir: () => void;
   aoAumentar: () => void;
   aoAjustar: () => void;
@@ -234,6 +240,7 @@ function Barra({
   miniaturas,
   resumoTinta,
   aoAbrirTinta,
+  plotInfoAberto = false,
   aoDiminuir,
   aoAumentar,
   aoAjustar,
@@ -273,7 +280,7 @@ function Barra({
         <span aria-hidden="true">{pronta ? `${pagina} / ${total}` : "– / –"}</span>
       </span>
       {resumoTinta !== null && aoAbrirTinta !== undefined && (
-        <BotaoDoResumo resumo={resumoTinta} aoAbrir={aoAbrirTinta} />
+        <BotaoDoResumo resumo={resumoTinta} aoAbrir={aoAbrirTinta} aberto={plotInfoAberto} />
       )}
       <span className={styles.vao} />
       <BotaoDaBarra
@@ -339,6 +346,7 @@ interface PropsLeitor {
   fila: FilaDeDesenho;
   resumoTinta: ResumoDaBarra | null;
   aoAbrirTinta?: () => void;
+  plotInfoAberto?: boolean;
   aoMudarPagina?: (pagina: number) => void;
 }
 
@@ -350,6 +358,7 @@ function Leitor({
   fila,
   resumoTinta,
   aoAbrirTinta,
+  plotInfoAberto = false,
   aoMudarPagina,
 }: PropsLeitor) {
   const raiz = useRef<HTMLDivElement>(null);
@@ -566,6 +575,7 @@ function Leitor({
         ajustando={ajustando}
         miniaturas={abertas}
         resumoTinta={resumoTinta}
+        plotInfoAberto={plotInfoAberto}
         aoAbrirTinta={aoAbrirTinta}
         aoDiminuir={diminuir}
         aoAumentar={aumentar}
@@ -600,6 +610,7 @@ interface Props {
   documento: Documento;
   resumoTinta?: ResumoDaBarra | null;
   aoAbrirTinta?: () => void;
+  plotInfoAberto?: boolean;
   aoMudarPagina?: (pagina: number) => void;
 }
 
@@ -624,6 +635,7 @@ export function Visualizador({
   documento,
   resumoTinta = null,
   aoAbrirTinta,
+  plotInfoAberto = false,
   aoMudarPagina,
 }: Props) {
   const [tentativa, setTentativa] = useState(0);
@@ -657,6 +669,7 @@ export function Visualizador({
           ajustando={false}
           miniaturas={false}
           resumoTinta={resumoTinta}
+          plotInfoAberto={plotInfoAberto}
           aoAbrirTinta={aoAbrirTinta}
           aoDiminuir={() => undefined}
           aoAumentar={() => undefined}
@@ -678,6 +691,7 @@ export function Visualizador({
       primeiraPagina={carga.pdf.primeiraPagina}
       fila={carga.fila}
       resumoTinta={resumoTinta}
+      plotInfoAberto={plotInfoAberto}
       aoAbrirTinta={aoAbrirTinta}
       aoMudarPagina={aoMudarPagina}
     />

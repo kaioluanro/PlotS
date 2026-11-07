@@ -322,8 +322,14 @@ describe("progresso e falha", () => {
       "O perfil de tinta não foi encontrado.",
     );
     expect(motivoDaFalha({ codigo: "renderizacao", detalhe: "sem memória" })).toBe(
-      "sem memória",
+      "Não foi possível desenhar a página para a análise.",
     );
+    expect(
+      motivoDaFalha(
+        { codigo: "selecao_invalida", detalhe: "a página 99 não existe" },
+        "en",
+      ),
+    ).toBe("The page selection was not accepted.");
     expect(motivoDaFalha({ codigo: "desconhecido" })).toBe(
       "A estimativa falhou. Tente de novo.",
     );

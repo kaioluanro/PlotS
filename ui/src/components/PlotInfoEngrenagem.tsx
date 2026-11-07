@@ -614,6 +614,10 @@ export function PlotInfoEngrenagem({
         <Dialog.Content
           className={styles.conteudo}
           aria-describedby="plotinfo-engrenagem-descricao"
+          onCloseAutoFocus={(evento) => {
+            evento.preventDefault();
+            document.getElementById("plotinfo-abrir-engrenagem")?.focus();
+          }}
           onKeyDown={(evento) => {
             const alvo = evento.target instanceof Element ? evento.target : null;
             if (deveRolarPeloTeclado(alvo) && rolarPeloTeclado(evento.key, corpo.current)) {

@@ -21,6 +21,7 @@ interface Props {
   aoAbrir: () => void;
   resumoTinta?: ResumoDaBarra | null;
   aoAbrirTinta?: () => void;
+  plotInfoAberto?: boolean;
   aoMudarPagina?: (pagina: number) => void;
 }
 
@@ -34,6 +35,7 @@ export function DocumentArea({
   aoAbrir,
   resumoTinta = null,
   aoAbrirTinta,
+  plotInfoAberto = false,
   aoMudarPagina,
 }: Props) {
   return (
@@ -65,6 +67,7 @@ export function DocumentArea({
           key={idAbaAtiva}
           documento={documento}
           resumoTinta={resumoTinta}
+          plotInfoAberto={plotInfoAberto}
           aoAbrirTinta={aoAbrirTinta}
           aoMudarPagina={aoMudarPagina}
         />

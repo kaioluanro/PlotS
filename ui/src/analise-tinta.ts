@@ -492,10 +492,11 @@ export function motivoDaFalha(erro: unknown, idioma: Idioma = idiomaAtual): stri
   if (typeof erro === "string" && erro.trim() !== "") return erro;
   const bruto = objeto(erro);
   const detalhe = texto(bruto?.motivo) ?? texto(bruto?.detalhe) ?? texto(bruto?.mensagem);
-  if (detalhe !== null) return detalhe;
   const codigo = texto(bruto?.codigo);
   const chave = codigo === null ? null : CHAVES_DE_FALHA[codigo];
-  return traduzir(idioma, chave ?? "plotinfo.erro.generico");
+  if (chave !== null && chave !== undefined) return traduzir(idioma, chave);
+  if (detalhe !== null) return detalhe;
+  return traduzir(idioma, "plotinfo.erro.generico");
 }
 
 const CHAVES_DE_AVISO: Readonly<Record<string, Chave>> = {
@@ -537,6 +538,7 @@ const CHAVES_DE_FALHA: Readonly<Record<string, Chave>> = {
   cancelado: "plotinfo.erro.cancelado",
   interrompido: "plotinfo.erro.interrompido",
   iniciar_trabalho: "plotinfo.erro.iniciar",
+  exportacao: "plotinfo.erro.csvSimples",
 };
 
 function idConfere(valor: unknown, idAtual: string | null): boolean {

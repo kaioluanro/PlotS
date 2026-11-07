@@ -443,10 +443,16 @@
 
 .linhaDoCartucho {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 48px;
+  grid-template-columns: minmax(116px, auto) minmax(0, 1fr) 44px;
   align-items: center;
   gap: 8px;
   min-height: 22px;
+}
+
+.rotuloDoCartucho {
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
 }
 
 .barraDoCanal {

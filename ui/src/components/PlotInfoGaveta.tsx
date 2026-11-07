@@ -364,9 +364,17 @@ export function PainelDeTinta({
                     value={tinta.painel.paginasTexto}
                     inputMode="text"
                     placeholder={t("plotinfo.selecao.dicaPaginas")}
+                    aria-invalid={tinta.erro === t("plotinfo.erro.selecao")}
+                    aria-describedby={
+                      tinta.erro === t("plotinfo.erro.selecao")
+                        ? "plotinfo-erro-paginas"
+                        : "plotinfo-dica-paginas"
+                    }
                     onChange={(evento) => tinta.definirPaginas(evento.target.value)}
                   />
-                  <span className={styles.dica}>{t("plotinfo.selecao.dicaPaginas")}</span>
+                  <span id="plotinfo-dica-paginas" className={styles.dica}>
+                    {t("plotinfo.selecao.dicaPaginas")}
+                  </span>
                 </label>
                 <label className={styles.campo}>
                   <span className={styles.rotulo}>{t("plotinfo.selecao.campoCopias")}</span>
@@ -386,6 +394,11 @@ export function PainelDeTinta({
               {tinta.copias === null && (
                 <p className={styles.campoInvalido} id="plotinfo-erro-copias">
                   {t("plotinfo.erro.copias")}
+                </p>
+              )}
+              {tinta.erro === t("plotinfo.erro.selecao") && (
+                <p className={styles.campoInvalido} id="plotinfo-erro-paginas">
+                  {tinta.erro}
                 </p>
               )}
               <p className={styles.totalDaSelecao} aria-live="polite">
@@ -471,7 +484,7 @@ export function PainelDeTinta({
               ) : (
                 <>
                   <div className={styles.linhaDoCartucho}>
-                    <span className={styles.nomeDoCanal}>
+                    <span className={`${styles.nomeDoCanal} ${styles.rotuloDoCartucho}`}>
                       <PontoDoCanal canal={selecao.cartucho.canal_que_acaba_primeiro} />
                       <span>{t("plotinfo.cartucho.consumoTotal")}</span>
                     </span>

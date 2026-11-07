@@ -34,6 +34,7 @@ import { ConfirmDialog } from "./components/ConfirmDialog";
 import { DocumentArea, ID_AREA_DOCUMENTO } from "./components/DocumentArea";
 import { OpcoesDaImpressoraDialog } from "./components/OpcoesDaImpressoraDialog";
 import { PlotInfoGaveta } from "./components/PlotInfoGaveta";
+import { ID_RESUMO_PLOTINFO } from "./visualizador/Visualizador";
 import { ID_LATERAL, Sidebar } from "./components/Sidebar";
 import { focarAbaAtiva, focarBotaoPlotInfo, TitleBar } from "./components/TitleBar";
 import {
@@ -184,6 +185,7 @@ export function App() {
     [tinta.resultado],
   );
   const idAtiva = estado.ativa;
+  const origemDoPlotInfo = useRef<"botao" | "resumo">("botao");
 
   useEffect(() => {
     setPaginaAtual(null);
@@ -192,7 +194,26 @@ export function App() {
   const fecharPlotInfo = useCallback(() => {
     setPlotInfoAberto(false);
     setEngrenagemDoPlotInfo(false);
-    focarBotaoPlotInfo();
+    if (origemDoPlotInfo.current === "resumo") {
+      document.getElementById(ID_RESUMO_PLOTINFO)?.focus();
+    } else {
+      focarBotaoPlotInfo();
+    }
+  }, []);
+
+  const alternarPlotInfo = useCallback(() => {
+    setPlotInfoAberto((aberto) => {
+      if (!aberto) {
+        origemDoPlotInfo.current =
+          document.activeElement?.id === ID_RESUMO_PLOTINFO ? "resumo" : "botao";
+      }
+      return !aberto;
+    });
+  }, []);
+
+  const abrirPeloResumo = useCallback(() => {
+    origemDoPlotInfo.current = "resumo";
+    setPlotInfoAberto(true);
   }, []);
 
   // Os eventos do sistema ficam assinados uma vez so e precisam ler o estado mais recente.
@@ -693,7 +714,7 @@ export function App() {
         naoLidos={contarNaoLidos(avisos.itens)}
         aoAbrirAvisos={() => setPainelAvisos(true)}
         plotInfoAberto={plotInfoAberto}
-        aoAlternarPlotInfo={() => setPlotInfoAberto((aberto) => !aberto)}
+        aoAlternarPlotInfo={alternarPlotInfo}
         idLateral={ID_LATERAL}
         idPainel={ID_AREA_DOCUMENTO}
       />
@@ -789,7 +810,8 @@ export function App() {
               aoDispensarErro={() => setErro(null)}
               aoAbrir={() => void abrirPeloSeletor()}
               resumoTinta={resumoTinta}
-              aoAbrirTinta={() => setPlotInfoAberto(true)}
+              plotInfoAberto={plotInfoAberto}
+              aoAbrirTinta={abrirPeloResumo}
               aoMudarPagina={setPaginaAtual}
             />
             <PlotInfoGaveta
