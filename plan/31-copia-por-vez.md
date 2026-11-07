@@ -76,7 +76,8 @@ Concluído no código em 2026-11-07, em `09727ac`, com as correções da revisã
 - Com a caixinha marcada, um documento de 3 páginas e 3 cópias envia três trabalhos de frente,
   um de cada vez, e o segundo só começa depois de o primeiro ser confirmado.
 - O verso desse envio sai num trabalho só com as 3 cópias.
-- O automático marcado envia uma cópia por trabalho; desmarcado, um trabalho com todas.
+- O automático marcado envia uma cópia por trabalho; desmarcado, um trabalho com todas quando o
+  papel permite, com o branco entre cópias ímpares.
 - Uma cópia, a caixinha desmarcada e o fluxo de verso atual continuam iguais.
 - `cargo test --workspace --locked`, `tsc --noEmit`, testes da interface e build verdes.
 
