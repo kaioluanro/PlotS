@@ -1,6 +1,6 @@
 # STATUS
 
-Requisitos: OK 74 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4 (108). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
+Requisitos: OK 75 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4 (109). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
 
 | Plano | OK | PARTIAL | MISSING | BUG | N/A | Estado |
 |---|---|---|---|---|---|---|
@@ -34,7 +34,7 @@ Requisitos: OK 74 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4 (108). Detalhes e
 | [Impressão no Windows: faces e desenho](27-impressao-pdfjs.md) | 1 | 1 | 0 | 0 | 0 | Concluído no código; falta impressora real |
 | [Opções da impressora](28-opcoes-da-impressora.md) | 0 | 1 | 0 | 0 | 0 | Concluído no código; falta driver com bandeja |
 | [Cor das imagens impressas](29-cor-das-imagens.md) | 1 | 0 | 0 | 0 | 0 | Concluído no código; falta impressora real |
-| [PlotInfo: imagens e custo de tinta](30-plotinfo.md) | - | - | - | - | - | Em andamento |
+| [PlotInfo: imagens e custo de tinta](30-plotinfo.md) | 1 | 0 | 0 | 0 | 0 | Concluído no código; falta impressora real e prova de tinta em papel |
 
 ## Lotes
 
@@ -77,8 +77,11 @@ Requisitos: OK 74 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4 (108). Detalhes e
 | 1.0.0-alpha.4 | `97643ec` | concluído no código; perfil portátil ao lado do exe; portátil em `.zip` |
 | 1.0.0-alpha.5 | `559a9c8` | concluído no código; frente/verso corretos, 1 página sem verso, desenho por bitmap compatível e painel de opções; portátil em `.zip` |
 | 1.0.0-alpha.6 | `6a972c6` | concluído no código; cor das imagens (BGRA) corrigida; portátil em `.zip` |
-| plotinfo-imagem | `d6ae384` | concluído no código; PNG/JPEG/BMP/GIF/WebP/TIFF viram PDF derivado, abrem e imprimem; painel PlotInfo e mutool ainda não |
-| plotinfo-motor | `be877c1` | concluído no código; `plots-info` com seleção, cobertura, custo e perfis, mais `plotinfo.toml` e comandos; falta análise e painel |
+| plotinfo-imagem | `d6ae384` | concluído no código; PNG/JPEG/BMP/GIF/WebP/TIFF viram PDF derivado, abrem e imprimem |
+| plotinfo-motor | `be877c1` | concluído no código; `plots-info` com seleção, cobertura, custo e perfis, mais `plotinfo.toml` e comandos |
+| plotinfo-analise | `8a9866f` | concluído no código; PDFium, cache, eventos, recálculo e cancelamento; revisões de código e jurídico aprovadas |
+| plotinfo-mutool | `eab8d30` | concluído no código; mutool separado, CMYK, fallback com aviso e CSV; prova DeviceCMYK e job completo |
+| plotinfo-painel | `15bc485` + `0f66aa7` | concluído no código; gaveta, resumo, engrenagem, CSV e aviso traduzível; 1.162 testes de UI |
 
 **Próximo:**
 
@@ -91,7 +94,9 @@ Requisitos: OK 74 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4 (108). Detalhes e
 7. Feito em 2026-11-06: `1.0.0-alpha.5` (`559a9c8`), com "Frente" = páginas ímpares e "Verso" = pares, 1 página sem folha em branco, desenho por bitmap compatível + `StretchBlt` e a chave de boca com bandeja/resolução/cor. CI verde; portátil em `PlotS_1.0.0-alpha.5_x64_portatil.zip`. Falta o teste em impressora real (L6170), um driver com bandeja/zero opções e um envio usando o `DEVMODE` salvo.
 8. Feito em 2026-11-06: `1.0.0-alpha.6` (`6a972c6`), com a cor das imagens corrigida (o pdfium entregava RGBA e o GDI lia BGRA; laranja/amarelo saíam azuis). CI verde; portátil em `PlotS_1.0.0-alpha.6_x64_portatil.zip`. Falta conferir em impressora real e corrigir a prévia colorida do PlotSim.
 9. Feito em 2026-11-07: Lote A do PlotInfo (`d6ae384`), com abertura e impressão de PNG/JPEG/BMP/GIF/WebP/TIFF por PDF derivado, cache reaproveitado e textos de “documento”. CI verde; painel de tinta e mutool ficam para os próximos lotes.
-10. Feito em 2026-11-07: B1 do PlotInfo (`be877c1`), com a crate `plots-info` (seleção, cobertura, custo, perfis e preço por mL) e o `plotinfo.toml` com cinco comandos. CI verde; faltam a análise, o mutool e o painel.
+10. Feito em 2026-11-07: B1 do PlotInfo (`be877c1`), com a crate `plots-info` (seleção, cobertura, custo, perfis e preço por mL) e o `plotinfo.toml` com cinco comandos. CI verde; faltavam a análise, o mutool e o painel.
+11. Feito em 2026-11-07: B2/B3/C do PlotInfo (`8a9866f`, `eab8d30`, `15bc485`, `0f66aa7`), com análise PDFium, mutool/CSV, painel com gaveta/engrenagem, aviso traduzível e lotes de 256 MiB/32 páginas. Revisões de código e jurídico; falta a impressora real, a prova de tinta em papel e o zip alpha.7 com `mutool/`.
+12. Próximo: gerar `1.0.0-alpha.7`, verificar o zip (sem perfil dentro, com `mutool/`, AGPL, fonte fora do zip e licenças do `thirdparty/`), abrir o portátil e registrar o SHA-256.
 
 Depois da primeira versão: impressora virtual, Linux e macOS, divisão por velocidade (`15-multiplas-impressoras`) e medir se o Graphify economiza tokens, com 3 perguntas respondidas com e sem ele.
 

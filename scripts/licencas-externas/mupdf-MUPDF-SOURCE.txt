@@ -1,11 +1,23 @@
 MuPDF 1.28.5 / mutool.exe
 ==========================
 
+MuPDF is Copyright (c) 2006-2026 Artifex Software, Inc.
+
+This program is free software: you can redistribute it and/or modify it under the terms of the
+GNU Affero General Public License as published by the Free Software Foundation, either version 3
+of the License, or (at your option) any later version. This program is distributed in the hope
+that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
+details.
+
 Este pacote inclui o executavel separado mutool.exe (MuPDF 1.28.5), distribuido sob a GNU
-Affero General Public License 3.0 (AGPL-3.0). O codigo do PlotS continua sob MIT; a AGPL vale
-somente para o mutool.exe e para o codigo-fonte correspondente.
+Affero General Public License 3.0 ou posterior (AGPL-3.0-or-later). O codigo do PlotS continua
+sob MIT; a AGPL vale somente para o mutool.exe e para o codigo-fonte correspondente.
+
+Versao 1.28.5 publicada pela Artifex em 2026-09-25; pacote PlotS montado em 2026-11-07.
 
 Binario oficial: mupdf-1.28.5-windows.zip
+  https://github.com/ArtifexSoftware/mupdf-downloads/releases/download/1.28.5/mupdf-1.28.5-windows.zip
   bytes: 94292330
   sha256: 13476a53e84f5527983158acb6442c7853b3cdc022f3b24880780dcfba1fcc99
 mutool.exe extraido:
@@ -17,10 +29,24 @@ Fonte correspondente: mupdf-1.28.5-source.tar.gz
   disponivel gratuitamente em:
   https://github.com/ArtifexSoftware/mupdf-downloads/releases/download/1.28.5/mupdf-1.28.5-source.tar.gz
   (a mesma versao, com os componentes de thirdparty/)
+  O arquivo tambem acompanha a entrega do PlotS fora do zip, na mesma pasta do pacote portatil.
+  Quem recebeu o binario pode pedir a fonte a quem entregou o pacote; a oferta vale por tres anos
+  a partir de 2026-11-07, com o mesmo sha256 acima.
 
 O texto integral da AGPL-3.0 esta em AGPL-3.0.txt. As licencas dos componentes de thirdparty/
 que acompanham o MuPDF estao em licencas/. O mutool.exe nao foi modificado. A AGPL permite
 substituir o binario; o PlotS nao recusa um mutool modificado em tempo de execucao.
+
+Componentes de thirdparty/ no binario e seus textos em licencas/:
+  brotli (LICENSE), cmark-gfm (COPYING), curl (COPYING), extract (COPYING), freeglut (COPYING),
+  freetype (LICENSE.TXT e FTL.TXT), gumbo-parser (COPYING), harfbuzz (COPYING e ms-use/COPYING),
+  jbig2dec (COPYING e LICENSE), lcms2 (LICENSE), leptonica (license.txt), libjpeg (README),
+  mujs (COPYING), openjpeg (LICENSE), tesseract (LICENSE), zint (LICENSE, BSD-3-Clause para a
+  biblioteca), zlib (LICENSE) e zxing-cpp (LICENSE).
+
+O mutool.exe oficial usa o runtime Microsoft Visual C++ 2015-2022 (x64). Se o runtime nao estiver
+instalado no Windows, o conversor nao inicia e o PlotS cai no modo simples com aviso; o modo
+simples continua funcionando sem o runtime.
 
 MuPDF e Artifex sao marcas da Artifex Software, Inc.; o PlotS nao tem vinculo, patrocinio nem
 endosso da Artifex.

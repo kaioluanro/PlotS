@@ -18,6 +18,16 @@ O instalador foi configurado para registrar o PlotS no "Abrir com" dos arquivos 
 
 O PlotS é software livre sob a licença MIT (arquivo `LICENSE`). Os componentes de terceiros mantêm as próprias licenças, reunidas em `THIRD-PARTY-NOTICES`, que também acompanha o programa instalado.
 
+O pacote portátil inclui o `mutool.exe` separado, do MuPDF 1.28.5, sob a GNU Affero General Public License 3.0 ou posterior. Ele não é linkado ao PlotS: é chamado como processo separado para separar as páginas em CMYK. O código do PlotS continua MIT. O binário ocupa 44,3 MB e o portátil cresce na mesma faixa. O texto integral da AGPL, as licenças do `thirdparty/` e o endereço da fonte correspondente ficam em `mutool/` (`AGPL-3.0.txt` e `MUPDF-SOURCE.txt`). MuPDF e Artifex são marcas da Artifex Software, Inc.; o PlotS não tem vínculo, patrocínio nem endosso da Artifex.
+
+O `mutool.exe` oficial usa o runtime Microsoft Visual C++ 2015-2022 (x64). Sem esse runtime, o conversor não inicia e o PlotS cai no modo simples com aviso; o modo simples não depende dele.
+
+## Tinta e custo (estimativa)
+
+O ícone de calculadora ao lado do sino abre um painel de **estimativa** de tinta e custo. Ele tem seleção de páginas e cópias próprias, independentes do intervalo, da frente/verso e das cópias da lateral: mudar o painel não altera o envio. O painel mostra a cobertura por canal, o volume em mL, o custo pela moeda do perfil, o cartucho que acaba primeiro, o total do documento e a página mais cara, e exporta um CSV com uma linha por página e uma de total.
+
+Os números são uma estimativa pela área e pela cobertura, não uma medição do consumo real da impressora; não há mapa de calor nem perfil ICC. No modo **CMYK**, o `mutool.exe` separa as páginas e a cobertura vem do PAM; no modo **simples**, o PDFium rasteriza e a fórmula por cor calcula o CMYK. O modo simples funciona sem o `mutool`. Os perfis de tinta guardam volume, rendimento e preço por mL, editáveis na engrenagem e salvos em `plotinfo.toml`.
+
 ## Seus dados
 
 No programa instalado, os perfis das impressoras e os ajustes do driver — os que você salvou na engrenagem ou nas opções da impressora — ficam em `%APPDATA%\plots\perfis.toml`, um arquivo de texto. Os ajustes ficam em Base64, que não é criptografia, e o PlotS não interpreta o que o driver de cada fabricante guarda neles. Se o driver da sua impressora usa senha, PIN ou código de usuário, esses dados podem estar no arquivo, então evite compartilhá-lo. Para apagar o ajuste de uma impressora, use **Usar padrão** na linha dela (também no painel de opções). Para apagar tudo no programa instalado, feche o PlotS e apague a pasta `plots`. No portátil, apague também o `perfis.toml` que está na pasta do `PlotS.exe` **e** a cópia em `%APPDATA%\plots` (ou a pasta inteira): apagar só uma das duas não basta, porque o arquivo local continua ou a cópia de `%APPDATA%` volta na próxima abertura. Na próxima abertura, no instalado, o programa começa sem perfis, sem ajustes e sem histórico, e com **Guardar histórico** ligado de novo: se não quiser registrar os envios, desligue a opção outra vez.

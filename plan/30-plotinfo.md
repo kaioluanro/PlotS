@@ -57,8 +57,8 @@ Perfis em `plotinfo.toml`, ao lado do `perfis.toml` (o modo portátil continua v
 
 ### 3. Análise
 
-- `mutool draw -q -c cmyk -r <dpi> -o page-%04d.pam <pdf> <páginas>`, em lotes e em paralelo
-  (núcleos − 1), com timeout e cancelamento.
+- `mutool draw -q -c cmyk -r <dpi> -o p-%04d.pam <pdf> <páginas>`, em lotes de até 256 MiB
+  estimados e 32 páginas, um processo por lote, com timeout e cancelamento.
 - Fallback: PDFium rasteriza em RGB e a fórmula simples calcula o CMYK. A gaveta avisa
   “Modo simples (sem mutool)” e o programa continua funcionando.
 - A página atual e as páginas escolhidas são analisadas primeiro; o restante do documento vem
@@ -147,8 +147,8 @@ Com “cinzas só com preto”, `R = G = B` vira só K.
 `f_qualidade`: Rascunho 0,6 · Normal 1,0 · Alta 1,3, editáveis no perfil.
 
 No modo `mutool`, o PAM já vem em CMYK; a cobertura é a média dos bytes do canal / 255 × 100.
-O MuPDF faz a separação; “cinzas só com preto” vale no modo simples e é aplicada quando o PAM
-traz CMY iguais.
+O MuPDF faz a separação. "Cinzas só com preto" vale **só no modo simples**, sobre RGB; o PAM
+CMYK não passa por essa regra.
 
 ## Perfis e preço por mL
 
@@ -199,22 +199,29 @@ fatores_qualidade = [0.6, 1.0, 1.3]
   **46.476.800 bytes (44,3 MB)**; o tamanho final do zip é medido no lote de entrega.
 - Processo separado, nunca linkado ao Rust. O PlotS continua MIT; a AGPL vale só para o
   `mutool.exe` e para o fonte correspondente.
-- Teste feito com o binário oficial: `mutool draw -q -c cmyk -r 72 -o page-%04d.pam
-  tres-paginas.pdf 2-3` gravou `page-0002.pam` e `page-0003.pam` (o número é o da página
-  original), e um retângulo `C 40` saiu `[102, 0, 0, 0]` no pixel central.
-- A fonte correspondente `mupdf-1.28.5-source.tar.gz` fica disponível gratuitamente no mesmo
-  release ou em URL permanente, com o SHA-256; a oferta escrita é reforço, não o mecanismo
-  único. O `MUPDF-SOURCE.txt` registra versão, URL de origem, data, SHA-256 do zip e do
-  `mutool.exe` extraído e a declaração AGPL/MIT.
+- Teste feito com o binário oficial: `mutool draw -q -c cmyk -r 72 -o p-%04d.pam
+  tres-paginas.pdf 2-3` gravou `p-0002.pam` e `p-0003.pam` (o número é o da página
+  original), e um retângulo `C 10`/`C 20`/`C 30` saiu `25`/`51`/`76` no byte de 8 bits.
+- A fonte correspondente `mupdf-1.28.5-source.tar.gz` acompanha a entrega **fora do zip**, na
+  mesma pasta do pacote portátil, e também fica disponível na URL oficial; o SHA-256 é
+  `98a5c10c…`. Quem recebeu o binário pode pedir a fonte a quem entregou o pacote, com oferta
+  válida por três anos a partir de 2026-11-07. O `MUPDF-SOURCE.txt` registra copyright, AGPL-3.0
+  ou posterior, versão, data, URL do binário, SHA-256 do zip, do `mutool.exe` e da fonte.
 - O zip leva `AGPL-3.0.txt` integral e `MUPDF-SOURCE.txt` ao lado do binário; a entrada do
   MuPDF nos avisos inclui as licenças de todos os componentes do `thirdparty/` que entram no
-  `mutool.exe` (freetype, harfbuzz, jbig2dec, openjpeg, libjpeg, zlib, lcms2, mujs, gumbo etc.),
-  não só uma linha. `THIRD-PARTY-NOTICES` separa o que é MIT (PlotS) do que é AGPL (mutool) e
-  isenta a marca da Artifex.
+  `mutool.exe` (brotli, cmark-gfm, curl, extract, freeglut, freetype, gumbo, harfbuzz e
+  ms-use, jbig2dec, lcms2, leptonica, libjpeg, mujs, openjpeg, tesseract, zint, zlib e
+  zxing-cpp), não só uma linha. `THIRD-PARTY-NOTICES` separa o que é MIT (PlotS) do que é AGPL
+  (mutool) e isenta a marca da Artifex; a licença do zint é a BSD-3 da biblioteca, não a GPL dos
+  frontends que não são distribuídos.
 - Se houver verificação de integridade do `mutool.exe`, ela é aviso e nunca recusa de binário
   modificado; recusar conflita com a liberdade da AGPL.
-- README e notas da versão dizem que o portátil cresce ~44 MB e leva um programa AGPL separado.
-- O binário não é commitado no repositório: o empacotador baixa, confere o SHA-256 e copia.
+- README e notas da versão dizem que o portátil cresce ~44 MB, leva um programa AGPL separado e
+  que a tinta/custo é **estimativa**.
+- O `mutool.exe` oficial usa o runtime Microsoft Visual C++ 2015-2022 (x64). Sem ele, o conversor
+  não inicia e o PlotS cai no modo simples com aviso; o requisito fica documentado no README.
+- O binário não é commitado no repositório: o empacotador usa a pasta oficial já extraída,
+  confere o SHA-256 do `mutool.exe` e o SHA-256 da fonte antes de copiar.
 - Revisão jurídica antes de publicação continua recomendada; o parecer deve cobrir a fonte
   disponibilizada, as licenças do `thirdparty/` e a separação AGPL/MIT.
 - O zip cresce de ~10,4 MB para a faixa de 40–50 MB; o tamanho real é medido no lote de entrega.
@@ -249,7 +256,8 @@ fatores_qualidade = [0.6, 1.0, 1.3]
 
 - Página branca = 0%; preta = K 100%; quadrado preto em 25% = K 25%; ciano puro = C 100%.
 - A3 = 2× A4.
-- PDF DeviceCMYK com retângulo `C 40 M 0 Y 0 K 0` na página toda = C 40% exato pelo mutool.
+- PDF DeviceCMYK com retângulo `C 10`/`C 20`/`C 30` na página toda = 9,804%/20%/29,804% no
+  byte de 8 bits (25/51/76), exato a 72 dpi; a 150 dpi o antialias fica dentro de 0,05 ponto.
 - Preço por mL, qualidade e volume mudam o custo na proporção certa.
 - Cartucho: fração consumida e cópias até esvaziar.
 
@@ -313,3 +321,46 @@ Concluído em `be877c1`, em 2026-11-07, com CI verde.
 - Nenhuma UI, nenhum mutool/PDFium, nenhuma mudança na impressão. O `toml` já vinha de
   `plots-perfis`/`tauri-utils`, então não há dependência de terceiro nova no binário.
 - Pendente: análise (B2), mutool/CSV (B3) e painel (C).
+
+## Resultado do B2
+
+Concluído em `8a9866f`, em 2026-11-07, com CI verde e revisões de código e jurídico aprovadas.
+
+- `plots-windows/src/analise.rs`: renderiza uma página por vez em BGRA, uma sessão por análise,
+  limites de 256 MiB e 1.200 dpi, sem `unwrap`/`panic` no código de produção.
+- `src-tauri/src/analise.rs`: job em thread própria, cancelamento por `AtomicBool`, cache por
+  conteúdo + dpi + modo, progresso, página e falha em eventos, recálculo sem rasterizar e
+  resultado parcial que nunca vira completo. `recalcular` recusa dpi/modo diferente do analisado.
+- A ordem é página atual, seleção, documento; o teste fixa `[4,1,2,3,5,6]`.
+- Nenhuma mudança na impressão; o `pdfium.dll` continua o mesmo e o teste de cor passou.
+
+## Resultado do B3
+
+Concluído em `eab8d30`, em 2026-11-07, com CI verde e revisão de código aprovada.
+
+- `src-tauri/src/mutool.rs`: `mutool draw -q -c cmyk -r <dpi> -o <dir>\p-%04d.pam <pdf>
+  <páginas>`, processo separado, `CREATE_NO_WINDOW`, timeout de 120 s, cancelamento com kill do
+  PID, pasta temporária exclusiva, limite de 512 MiB por PAM, limpeza em toda saída e nenhuma
+  recusa por hash. `PLOTS_MUTOOL`, `mutool\mutool.exe` e o exe ao lado são procurados nessa ordem.
+- `analise.rs` usa o conversor só no modo CMYK e em lotes; a cobertura entra no cache e nos
+  eventos sem duplicar a fórmula. Sem binário, falha ou timeout, cai no PDFium com
+  `modoUsado = simples` e aviso traduzível (`sem_conversor`/`falha_do_conversor`/`modo_simples`).
+- `csv_tinta.rs`: uma linha por página + `total`, 13 colunas, `;`, decimal ponto, UTF-8,
+  temporário na mesma pasta + `rename`, validação antes de abrir o destino.
+- Provas: PDF DeviceCMYK de 3 páginas C 10/20/30 exato a 72 dpi; job completo com
+  `modoUsado = cmyk`, CSV e recálculo; fallback sem conversor e com conversor que falha;
+  cancelamento antes do conversor.
+
+## Resultado do Lote C
+
+Concluído em `15bc485` (painel) e `0f66aa7` (aviso e lotes), em 2026-11-07.
+
+- `Calculator` ao lado do sino, gaveta à direita, resumo clicável na barra do visualizador e
+  engrenagem com perfis (novo, duplicar, apagar), volumes, rendimento, preço por mL, moeda,
+  qualidade, dpi, modo CMYK/Simples, cinzas e tamanho da imagem.
+- Estados vazio, contando, analisando, erro, página em branco e documento recusado; `aria-live`,
+  foco, alvos de 28 px, reduced-motion, forced-colors e sobreposição abaixo de 900 px.
+- A seleção e as cópias são do painel e não tocam no intervalo, na face nem nas cópias da
+  lateral; `2,5,7,9` × 1 = 4 páginas e `1-10` × 5 = 50 páginas estão nas capturas 23/24.
+- CSV restaurado no adaptador (`exportar_csv(id, caminho)`) e no rodapé; o `aviso` do backend é
+  traduzido na gaveta. UI com 69 arquivos/1.162 testes, `tsc` limpo e build concluído.

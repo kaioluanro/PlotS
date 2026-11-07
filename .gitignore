@@ -12,4 +12,6 @@
 /ui/dist/
 /src-tauri/gen/
 /pdfium-*.tgz
+/mutool/
+/mutool.exe
 *.dll

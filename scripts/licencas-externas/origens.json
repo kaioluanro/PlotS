@@ -111,7 +111,7 @@
         },
         {
           "arquivo": "mupdf-MUPDF-SOURCE.txt",
-          "sha256": "9f5cada8542d037190573c75be9d03bc87f674cb2480172767db4db91e18f7a9"
+          "sha256": "c18bb5e2901cb08a9381a11216fabb65be06181d017d95f25d434182b6704f63"
         },
         {
           "arquivo": "mupdf-brotli-LICENSE",
@@ -162,10 +162,6 @@
           "sha256": "74fe8934cee0e63e8368d4a6b3a703b603e753a62b75b75273572e98a57ebf75"
         },
         {
-          "arquivo": "mupdf-leptonica-README.md",
-          "sha256": "a77abccb78c6ff1612c7c9549db0f1c4ec88f9124ee3140388f4a76b5376434f"
-        },
-        {
           "arquivo": "mupdf-libjpeg-README",
           "sha256": "913af09f785683accdf660b85dcf27fdd567d4ad649daa95cb8771b040db79d1"
         },
@@ -186,24 +182,20 @@
           "sha256": "d69af7f2442fcde1c3372cbbb43907fa1f4b3a91ef3899be69dd3a726dc255a4"
         },
         {
-          "arquivo": "mupdf-zint-COPYING",
-          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
-        },
-        {
-          "arquivo": "mupdf-zint-COPYING",
-          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
-        },
-        {
-          "arquivo": "mupdf-zint-COPYING",
-          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
-        },
-        {
           "arquivo": "mupdf-zlib-LICENSE",
           "sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2"
         },
         {
           "arquivo": "mupdf-zxing-cpp-LICENSE",
           "sha256": "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08"
+        },
+        {
+          "arquivo": "mupdf-leptonica-license.txt",
+          "sha256": "87829abb5bbb00b55a107365da89e9a33f86c4250169e5a1e5588505be7d5806"
+        },
+        {
+          "arquivo": "mupdf-harfbuzz-ms-use-COPYING",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
         }
       ]
     }

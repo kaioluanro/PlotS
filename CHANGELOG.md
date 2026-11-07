@@ -6,7 +6,10 @@ O PlotS segue o [versionamento semântico](https://semver.org/lang/pt-BR/). As v
 
 - PlotS: abre e imprime imagens PNG, JPEG, BMP, GIF, WebP e TIFF multipágina, convertendo cada uma num PDF derivado em cache. Prévia, contagem, frente/verso e impressão usam o mesmo caminho do PDF; o arquivo original não muda.
 - PlotS: a segunda abertura da mesma imagem reaproveita o derivado, sem decodificar de novo; a conversão fica sob o mesmo mutex de carga e o cache tem versão de formato.
-- PlotInfo: motor de tinta com seleção de páginas, cobertura CMYK, custo em mL/R$, perfis com preço por mL e `plotinfo.toml`; painel e `mutool.exe` ainda em desenvolvimento.
+- PlotInfo: painel de estimativa de tinta e custo no visualizador, com ícone de calculadora, gaveta à direita, resumo na barra e engrenagem de perfis. A seleção de páginas e as cópias são do painel e não alteram o intervalo, a frente/verso nem as cópias do envio.
+- PlotInfo: cobertura por canal, volume em mL, custo pela moeda do perfil, cartucho que acaba primeiro, total do documento, página mais cara e exportação CSV com uma linha por página e uma de total. É uma **estimativa**, não uma medição do consumo real; não há mapa de calor nem perfil ICC.
+- PlotInfo: modo CMYK pelo `mutool.exe` separado (MuPDF 1.28.5, AGPL-3.0 ou posterior, 44,3 MB) e modo simples pelo PDFium, com aviso traduzido quando o conversor falta ou falha. O portátil leva `mutool/` com o binário, a AGPL, as licenças do `thirdparty/` e a fonte correspondente fora do zip; o `mutool` precisa do runtime Microsoft Visual C++ 2015-2022 (x64).
+- PlotInfo: três perfis de tanque com os preços informados pelo usuário — HP Smart Tank 110 (GT51), Epson EcoTank L3150 (544) e Epson EcoTank L6270 (504) —, além dos dois genéricos; volume, rendimento e preço por mL são editáveis na engrenagem.
 
 ## 1.0.0-alpha.6
 
