@@ -212,8 +212,10 @@ export function App() {
   }, []);
 
   const abrirPeloResumo = useCallback(() => {
-    origemDoPlotInfo.current = "resumo";
-    setPlotInfoAberto(true);
+    setPlotInfoAberto((aberto) => {
+      if (!aberto) origemDoPlotInfo.current = "resumo";
+      return !aberto;
+    });
   }, []);
 
   // Os eventos do sistema ficam assinados uma vez so e precisam ler o estado mais recente.
