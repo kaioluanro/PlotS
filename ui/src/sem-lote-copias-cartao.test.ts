@@ -129,6 +129,19 @@ describe("copias no cartao: concluido", () => {
     expect(linhaDaCopia(concluido({}), "en")).toBe("2 copies · 24 sheets in total · A4");
   });
 
+  it("lote automatico juntado nao multiplica as folhas pelas copias", () => {
+    const juntado = cartao({
+      estado: { tipo: "concluido" },
+      total: 1,
+      copias: 3,
+      copia: null,
+      folhasDoLote: 6,
+      loteAutomatico: true,
+      temAutomatico: true,
+    });
+    expect(linhaDaCopia(juntado, "pt-BR")).toBeNull();
+  });
+
   it("com mais de um trecho por copia, nunca diz trecho nem traz linha de dados", () => {
     const trechos = concluido({ lote: 4, total: 4, copia: 2, copias: 2 });
     expect(linhaDaCopia(trechos, "pt-BR")).toBeNull();

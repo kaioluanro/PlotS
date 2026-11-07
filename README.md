@@ -16,7 +16,7 @@ O instalador foi configurado para registrar o PlotS no "Abrir com" dos arquivos 
 
 ## Impressão
 
-A caixinha **Uma cópia por vez**, logo acima da Quantidade, vem marcada por padrão. Com ela, as frentes saem em um trabalho por cópia: o PlotS só manda a próxima depois que a impressora confirma a anterior. No verso, as cópias continuam saindo juntas, num segundo pedido. Desmarcada, todas as cópias da frente voltam a sair num maço único. Em impressora que imprime as duas faces sozinha, marcada mantém uma cópia por trabalho e desmarcada junta todas.
+A caixinha **Uma cópia por vez**, logo acima da Quantidade, vem marcada por padrão. Com ela, as frentes saem em um trabalho por cópia: o PlotS só manda a próxima depois que a impressora confirma a anterior. No verso, as cópias continuam saindo juntas, num segundo pedido. Desmarcada, todas as cópias da frente voltam a sair num maço único. Em impressora que imprime as duas faces sozinha, marcada mantém uma cópia por trabalho e desmarcada junta todas, preservando o branco entre cópias de total ímpar.
 
 ## Licença
 

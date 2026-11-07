@@ -1095,7 +1095,25 @@ fn plano_automatico_copias_do_intervalo_com_modo(
             .iter_mut()
             .for_each(|lote| da_copia(lote, copia));
     }
-    if juntar {
+    if juntar && copias > 1 {
+        // O plano automático de uma cópia não envia o branco do fim ímpar: a duplexagem fecha a
+        // última folha sozinha. Ao juntar cópias, esse branco passa a ser a fronteira entre elas,
+        // e sem ele a última página de uma cópia divide a folha com a primeira da próxima.
+        for lote in &mut lotes {
+            if !lote.duas_faces {
+                continue;
+            }
+            let copia = lote.copias.first().copied().unwrap_or(0);
+            lote.passada1 = lote
+                .paginas
+                .iter()
+                .map(|numero| Pagina {
+                    numero: *numero,
+                    girar_180: false,
+                    copia,
+                })
+                .collect();
+        }
         juntar_lotes(&mut lotes)?;
     }
     Ok(lotes)
@@ -1339,6 +1357,39 @@ mod tests {
         let numeros: Vec<Option<usize>> = lotes[0].passada1.iter().map(|p| p.numero).collect();
         let esperado: Vec<Option<usize>> = (0..3).flat_map(|_| (1..=4).map(Some)).collect();
         assert_eq!(numeros, esperado);
+    }
+
+    #[test]
+    fn automatico_juntas_preserva_o_branco_entre_copias_impares() {
+        let perfil = PerfilImpressora::default();
+        let lotes = plano_automatico_copias_do_intervalo_juntas(
+            &[A4; 3],
+            None,
+            2,
+            OrdemPassadas::default(),
+            perfil,
+            RepartoAutomatico::PorTrechoDePapel,
+        )
+        .unwrap();
+        assert_eq!(lotes.len(), 1);
+        assert_eq!(lotes[0].paginas.len(), 8);
+        assert_eq!(lotes[0].copias, [0, 0, 0, 0, 1, 1, 1, 1]);
+        let numeros: Vec<Option<usize>> = lotes[0].passada1.iter().map(|p| p.numero).collect();
+        assert_eq!(
+            numeros,
+            [
+                Some(1),
+                Some(2),
+                Some(3),
+                None,
+                Some(1),
+                Some(2),
+                Some(3),
+                None
+            ],
+            "o branco de cada cópia ímpar tem de chegar ao envio"
+        );
+        assert_eq!(lotes[0].passada1.len(), 8);
     }
 
     #[test]

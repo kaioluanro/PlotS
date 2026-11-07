@@ -105,6 +105,20 @@ fn uma_copia_por_vez_separa_as_frentes_manuais_e_o_automatico() {
     assert_eq!(separado.len(), 3, "com a opção, uma cópia por trabalho");
 }
 
+#[test]
+fn uma_copia_por_vez_nao_separa_o_verso() {
+    let pedido = Pedido::novo("documento.pdf".into(), None)
+        .com_copias(3)
+        .com_alcance(Alcance::SoVersos)
+        .com_uma_copia_por_vez(true);
+    let lotes = planejar_pedido(&[A4; 2], &pedido, PerfilImpressora::default(), false).unwrap();
+    assert_eq!(
+        lotes.len(),
+        1,
+        "o verso sai num maço só, mesmo com a opção ligada"
+    );
+}
+
 impl ParaMotivo for String {
     fn para_motivo(&self) -> Motivo {
         Motivo::novo("sistema", self.clone())
@@ -364,6 +378,36 @@ impl Cena {
                     )
                     .map_err(|erro| motivo_do_job(&erro))?
                     .com_alcance(Alcance::SoFrentes),
+                    recolocar: recolocar_do_perfil(Some(ModeloImpressora::Laser), None),
+                    vira_para_ler: true,
+                })
+            })
+    }
+
+    /// Plano pronto, para os testes que precisam de dois lotes iguais e do alcance de versos.
+    fn iniciar_com_lotes(
+        &self,
+        impressora: &str,
+        leituras: &[Leitura],
+        lotes: Vec<LoteDoFluxo>,
+        alcance: Alcance,
+        uma_copia_por_vez: bool,
+    ) -> bool {
+        let backend = self.backend(leituras, false, false);
+        self.gerente
+            .iniciar(identidade(impressora), self.emissor(), move || {
+                Ok(Preparo {
+                    uma_copia_por_vez,
+                    condutor: Condutor::novo(
+                        backend,
+                        lotes,
+                        Espera {
+                            intervalo: Duration::from_millis(2),
+                            consultas: 1_000,
+                        },
+                    )
+                    .map_err(|erro| motivo_do_job(&erro))?
+                    .com_alcance(alcance),
                     recolocar: recolocar_do_perfil(Some(ModeloImpressora::Laser), None),
                     vira_para_ler: true,
                 })
@@ -2608,6 +2652,56 @@ fn uma_copia_por_vez_envia_a_proxima_so_depois_da_confirmacao() {
         ],
         "a próxima cópia só sai depois do segundo consultar, que confirma a anterior"
     );
+}
+
+#[test]
+fn uma_copia_por_vez_para_na_troca_de_papel() {
+    let cena = Cena::nova();
+    assert!(cena.iniciar_uma_copia_por_vez("a", &[], &[A4, A5], 2));
+    let espera = cena.esperar("a", |estado| matches!(estado, EstadoCartao::ProximoLote));
+    assert_eq!(espera.troca_de_papel.map(|papel| papel.formato), Some("a5"));
+    assert_eq!(
+        cena.enviados(),
+        vec![Passada::Frente],
+        "não passou do papel A4"
+    );
+    cena.comandar("a", Comando::EnviarFrente);
+    cena.esperar_envios(2);
+    let espera = cena.esperar("a", |estado| matches!(estado, EstadoCartao::ProximoLote));
+    assert_eq!(espera.troca_de_papel.map(|papel| papel.formato), Some("a4"));
+    assert_eq!(
+        cena.enviados(),
+        vec![Passada::Frente, Passada::Frente],
+        "depois do A5, a próxima cópia espera o A4"
+    );
+}
+
+#[test]
+fn uma_copia_por_vez_nao_avanca_sozinho_no_verso() {
+    let plano = plots_core::plano_lotes_do_intervalo(
+        &[A4; 2],
+        None,
+        2,
+        OrdemPassadas::default(),
+        PerfilImpressora::default(),
+    )
+    .unwrap();
+    let mut lotes = fluxo::lotes_do_plano(&plano);
+    lotes.extend(fluxo::lotes_do_plano(&plano));
+    assert_eq!(lotes.len(), 2);
+    let cena = Cena::nova();
+    assert!(cena.iniciar_com_lotes("a", &[], lotes, Alcance::SoVersos, true));
+    cena.comandar("a", Comando::EnviarVerso);
+    cena.esperar_envios(1);
+    let espera = cena.esperar("a", aguardando);
+    assert!(espera.troca_de_papel.is_none());
+    assert_eq!(
+        cena.enviados(),
+        vec![Passada::Verso],
+        "o verso não avança sozinho para o lote seguinte"
+    );
+    cena.comandar("a", Comando::EnviarVerso);
+    cena.esperar_envios(2);
 }
 
 #[test]

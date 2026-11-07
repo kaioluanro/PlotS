@@ -15,10 +15,12 @@ cada trabalho antes de mandar o próximo. O verso continua saindo inteiro, num s
   separado. O próximo só é enviado depois que o spooler confirma o anterior (o mesmo
   `JOB_STATUS_PRINTED`/`COMPLETO` que o PlotS já usa). Os versos de todas as cópias saem juntos,
   como hoje, quando a pessoa escolhe **Verso**.
-- **Simplex:** cada cópia inteira (todas as páginas do trecho) é um trabalho; a próxima só sai
-  depois da confirmação.
+- **Frente:** cada cópia da face escolhida é um trabalho; a próxima só sai depois da
+  confirmação. Num documento de uma página é a página inteira; num de várias, são as páginas da
+  frente.
 - **Impressora automática:** marcada, uma cópia por trabalho (comportamento atual); desmarcada,
-  todas as cópias num trabalho só.
+  todas as cópias num trabalho só, mas com o branco entre cópias de total ímpar preservado para
+  nenhuma começar na folha da anterior.
 - **Uma cópia:** a opção não muda nada.
 - **Troca de papel:** a sequência para na troca, mostra o papel e retoma depois da confirmação.
 - **Erro, aviso, cancelamento ou fechamento da aba:** a sequência para no ponto em que está.
@@ -30,8 +32,9 @@ cada trabalho antes de mandar o próximo. O verso continua saindo inteiro, num s
   sempre planejado junto, como o usuário pediu.
 - O avanço é automático, feito pela mesma thread do trabalho; não há clique sintético nem um
   novo comando de “imprimir de novo”.
-- O backend recebe a opção por argumento. O padrão do backend continua o comportamento antigo
-  (juntar), para não mudar CLI, PlotSim e testes antigos; a interface manda ligado por padrão.
+- O backend recebe a opção por argumento. No manual, o padrão do backend continua o comportamento
+  antigo (juntar), para não mudar CLI, PlotSim e testes antigos; no automático, desmarcado junta
+  e marcado separa. A interface manda ligado por padrão.
 - O cartão mostra “Cópia N de M” também no fluxo manual separado, reaproveitando o que já existe
   para o automático.
 - O resumo e a confirmação continuam contando páginas, folhas e maço físicos; só ganham a nota
@@ -49,18 +52,23 @@ cada trabalho antes de mandar o próximo. O verso continua saindo inteiro, num s
 
 ## Resultado
 
-Concluído no código em 2026-11-07, em `09727ac`.
+Concluído no código em 2026-11-07, em `09727ac`, com a correção da revisão no mesmo lote.
 
 - `plots-core`: `plano_copias_do_intervalo_separadas` e
-  `plano_automatico_copias_do_intervalo_juntas`, com o `juntar_lotes` compartilhado.
+  `plano_automatico_copias_do_intervalo_juntas`, com o `juntar_lotes` compartilhado. No automático
+  juntado, o branco de cada cópia ímpar entra no `passada1`, senão a última página de uma cópia
+  dividiria a folha com a primeira da seguinte.
 - `src-tauri/src/trabalhos.rs`: `Pedido.uma_copia_por_vez`, planejamento separado só nas frentes,
   avanço automático no `Passo::LoteConcluido` e `Cartao.por_copia`.
 - `src-tauri/src/comandos_trabalho.rs`: `iniciar_impressao` recebe `umaCopiaPorVez`.
 - Interface: `CampoSequencia` acima da quantidade, estado por aba, dica que muda no verso e nota
-  na confirmação; o cartão mostra “Cópia N de M” também no fluxo manual separado.
+  na confirmação; o cartão mostra “Cópia N de M” também no fluxo manual separado e não multiplica
+  as folhas no lote automático juntado.
 - Provas: 3 cópias de 2 páginas geram 3 frentes, e o teste registra
-  `enviar, consultar, consultar, enviar...` — a próxima só sai depois do `Concluido`.
-- Gate: `cargo test --workspace --locked` verde, `tsc` limpo, 1.173 testes de UI e build da
+  `enviar, consultar, consultar, enviar...` — a próxima só sai depois do `Concluido`. Há testes
+  para a parada na troca de papel, para o verso não avançar sozinho e para o branco entre cópias
+  ímpares.
+- Gate: `cargo test --workspace --locked` verde, `tsc` limpo, 1.174 testes de UI e build da
   interface concluído.
 
 ## Pronto quando

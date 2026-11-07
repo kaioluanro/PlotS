@@ -429,8 +429,8 @@ export function textoDasPaginas(faixa: FaixaDoLote, idioma: Idioma = idiomaAtual
 }
 
 /**
- * O numero da copia de um lote automatico, quando o trabalho tem varias copias e o lote sai de uma so.
- * Lote misturado, ou lote que nao e automatico, nao leva numero de copia.
+ * O numero da copia de um lote separado, quando o trabalho tem varias copias e o lote sai de uma so.
+ * Lote misturado, ou lote que nao e de uma copia, nao leva numero de copia.
  */
 export function copiaDoLote(cartao: Cartao): number | null {
   return (cartao.loteAutomatico === true || cartao.porCopia === true) &&
@@ -455,7 +455,10 @@ export function linhaDaCopia(cartao: Cartao, idioma: Idioma = idiomaAtual): stri
   const tt = trechosPorCopia(cartao);
   if (cartao.estado.tipo === "concluido") {
     // Uma copia por lote: as folhas do ultimo lote sao as de uma copia, e o total sai da multiplicacao.
-    if (!((cartao.temAutomatico === true || cartao.porCopia === true) && copias > 1 && tt === 1)) return null;
+    if (!((cartao.temAutomatico === true || cartao.porCopia === true) &&
+      copias > 1 &&
+      cartao.total === copias))
+    return null;
     return traduzir(idioma, "cartao.copia.concluido", {
       total: String(copias),
       folhas: textoDasFolhas((cartao.folhasDoLote ?? 0) * copias, idioma),
