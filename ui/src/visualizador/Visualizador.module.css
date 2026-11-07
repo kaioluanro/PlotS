@@ -31,6 +31,46 @@
   text-align: center;
 }
 
+/* Resumo compacto da tinta: uma acao discreta na barra, sem competir com o zoom. */
+.resumo {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 4px;
+  min-height: 20px;
+  margin-left: 10px;
+  padding: 0 6px;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+  white-space: nowrap;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--anim-fast) ease,
+    border-color var(--anim-fast) ease,
+    color var(--anim-fast) ease;
+}
+
+.resumo:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+  border-color: var(--border-strong);
+}
+
+.resumo:focus-visible {
+  outline-offset: -2px;
+}
+
+.resumo svg {
+  flex-shrink: 0;
+  color: var(--fg-faint);
+}
+
 .vao {
   flex: 1 1 0;
   min-width: 8px;
@@ -232,6 +272,17 @@
 @keyframes girar {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (forced-colors: active) {
+  .resumo {
+    border-color: CanvasText;
+  }
+
+  .resumo:hover {
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
   }
 }
 

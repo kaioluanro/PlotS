@@ -1,4 +1,5 @@
 import { CircleAlert, FileUp, X } from "lucide-react";
+import type { ResumoDaBarra } from "../analise-tinta";
 import { t } from "../i18n";
 import type { Documento } from "../tabs";
 import { Visualizador } from "../visualizador/Visualizador";
@@ -18,6 +19,9 @@ interface Props {
   arrastando: boolean;
   aoDispensarErro: () => void;
   aoAbrir: () => void;
+  resumoTinta?: ResumoDaBarra | null;
+  aoAbrirTinta?: () => void;
+  aoMudarPagina?: (pagina: number) => void;
 }
 
 export function DocumentArea({
@@ -28,6 +32,9 @@ export function DocumentArea({
   arrastando,
   aoDispensarErro,
   aoAbrir,
+  resumoTinta = null,
+  aoAbrirTinta,
+  aoMudarPagina,
 }: Props) {
   return (
     <main
@@ -54,7 +61,13 @@ export function DocumentArea({
       )}
       {documento && recusa === null ? (
         // A chave separa as abas: trocar de aba solta o PDF anterior, mesmo com o mesmo arquivo.
-        <Visualizador key={idAbaAtiva} documento={documento} />
+        <Visualizador
+          key={idAbaAtiva}
+          documento={documento}
+          resumoTinta={resumoTinta}
+          aoAbrirTinta={aoAbrirTinta}
+          aoMudarPagina={aoMudarPagina}
+        />
       ) : (
         <div className={styles.centro}>
           {documento ? (

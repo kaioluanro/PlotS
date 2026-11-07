@@ -1,5 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Bell, Copy, History, Minus, PanelLeftClose, PanelLeftOpen, Plus, Square, X } from "lucide-react";
+import { Bell, Calculator, Copy, History, Minus, PanelLeftClose, PanelLeftOpen, Plus, Square, X } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import marca from "../../assets/marca.png";
 import { contadorDoSino } from "../avisos";
@@ -7,10 +7,12 @@ import { assinar } from "../backend";
 import { situacaoDaAba } from "../cartoes";
 import { t } from "../i18n";
 import { indiceDeTabulacao, vizinhaPorSeta, type Aba } from "../tabs";
+import { ID_GAVETA_PLOTINFO } from "./PlotInfoGaveta";
 import styles from "./TitleBar.module.css";
 
 const ATRIBUTO_ABA_ATIVA = "data-aba-ativa";
 const ID_BOTAO_ABRIR = "botao-abrir-pdf";
+export const ID_BOTAO_PLOTINFO = "botao-plotinfo";
 /** Altura de uma linha de roda quando o sistema informa o giro em linhas, e nao em pixels. */
 const PIXELS_POR_LINHA = 16;
 
@@ -26,6 +28,11 @@ export function focarAbaAtiva(): void {
   alvo?.focus();
 }
 
+/** Depois de fechar a gaveta, o foco volta ao botao que a abriu. */
+export function focarBotaoPlotInfo(): void {
+  document.getElementById(ID_BOTAO_PLOTINFO)?.focus();
+}
+
 interface Props {
   abas: readonly Aba[];
   ativa: number | null;
@@ -38,6 +45,8 @@ interface Props {
   /** Avisos da sessao que ainda ninguem abriu o painel para ver. */
   naoLidos: number;
   aoAbrirAvisos: () => void;
+  plotInfoAberto: boolean;
+  aoAlternarPlotInfo: () => void;
   idLateral: string;
   idPainel: string;
 }
@@ -53,6 +62,8 @@ export function TitleBar({
   aoAbrirHistorico,
   naoLidos,
   aoAbrirAvisos,
+  plotInfoAberto,
+  aoAlternarPlotInfo,
   idLateral,
   idPainel,
 }: Props) {
@@ -221,6 +232,18 @@ export function TitleBar({
         <Plus size={14} />
       </button>
       <div className={styles.arrasto} data-tauri-drag-region />
+      <button
+        type="button"
+        id={ID_BOTAO_PLOTINFO}
+        className={styles.botaoIcone}
+        aria-label={t("plotinfo.abrir")}
+        title={t("plotinfo.abrir")}
+        aria-expanded={plotInfoAberto}
+        aria-controls={ID_GAVETA_PLOTINFO}
+        onClick={aoAlternarPlotInfo}
+      >
+        <Calculator size={14} aria-hidden="true" />
+      </button>
       <button
         type="button"
         className={styles.botaoIcone}

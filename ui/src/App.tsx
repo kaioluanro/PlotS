@@ -1,7 +1,8 @@
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import styles from "./App.module.css";
+import { resumoDaBarra } from "./analise-tinta";
 import { deveBloquearTecla, interpretarAtalho } from "./atalhos";
 import {
   abrirDocumento,
@@ -32,8 +33,9 @@ import { CalibracaoDialog } from "./components/CalibracaoDialog";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { DocumentArea, ID_AREA_DOCUMENTO } from "./components/DocumentArea";
 import { OpcoesDaImpressoraDialog } from "./components/OpcoesDaImpressoraDialog";
+import { PlotInfoGaveta } from "./components/PlotInfoGaveta";
 import { ID_LATERAL, Sidebar } from "./components/Sidebar";
-import { focarAbaAtiva, TitleBar } from "./components/TitleBar";
+import { focarAbaAtiva, focarBotaoPlotInfo, TitleBar } from "./components/TitleBar";
 import {
   aindaPodeCancelar,
   cartaoAtual,
@@ -96,6 +98,7 @@ import {
   type RascunhoIntervalo,
 } from "./intervalo";
 import { abrirLote, type LoteCaminhos } from "./lote";
+import { useTintaDoDocumento } from "./plotinfo-uso";
 import { usePreferencias } from "./preferencias-estado";
 import {
   decidirFechamentoJanela,
@@ -116,6 +119,9 @@ import {
 export function App() {
   const [estado, despachar] = useReducer(reduzirAbas, estadoInicial);
   const [lateralAberta, setLateralAberta] = useState(true);
+  const [plotInfoAberto, setPlotInfoAberto] = useState(false);
+  const [engrenagemDoPlotInfo, setEngrenagemDoPlotInfo] = useState(false);
+  const [paginaAtual, setPaginaAtual] = useState<number | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   // A quantidade digitada e um numero de 1 a 999: enquanto nao for, o envio da face espera.
   const [copiasValidas, setCopiasValidas] = useState(true);
@@ -168,10 +174,26 @@ export function App() {
     cartaoAReimprimir !== null ||
     historico !== null ||
     painelAvisos ||
-    grupos.aApagar !== null;
+    grupos.aApagar !== null ||
+    engrenagemDoPlotInfo;
   const abaAtiva = estado.abas.find((aba) => aba.id === estado.ativa) ?? null;
   const analiseDoDocumento = useAnaliseDoDocumento(abaAtiva);
+  const tinta = useTintaDoDocumento(abaAtiva, plotInfoAberto, paginaAtual);
+  const resumoTinta = useMemo(
+    () => (tinta.resultado === null ? null : resumoDaBarra(tinta.resultado)),
+    [tinta.resultado],
+  );
   const idAtiva = estado.ativa;
+
+  useEffect(() => {
+    setPaginaAtual(null);
+  }, [estado.ativa]);
+
+  const fecharPlotInfo = useCallback(() => {
+    setPlotInfoAberto(false);
+    setEngrenagemDoPlotInfo(false);
+    focarBotaoPlotInfo();
+  }, []);
 
   // Os eventos do sistema ficam assinados uma vez so e precisam ler o estado mais recente.
   const estadoAtual = useRef(estado);
@@ -670,6 +692,8 @@ export function App() {
         }}
         naoLidos={contarNaoLidos(avisos.itens)}
         aoAbrirAvisos={() => setPainelAvisos(true)}
+        plotInfoAberto={plotInfoAberto}
+        aoAlternarPlotInfo={() => setPlotInfoAberto((aberto) => !aberto)}
         idLateral={ID_LATERAL}
         idPainel={ID_AREA_DOCUMENTO}
       />
@@ -755,15 +779,31 @@ export function App() {
             oculto={confirmando}
             aoFechar={(id) => despacharAvisos({ tipo: "fechar", id })}
           />
-          <DocumentArea
-            documento={abaAtiva?.documento ?? null}
-            idAbaAtiva={estado.ativa}
-            erro={erro}
-            recusa={abaAtiva?.paginas.estado === "recusado" ? abaAtiva.paginas.motivo : null}
-            arrastando={arrastando}
-            aoDispensarErro={() => setErro(null)}
-            aoAbrir={() => void abrirPeloSeletor()}
-          />
+          <div className={styles.documentoComGaveta}>
+            <DocumentArea
+              documento={abaAtiva?.documento ?? null}
+              idAbaAtiva={estado.ativa}
+              erro={erro}
+              recusa={abaAtiva?.paginas.estado === "recusado" ? abaAtiva.paginas.motivo : null}
+              arrastando={arrastando}
+              aoDispensarErro={() => setErro(null)}
+              aoAbrir={() => void abrirPeloSeletor()}
+              resumoTinta={resumoTinta}
+              aoAbrirTinta={() => setPlotInfoAberto(true)}
+              aoMudarPagina={setPaginaAtual}
+            />
+            <PlotInfoGaveta
+              aberto={plotInfoAberto}
+              aba={abaAtiva}
+              paginaAtual={paginaAtual}
+              tinta={tinta}
+              aoFechar={fecharPlotInfo}
+              aoMudarEngrenagem={setEngrenagemDoPlotInfo}
+              aoSalvarPerfil={tinta.salvarPerfil}
+              aoApagarPerfil={tinta.apagarPerfil}
+              aoAplicarConfiguracao={tinta.aplicarConfiguracao}
+            />
+          </div>
         </div>
       </div>
       <CalibracaoDialog

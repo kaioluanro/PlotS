@@ -20,3 +20,12 @@
   min-width: 0;
   min-height: 0;
 }
+
+/* A gaveta fica ao lado do visualizador; abaixo de 900 px ela passa por cima. */
+.documentoComGaveta {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+}

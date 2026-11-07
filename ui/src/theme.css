@@ -115,6 +115,12 @@
   --status-offline-hover: #f87171;
 
   --icon-warning: #f59e0b;
+  --ink-cyan: #38bdf8;
+  --ink-magenta: #f472b6;
+  --ink-yellow: #facc15;
+  --ink-key: #27272a;
+  --ink-outline: rgba(243, 244, 246, 0.55);
+  --ink-yellow-outline: rgba(0, 0, 0, 0.6);
   --focus-ring: #38bdf8;
   --shape-tabs-lane-bg: #1a1c1f;
   --shape-tabs-lane-border: rgba(255, 255, 255, 0.06);
@@ -200,6 +206,12 @@
   --status-offline-hover: #fecaca;
 
   --icon-warning: #f59e0b;
+  --ink-cyan: #67e8f9;
+  --ink-magenta: #f9a8d4;
+  --ink-yellow: #fde047;
+  --ink-key: #18181b;
+  --ink-outline: rgba(255, 255, 255, 0.55);
+  --ink-yellow-outline: rgba(0, 0, 0, 0.6);
   --focus-ring: #38bdf8;
   --shape-tabs-lane-bg: #2e2e2e;
   --shape-tabs-lane-border: rgba(255, 255, 255, 0.07);

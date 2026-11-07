@@ -1,4 +1,4 @@
-import { CircleAlert, LoaderCircle, Minus, MoveHorizontal, PanelRight, Plus } from "lucide-react";
+import { Calculator, CircleAlert, LoaderCircle, Minus, MoveHorizontal, PanelRight, Plus } from "lucide-react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import {
   useCallback,
@@ -12,6 +12,12 @@ import {
 } from "react";
 import botoes from "../components/Botao.module.css";
 import { EmptyState } from "../components/EmptyState";
+import { ID_GAVETA_PLOTINFO } from "../components/PlotInfoGaveta";
+import {
+  formatarMl,
+  formatarMoeda,
+  type ResumoDaBarra,
+} from "../analise-tinta";
 import { mensagemDeErro } from "../erros";
 import { t } from "../i18n";
 import type { Documento } from "../tabs";
@@ -117,6 +123,41 @@ function useCarga(documento: Documento, tentativa: number): Carga {
   return carga;
 }
 
+interface ResumoDaBarraProps {
+  resumo: ResumoDaBarra;
+  aoAbrir: () => void;
+}
+
+export function textoDoResumo(resumo: ResumoDaBarra): string {
+  return t("plotinfo.resumo.curto", {
+    paginas: String(resumo.totalPaginas),
+    ml: formatarMl(resumo.ml),
+    custo: formatarMoeda(resumo.valor, resumo.moeda),
+  });
+}
+
+export function BotaoDoResumo({ resumo, aoAbrir }: ResumoDaBarraProps) {
+  const texto = textoDoResumo(resumo);
+  const rotulo = t("plotinfo.resumo.rotulo", {
+    paginas: String(resumo.totalPaginas),
+    ml: formatarMl(resumo.ml),
+    custo: formatarMoeda(resumo.valor, resumo.moeda),
+  });
+  return (
+    <button
+      type="button"
+      className={styles.resumo}
+      aria-label={rotulo}
+      title={rotulo}
+      aria-controls={ID_GAVETA_PLOTINFO}
+      onClick={aoAbrir}
+    >
+      <Calculator size={12} aria-hidden="true" />
+      <span>{texto}</span>
+    </button>
+  );
+}
+
 interface PropsBotao {
   rotulo: string;
   /** Texto da dica ao passar o mouse; quando falta, a dica repete o rotulo. */
@@ -148,6 +189,7 @@ function BotaoDaBarra({
   return (
     <button
       type="button"
+      data-botao-da-barra="true"
       className={styles.botao}
       aria-label={rotulo}
       title={dica ?? rotulo}
@@ -172,6 +214,8 @@ interface PropsBarra {
   podeMenos: boolean;
   ajustando: boolean;
   miniaturas: boolean;
+  resumoTinta: ResumoDaBarra | null;
+  aoAbrirTinta?: () => void;
   aoDiminuir: () => void;
   aoAumentar: () => void;
   aoAjustar: () => void;
@@ -188,6 +232,8 @@ function Barra({
   podeMenos,
   ajustando,
   miniaturas,
+  resumoTinta,
+  aoAbrirTinta,
   aoDiminuir,
   aoAumentar,
   aoAjustar,
@@ -209,7 +255,9 @@ function Barra({
     if (proximo === null) return;
     evento.preventDefault();
     setFoco(proximo);
-    barra.current?.querySelectorAll<HTMLButtonElement>("button")[proximo]?.focus();
+    barra.current
+      ?.querySelectorAll<HTMLButtonElement>("[data-botao-da-barra]")
+      [proximo]?.focus();
   };
 
   return (
@@ -224,6 +272,9 @@ function Barra({
         <span className={styles.oculto}>{rotuloPagina}</span>
         <span aria-hidden="true">{pronta ? `${pagina} / ${total}` : "– / –"}</span>
       </span>
+      {resumoTinta !== null && aoAbrirTinta !== undefined && (
+        <BotaoDoResumo resumo={resumoTinta} aoAbrir={aoAbrirTinta} />
+      )}
       <span className={styles.vao} />
       <BotaoDaBarra
         indice={0}
@@ -286,9 +337,21 @@ interface PropsLeitor {
   total: number;
   primeiraPagina: TamanhoPagina;
   fila: FilaDeDesenho;
+  resumoTinta: ResumoDaBarra | null;
+  aoAbrirTinta?: () => void;
+  aoMudarPagina?: (pagina: number) => void;
 }
 
-function Leitor({ documento, pdf, total, primeiraPagina, fila }: PropsLeitor) {
+function Leitor({
+  documento,
+  pdf,
+  total,
+  primeiraPagina,
+  fila,
+  resumoTinta,
+  aoAbrirTinta,
+  aoMudarPagina,
+}: PropsLeitor) {
   const raiz = useRef<HTMLDivElement>(null);
   const rolavel = useRef<HTMLDivElement>(null);
   // Volta para onde a aba estava, se ela ja foi lida antes nesta janela.
@@ -419,6 +482,12 @@ function Leitor({ documento, pdf, total, primeiraPagina, fila }: PropsLeitor) {
   }, [fila, pdf]);
 
   const atual = paginaAtual(pilha, rolagem, visao.altura);
+  // A gaveta de tinta acompanha a pagina que a pessoa esta vendo, sem refazer a analise.
+  const avisarPagina = useRef(aoMudarPagina);
+  avisarPagina.current = aoMudarPagina;
+  useEffect(() => {
+    if (atual !== null) avisarPagina.current?.(atual);
+  }, [atual]);
   // Um comando que nao muda o zoom (por exemplo, diminuir no limite) nao sai do ajuste a largura.
   const aplicarZoom = (acao: AcaoDeZoom) => {
     if (acao === "ajustar") {
@@ -496,6 +565,8 @@ function Leitor({ documento, pdf, total, primeiraPagina, fila }: PropsLeitor) {
         podeMenos={podeDiminuir(zoom, alturaBase)}
         ajustando={ajustando}
         miniaturas={abertas}
+        resumoTinta={resumoTinta}
+        aoAbrirTinta={aoAbrirTinta}
         aoDiminuir={diminuir}
         aoAumentar={aumentar}
         aoAjustar={ajustar}
@@ -527,6 +598,9 @@ function Leitor({ documento, pdf, total, primeiraPagina, fila }: PropsLeitor) {
 
 interface Props {
   documento: Documento;
+  resumoTinta?: ResumoDaBarra | null;
+  aoAbrirTinta?: () => void;
+  aoMudarPagina?: (pagina: number) => void;
 }
 
 /**
@@ -546,7 +620,12 @@ function TextoDeCarga() {
 }
 
 /** Mostra o PDF da aba. Cada aba monta o seu: ao trocar, a memoria e os workers da anterior saem. */
-export function Visualizador({ documento }: Props) {
+export function Visualizador({
+  documento,
+  resumoTinta = null,
+  aoAbrirTinta,
+  aoMudarPagina,
+}: Props) {
   const [tentativa, setTentativa] = useState(0);
   const carga = useCarga(documento, tentativa);
 
@@ -577,6 +656,8 @@ export function Visualizador({ documento }: Props) {
           podeMenos={false}
           ajustando={false}
           miniaturas={false}
+          resumoTinta={resumoTinta}
+          aoAbrirTinta={aoAbrirTinta}
           aoDiminuir={() => undefined}
           aoAumentar={() => undefined}
           aoAjustar={() => undefined}
@@ -596,6 +677,9 @@ export function Visualizador({ documento }: Props) {
       total={carga.pdf.total}
       primeiraPagina={carga.pdf.primeiraPagina}
       fila={carga.fila}
+      resumoTinta={resumoTinta}
+      aoAbrirTinta={aoAbrirTinta}
+      aoMudarPagina={aoMudarPagina}
     />
   );
 }
