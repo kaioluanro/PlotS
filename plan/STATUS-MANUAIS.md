@@ -83,7 +83,7 @@ Requisitos: OK 76 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4 (110). Detalhes e
 | plotinfo-analise | `8a9866f` | concluído no código; PDFium, cache, eventos, recálculo e cancelamento; revisões de código e jurídico aprovadas |
 | plotinfo-mutool | `eab8d30` | concluído no código; mutool separado, CMYK, fallback com aviso e CSV; prova DeviceCMYK e job completo |
 | plotinfo-painel | `15bc485` + `0f66aa7` + `7acd500` + `a699b22` + `8bfd509` | concluído no código; gaveta, resumo alternável, engrenagem, CSV liberado, aviso traduzível, reanálise por dpi/modo/cinzas, foco e acessibilidade; 1.165 testes de UI |
-| copia-por-vez | `09727ac` | concluído no código; caixinha acima da Quantidade, frentes uma cópia por vez, automático junto/separado e cartão com “Cópia N de M”; 1.174 testes de UI |
+| copia-por-vez | `860afbe` | concluído no código; caixinha acima da Quantidade, frentes uma cópia por vez, automático junto/separado e cartão com “Cópia N de M”; 1.174 testes de UI |
 
 **Próximo:**
 
