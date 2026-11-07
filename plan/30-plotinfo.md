@@ -189,16 +189,28 @@ fatores_qualidade = [0.6, 1.0, 1.3]
   `13476a53e84f5527983158acb6442c7853b3cdc022f3b24880780dcfba1fcc99`.
 - Fonte correspondente: `mupdf-1.28.5-source.tar.gz`, 68.919.385 bytes, SHA-256
   `98a5c10cda20c3992cdf76ff6b2a1149c32bd79cc796d3f703230b1185b7e934`.
-- Só o `mutool.exe` entra no portátil, ao lado do `PlotS.exe`. O binário ocupa **46.476.800
-  bytes (44,3 MB)**; o tamanho final do zip é medido no lote de entrega.
-- Processo separado, nunca linkado ao Rust. O PlotS continua MIT.
+- Só o `mutool.exe` entra no portátil, em `PlotS\mutool\mutool.exe`. O binário ocupa
+  **46.476.800 bytes (44,3 MB)**; o tamanho final do zip é medido no lote de entrega.
+- Processo separado, nunca linkado ao Rust. O PlotS continua MIT; a AGPL vale só para o
+  `mutool.exe` e para o fonte correspondente.
 - Teste feito com o binário oficial: `mutool draw -q -c cmyk -r 72 -o page-%04d.pam
   tres-paginas.pdf 2-3` gravou `page-0002.pam` e `page-0003.pam` (o número é o da página
   original), e um retângulo `C 40` saiu `[102, 0, 0, 0]` no pixel central.
-- O zip leva `AGPL-3.0.txt` e `MUPDF-SOURCE.txt` com versão, URLs, SHA-256 e oferta escrita do
-  código-fonte; `THIRD-PARTY-NOTICES` ganha a entrada do MuPDF.
+- A fonte correspondente `mupdf-1.28.5-source.tar.gz` fica disponível gratuitamente no mesmo
+  release ou em URL permanente, com o SHA-256; a oferta escrita é reforço, não o mecanismo
+  único. O `MUPDF-SOURCE.txt` registra versão, URL de origem, data, SHA-256 do zip e do
+  `mutool.exe` extraído e a declaração AGPL/MIT.
+- O zip leva `AGPL-3.0.txt` integral e `MUPDF-SOURCE.txt` ao lado do binário; a entrada do
+  MuPDF nos avisos inclui as licenças de todos os componentes do `thirdparty/` que entram no
+  `mutool.exe` (freetype, harfbuzz, jbig2dec, openjpeg, libjpeg, zlib, lcms2, mujs, gumbo etc.),
+  não só uma linha. `THIRD-PARTY-NOTICES` separa o que é MIT (PlotS) do que é AGPL (mutool) e
+  isenta a marca da Artifex.
+- Se houver verificação de integridade do `mutool.exe`, ela é aviso e nunca recusa de binário
+  modificado; recusar conflita com a liberdade da AGPL.
+- README e notas da versão dizem que o portátil cresce ~44 MB e leva um programa AGPL separado.
 - O binário não é commitado no repositório: o empacotador baixa, confere o SHA-256 e copia.
-- Revisão jurídica antes de publicação continua recomendada.
+- Revisão jurídica antes de publicação continua recomendada; o parecer deve cobrir a fonte
+  disponibilizada, as licenças do `thirdparty/` e a separação AGPL/MIT.
 - O zip cresce de ~10,4 MB para a faixa de 40–50 MB; o tamanho real é medido no lote de entrega.
 
 ## Lotes
