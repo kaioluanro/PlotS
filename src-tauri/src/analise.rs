@@ -659,6 +659,7 @@ impl Analises {
                 } else if configuracao.modo == ModoDeCor::Cmyk
                     && base.modo == codigo_do_modo(ModoDeCor::Simples)
                     && base.dpi == configuracao.dpi
+                    && base.cinzas_so_preto == configuracao.cinzas_so_preto
                 {
                     // A análise anterior caiu no modo simples e está guardada sob essa chave.
                     let (dimensoes, coberturas) = self.ler_cache(&base).ok_or_else(|| {
@@ -674,7 +675,8 @@ impl Analises {
             }
             None if configuracao.modo == ModoDeCor::Cmyk
                 && base.modo == codigo_do_modo(ModoDeCor::Simples)
-                && base.dpi == configuracao.dpi =>
+                && base.dpi == configuracao.dpi
+                && base.cinzas_so_preto == configuracao.cinzas_so_preto =>
             {
                 let (dimensoes, coberturas) = self.ler_cache(&base).ok_or_else(|| {
                     FalhaAnalise::com_detalhe(

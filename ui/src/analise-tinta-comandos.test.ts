@@ -246,6 +246,28 @@ describe("eventos da analise", () => {
     expect(retirados.sort()).toEqual(Object.values(EVENTOS_DA_TINTA).sort());
   });
 
+  it("resultado invalido no fim vira falha, nao some", async () => {
+    const ouvintes = {
+      aoProgresso: vi.fn(),
+      aoPagina: vi.fn(),
+      aoFim: vi.fn(),
+      aoFalha: vi.fn(),
+    };
+    const registrados = new Map<string, (mensagem: { payload: unknown }) => void>();
+    tauri.listen.mockImplementation(
+      async (evento: string, tratar: (mensagem: { payload: unknown }) => void) => {
+        registrados.set(evento, tratar);
+        return () => undefined;
+      },
+    );
+    await ouvirAnaliseDeTinta(ouvintes, () => "job-1", "x.pdf");
+    registrados.get(EVENTOS_DA_TINTA.fim)?.({ payload: { id: "job-1", resultado: {} } });
+    expect(ouvintes.aoFim).not.toHaveBeenCalled();
+    expect(ouvintes.aoFalha).toHaveBeenCalledWith(
+      expect.stringContaining("incompleta"),
+    );
+  });
+
   it("ignora evento de outro trabalho", async () => {
     const ouvintes = {
       aoProgresso: vi.fn(),
