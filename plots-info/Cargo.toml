@@ -1,0 +1,10 @@
+[package]
+name = "plots-info"
+version = "1.0.0-alpha.6"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+plots-core = { path = "../plots-core" }
+serde = { version = "=1.0.229", features = ["derive"] }
+thiserror = "=2.0.21"

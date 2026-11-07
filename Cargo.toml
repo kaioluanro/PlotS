@@ -1,5 +1,5 @@
 ﻿[workspace]
-members = ["plots-core", "plots-print", "plots-cli", "plots-pdf", "plots-perfis", "plots-windows", "src-tauri", "PlotSim/plotsim-physics", "PlotSim/plotsim-core", "PlotSim/plotsim-suite", "PlotSim/app"]
+members = ["plots-core", "plots-print", "plots-cli", "plots-pdf", "plots-perfis", "plots-info", "plots-windows", "src-tauri", "PlotSim/plotsim-physics", "PlotSim/plotsim-core", "PlotSim/plotsim-suite", "PlotSim/app"]
 resolver = "2"
 
 

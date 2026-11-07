@@ -15,6 +15,7 @@ mod inversao;
 mod janela;
 mod leitura_pdf;
 mod lote;
+mod plotinfo;
 mod preferencias;
 mod tempo_de_impressao;
 mod trabalhos;
@@ -212,6 +213,11 @@ fn main() -> ExitCode {
             limitar_lote,
             listar_impressoras,
             pedido_de_fechamento_recebido,
+            plotinfo::apagar_perfil_de_tinta,
+            plotinfo::configuracao_de_tinta,
+            plotinfo::definir_configuracao_de_tinta,
+            plotinfo::perfis_de_tinta,
+            plotinfo::salvar_perfil_de_tinta,
             comandos_trabalho::resumo_do_envio,
             comandos_trabalho::soltar_trabalhos
         ])
