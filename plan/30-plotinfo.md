@@ -363,4 +363,6 @@ Concluído em `15bc485` (painel) e `0f66aa7` (aviso e lotes), em 2026-11-07.
 - A seleção e as cópias são do painel e não tocam no intervalo, na face nem nas cópias da
   lateral; `2,5,7,9` × 1 = 4 páginas e `1-10` × 5 = 50 páginas estão nas capturas 23/24.
 - CSV restaurado no adaptador (`exportar_csv(id, caminho)`) e no rodapé; o `aviso` do backend é
-  traduzido na gaveta. UI com 69 arquivos/1.162 testes, `tsc` limpo e build concluído.
+  traduzido na gaveta. Dpi, modo e "cinzas só com preto" refazem a análise; o recálculo espera o
+  fim da primeira análise e respostas inválidas mostram erro; os dois avisos aparecem juntos.
+  UI com 69 arquivos/1.163 testes, `tsc` limpo e build concluído.
