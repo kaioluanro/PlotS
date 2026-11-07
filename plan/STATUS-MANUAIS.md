@@ -96,7 +96,7 @@ Requisitos: OK 75 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4 (109). Detalhes e
 9. Feito em 2026-11-07: Lote A do PlotInfo (`d6ae384`), com abertura e impressão de PNG/JPEG/BMP/GIF/WebP/TIFF por PDF derivado, cache reaproveitado e textos de “documento”. CI verde; painel de tinta e mutool ficam para os próximos lotes.
 10. Feito em 2026-11-07: B1 do PlotInfo (`be877c1`), com a crate `plots-info` (seleção, cobertura, custo, perfis e preço por mL) e o `plotinfo.toml` com cinco comandos. CI verde; faltavam a análise, o mutool e o painel.
 11. Feito em 2026-11-07: B2/B3/C do PlotInfo (`8a9866f`, `eab8d30`, `15bc485`, `0f66aa7`, `a699b22`, `8bfd509`), com análise PDFium, mutool/CSV, painel com gaveta/engrenagem, aviso traduzível, reanálise por dpi/modo/cinzas, CSV liberado e acessibilidade. Revisões de código e jurídico; falta a impressora real e a prova de tinta em papel.
-12. Feito em 2026-11-07: `1.0.0-alpha.7` (`8bfd509`), portátil de 42,25 MB com `mutool/`, AGPL, 26 licenças do `thirdparty`/fontes, fonte fora do zip e SHA-256 `52449AF1…`; zip sem `perfis.toml`/`plotinfo.toml`. Falta abrir o portátil e testar em impressora real.
+12. Feito em 2026-11-07: `1.0.0-alpha.7` (`8bfd509`), portátil de 42,25 MB com `mutool/`, AGPL, 26 licenças do `thirdparty`/fontes, fonte fora do zip e SHA-256 `52449AF1…`; zip sem `perfis.toml`/`plotinfo.toml`, aberto e fechado com a versão certa. Falta testar em impressora real e provar a tinta em papel.
 
 Depois da primeira versão: impressora virtual, Linux e macOS, divisão por velocidade (`15-multiplas-impressoras`) e medir se o Graphify economiza tokens, com 3 perguntas respondidas com e sem ele.
 

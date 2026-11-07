@@ -2,7 +2,7 @@
 
 O PlotS segue o [versionamento semântico](https://semver.org/lang/pt-BR/). As versões alfa ainda não têm teste em papel.
 
-## 1.0.0-alpha.7 (em desenvolvimento)
+## 1.0.0-alpha.7
 
 Gerada em 2026-11-07 (`8bfd509`).
 
