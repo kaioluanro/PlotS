@@ -180,6 +180,12 @@ fatores_qualidade = [0.6, 1.0, 1.3]
   preço por mL.
 - Volume e rendimento ficam no perfil para a seção CARTUCHO.
 - Perfis genéricos inclusos: cartucho de jato de tinta e tanque de tinta.
+- Três perfis de tanque informados pelo usuário: **HP Smart Tank 110 (GT51)** 90 mL e R$ 30 (30/90
+  por mL), **Epson EcoTank L3150 (544)** 65 mL e R$ 33 (33/65), **Epson EcoTank L6270 (504)**
+  127 mL e R$ 55 (55/127). O volume do frasco principal (preto) é repetido nas quatro cores como
+  ponto de partida e o rendimento inicial é 6.500 cor / 4.500 preto, editável na engrenagem.
+- Um `plotinfo.toml` já existente mantém os perfis que tem; os três novos entram na primeira
+  abertura, no arquivo ausente/corrompido ou ao restaurar os padrões.
 - Arquivo corrompido não impede o uso: cai nos perfis padrão e avisa.
 
 ## mutool e licenças

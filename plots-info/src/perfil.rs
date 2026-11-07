@@ -212,9 +212,9 @@ fn perfil_de_cartucho() -> PerfilDeTinta {
     }
 }
 
-// Os perfis de tanque abaixo usam o volume do frasco como volume de cada canal: no GT51 o frasco
-// informado é o do preto e os frascos coloridos do 504 têm 70 mL. O rendimento é um ponto de
-// partida editável na engrenagem do painel.
+// Os perfis de tanque abaixo repetem o volume do frasco principal (preto) nas quatro cores como
+// ponto de partida; os frascos coloridos do GT51 (GT52) e do 504 são menores, então o custo por
+// mL das cores é aproximado. O rendimento é um ponto de partida editável na engrenagem do painel.
 
 fn perfil_hp_smart_tank_110() -> PerfilDeTinta {
     PerfilDeTinta {
