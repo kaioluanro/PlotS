@@ -189,8 +189,12 @@ fatores_qualidade = [0.6, 1.0, 1.3]
   `13476a53e84f5527983158acb6442c7853b3cdc022f3b24880780dcfba1fcc99`.
 - Fonte correspondente: `mupdf-1.28.5-source.tar.gz`, 68.919.385 bytes, SHA-256
   `98a5c10cda20c3992cdf76ff6b2a1149c32bd79cc796d3f703230b1185b7e934`.
-- Só o `mutool.exe` entra no portátil, ao lado do `PlotS.exe`.
+- Só o `mutool.exe` entra no portátil, ao lado do `PlotS.exe`. O binário ocupa **46.476.800
+  bytes (44,3 MB)**; o tamanho final do zip é medido no lote de entrega.
 - Processo separado, nunca linkado ao Rust. O PlotS continua MIT.
+- Teste feito com o binário oficial: `mutool draw -q -c cmyk -r 72 -o page-%04d.pam
+  tres-paginas.pdf 2-3` gravou `page-0002.pam` e `page-0003.pam` (o número é o da página
+  original), e um retângulo `C 40` saiu `[102, 0, 0, 0]` no pixel central.
 - O zip leva `AGPL-3.0.txt` e `MUPDF-SOURCE.txt` com versão, URLs, SHA-256 e oferta escrita do
   código-fonte; `THIRD-PARTY-NOTICES` ganha a entrada do MuPDF.
 - O binário não é commitado no repositório: o empacotador baixa, confere o SHA-256 e copia.
