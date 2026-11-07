@@ -6,7 +6,7 @@ O PlotS segue o [versionamento semântico](https://semver.org/lang/pt-BR/). As v
 
 - PlotS: abre e imprime imagens PNG, JPEG, BMP, GIF, WebP e TIFF multipágina, convertendo cada uma num PDF derivado em cache. Prévia, contagem, frente/verso e impressão usam o mesmo caminho do PDF; o arquivo original não muda.
 - PlotS: a segunda abertura da mesma imagem reaproveita o derivado, sem decodificar de novo; a conversão fica sob o mesmo mutex de carga e o cache tem versão de formato.
-- PlotInfo: motor de tinta, painel e `mutool.exe` ainda em desenvolvimento.
+- PlotInfo: motor de tinta com seleção de páginas, cobertura CMYK, custo em mL/R$, perfis com preço por mL e `plotinfo.toml`; painel e `mutool.exe` ainda em desenvolvimento.
 
 ## 1.0.0-alpha.6
 

@@ -295,3 +295,15 @@ Concluído em `d6ae384`, em 2026-11-07, com CI verde.
   impressão na fila “Microsoft Print to PDF” (laranja/amarelo certos, zero canais trocados),
   capturas `fix1-a..d` nos temas escuro e cinza. UI 62 arquivos/1064 testes.
 - Pendente: impressora real, os demais formatos enviados à fila e o painel PlotInfo (Lotes B/C).
+
+## Resultado do B1
+
+Concluído em `be877c1`, em 2026-11-07, com CI verde.
+
+- `plots-info`: seleção de páginas do painel (`1`, `2,5,7,9`, `5-16`, mistos, vazio), cobertura
+  BGRA e PAM CMYK, perfis com preço por mL, configuração e custo em mL/R$; 53 testes.
+- `src-tauri/src/plotinfo.rs`: `plotinfo.toml` ao lado do `perfis.toml`, esquema versão 1, limite
+  de 1 MiB, leitura tolerante, gravação atômica e cinco comandos em `spawn_blocking`; 21 testes.
+- Nenhuma UI, nenhum mutool/PDFium, nenhuma mudança na impressão. O `toml` já vinha de
+  `plots-perfis`/`tauri-utils`, então não há dependência de terceiro nova no binário.
+- Pendente: análise (B2), mutool/CSV (B3) e painel (C).
