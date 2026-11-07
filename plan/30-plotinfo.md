@@ -277,3 +277,21 @@ fatores_qualidade = [0.6, 1.0, 1.3]
 Um PDF e uma imagem abrem no PlotS; a imagem imprime com as cores certas; o painel estima tinta
 e custo para uma seleção como `2,5,7,9` com cópias, sem alterar o envio; os totais por página e
 por documento batem com os testes; o portátil alpha.7 inclui o `mutool.exe` e as licenças.
+
+## Resultado do Lote A
+
+Concluído em `d6ae384`, em 2026-11-07, com CI verde.
+
+- `plots-pdf/src/imagem.rs`: PNG, JPEG, BMP, GIF, WebP e TIFF multipágina viram PDF derivado;
+  alfa sobre branco, A4 centralizado, DPI opcional, `FlateDecode` RGB e limites de 1 GiB/100 MP.
+- `src-tauri/src/documento.rs`: `Documento.tipo`, `abrir_para_leitura`, cache atômico em
+  `%LOCALAPPDATA%\plots\cache\imagens`, versão do formato no hash, limpeza de 30 dias e conversão
+  sob o mutex de carga. A segunda abertura reaproveita o derivado sem decodificar de novo.
+- `ler_documento`, `contar_paginas` e `leitura_pdf::ler_pdf` leem o conteúdo derivado; o nome, o
+  caminho e o histórico continuam os do arquivo original. A camada de impressão não mudou.
+- Interface: filtro “PDF e imagens”, `Documento.tipo`, erros `nao_suportado`/`imagem_invalida`,
+  estado vazio e textos de “documento”; “PDF” fica só onde é a condição real.
+- Provas: falha-antes do PNG, teste de cada formato, TIFF multipágina, alfa, limites, teste de
+  impressão na fila “Microsoft Print to PDF” (laranja/amarelo certos, zero canais trocados),
+  capturas `fix1-a..d` nos temas escuro e cinza. UI 62 arquivos/1064 testes.
+- Pendente: impressora real, os demais formatos enviados à fila e o painel PlotInfo (Lotes B/C).

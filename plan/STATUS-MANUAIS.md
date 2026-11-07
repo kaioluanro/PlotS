@@ -1,6 +1,6 @@
 # STATUS
 
-Requisitos: OK 73 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4 (107). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
+Requisitos: OK 74 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4 (108). Detalhes em `AUDIT-PlotS.md`; norma visual em `estilo-ui-ux.md`.
 
 | Plano | OK | PARTIAL | MISSING | BUG | N/A | Estado |
 |---|---|---|---|---|---|---|
@@ -77,6 +77,7 @@ Requisitos: OK 73 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4 (107). Detalhes e
 | 1.0.0-alpha.4 | `97643ec` | concluído no código; perfil portátil ao lado do exe; portátil em `.zip` |
 | 1.0.0-alpha.5 | `559a9c8` | concluído no código; frente/verso corretos, 1 página sem verso, desenho por bitmap compatível e painel de opções; portátil em `.zip` |
 | 1.0.0-alpha.6 | `6a972c6` | concluído no código; cor das imagens (BGRA) corrigida; portátil em `.zip` |
+| plotinfo-imagem | `d6ae384` | concluído no código; PNG/JPEG/BMP/GIF/WebP/TIFF viram PDF derivado, abrem e imprimem; painel PlotInfo e mutool ainda não |
 
 **Próximo:**
 
@@ -88,6 +89,7 @@ Requisitos: OK 73 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4 (107). Detalhes e
 6. Feito em 2026-11-05: `1.0.0-alpha.4` (`97643ec`), com o `perfis.toml` ao lado do `PlotS.exe` no portátil e a importação única de `%APPDATA%`; o instalado não muda. CI verde; portátil em `PlotS` com `PLOTS-PORTATIL.txt` e sem o perfil dentro do zip. Falta mover a pasta para outro computador e conferir o perfil na prática.
 7. Feito em 2026-11-06: `1.0.0-alpha.5` (`559a9c8`), com "Frente" = páginas ímpares e "Verso" = pares, 1 página sem folha em branco, desenho por bitmap compatível + `StretchBlt` e a chave de boca com bandeja/resolução/cor. CI verde; portátil em `PlotS_1.0.0-alpha.5_x64_portatil.zip`. Falta o teste em impressora real (L6170), um driver com bandeja/zero opções e um envio usando o `DEVMODE` salvo.
 8. Feito em 2026-11-06: `1.0.0-alpha.6` (`6a972c6`), com a cor das imagens corrigida (o pdfium entregava RGBA e o GDI lia BGRA; laranja/amarelo saíam azuis). CI verde; portátil em `PlotS_1.0.0-alpha.6_x64_portatil.zip`. Falta conferir em impressora real e corrigir a prévia colorida do PlotSim.
+9. Feito em 2026-11-07: Lote A do PlotInfo (`d6ae384`), com abertura e impressão de PNG/JPEG/BMP/GIF/WebP/TIFF por PDF derivado, cache reaproveitado e textos de “documento”. CI verde; painel de tinta e mutool ficam para os próximos lotes.
 
 Depois da primeira versão: impressora virtual, Linux e macOS, divisão por velocidade (`15-multiplas-impressoras`) e medir se o Graphify economiza tokens, com 3 perguntas respondidas com e sem ele.
 

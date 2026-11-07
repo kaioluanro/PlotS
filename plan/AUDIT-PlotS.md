@@ -2,7 +2,7 @@
 
 Data: 2026-11-02. A especificação foi dividida depois em `plan/`, então as linhas de `AGENTS.md` citadas abaixo são da versão anterior. Escopo: especificação em `AGENTS.md` (seções de Fases, Modo simulação, Perfis, Papel, Múltiplas impressoras, Windows e Interface). Nenhum código de produto foi alterado. Nenhum commit. `Cargo.toml`, `Cargo.lock`, `AGENTS.md`, `CLAUDE.md` e `estilo-ui-ux.md` mantêm os mesmos hashes (md5 conferido antes e depois). **Atenção:** o `.gitignore` foi reescrito às 13:56:41, durante a auditoria, por outro processo ou usuário (este agente não o editou). O conteúdo novo acrescenta `/.claude/`, `/.codex/`, `/estilo-ui-ux.md`, `/plan/`, `/AUDIT-*.md` e `/STATUS-MANUAIS.md`, e por isso o `git status` mostra só `AGENTS.md` e `CLAUDE.md`. Não foi revertido; decisão do usuário.
 
-Contagem: **OK 73 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4** (107 requisitos)
+Contagem: **OK 74 · PARTIAL 28 · MISSING 2 · BUG 0 · N/A 4** (108 requisitos)
 
 Reauditoria de 2026-11-04, sobre o `master` `b0c7302`. Catorze linhas mudaram de status e seis tiveram a evidência atualizada. As contagens foram recalculadas a partir da tabela: o total anterior (38/33/20/2) não batia com as linhas, que já somavam 52/32/6/3. Não rodei o app nem fiz teste em papel nesta reauditoria; as mudanças vêm de código, testes e commits. Mudanças de status:
 - PS-A014: OK para N/A (lote saiu da janela, `plan/24`).
@@ -20,6 +20,8 @@ Quarta reauditoria, em 2026-11-05 sobre o `97643ec`: acrescentei PS-A103 para o 
 Quinta reauditoria, em 2026-11-06 sobre o `559a9c8`: acrescentei PS-A104 a PS-A106 para a correção da folha em branco (frente = ímpares, verso = pares, 1 página sem verso), o desenho GDI por bitmap compatível + `StretchBlt` e a chave de boca com as opções do driver. PS-A104 é OK; PS-A105 e PS-A106 são PARTIAL pelas provas em impressora/driver de fabricante que faltam.
 
 Sexta reauditoria, em 2026-11-06 sobre `6a972c6`: acrescentei PS-A107 para a cor das imagens impressas. O pdfium-render entregava RGBA por padrão e o DIB do GDI lia como BGRA; laranja e amarelo saíam azuis. É OK, com teste de bytes e prova na fila de PDF.
+
+Sétima reauditoria, em 2026-11-07 sobre `d6ae384`: acrescentei PS-A108 para a abertura e a impressão de imagens. PNG, JPEG, BMP, GIF, WebP e TIFF multipágina viram um PDF derivado em cache e passam pelo mesmo caminho de prévia e impressão do PDF; o PDF existente não muda. É OK com a fila de PDF; falta a impressora real e os demais formatos enviados à fila.
 
 Verificação executada:
 - `cargo test --workspace --locked`: 51 testes passam (9 de integração do CLI, 19 em plots-core, 12 em plots-pdf, 11 em plots-print). Tempo de 30 s.
@@ -149,6 +151,7 @@ Legenda: OK = atende; PARTIAL = atende parte; MISSING = não existe ainda; BUG =
 | PS-A105 | Impressão | O desenho GDI usa bitmap compatível em DC de memória e `StretchBlt`, com `SetDIBits` antes de `SelectObject` e queda para `StretchDIBits` | PARTIAL (`559a9c8`) | `plots-windows/src/spooler.rs`; `saidas/envio-real-3.log` (1 página, 418 bytes, 1 desenho pela memória); falta driver de fabricante a 600 dpi e forçar o fallback. |
 | PS-A106 | Interface | Chave de boca ao lado da engrenagem; painel com bandeja, resolução e cor declaradas pelo driver; aplica no ajuste salvo; "Padrão" repõe o padrão; campos do envio fora do painel | PARTIAL (`559a9c8`) | `plots-windows/src/opcoes.rs`/`preferencias_driver.rs`, `src-tauri/src/preferencias.rs`, `ui/src/components/OpcoesDaImpressoraDialog.tsx`/`Sidebar.tsx`; CI, capturas nativas 640×420; falta driver real com bandeja/zero opções e envio usando o `DEVMODE` salvo. |
 | PS-A107 | Impressão | Imagem colorida sai com as cores do PDF: laranja e amarelo não viram azul | OK (`6a972c6`) | `plots-windows/src/backend.rs` (`.set_reverse_byte_order(false)`); testes `as_faixas_de_cor_saem_com_os_bytes_bgra_certos` e `a_pagina_colorida_chega_ao_pdf_da_fila_com_as_cores_certas`; falha anterior e `envio-cor.log` em `%LOCALAPPDATA%\plots-build\cor-imagens\saidas`; CI em `integracao-alpha6`. |
+| PS-A108 | Interface | O PlotS abre imagens PNG, JPEG, BMP, GIF, WebP e TIFF multipágina, mostra a prévia e imprime pelo mesmo caminho do PDF | OK (`d6ae384`) | `plots-pdf/src/imagem.rs` (PDF derivado com Flate RGB, alfa sobre branco, A4/DPI, TIFF multipágina), `src-tauri/src/documento.rs` (tipo, cache atômico, mutex, versão do hash), `plots-pdf/src/imagem.rs`/`src-tauri/src/documento.rs` testes; `saidas/envio-imagem.log` (laranja 118405, amarelo 118405, trocados 0), `fix1-a..d` nos dois temas; CI em `plotinfo-imagem`. Falta impressora real e os demais formatos na fila. |
 
 ## Bugs (com passos de reprodução)
 
