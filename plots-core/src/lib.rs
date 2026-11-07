@@ -1115,6 +1115,17 @@ fn plano_automatico_copias_do_intervalo_com_modo(
                 .collect();
         }
         juntar_lotes(&mut lotes)?;
+        // A última cópia ímpar também não leva branco no fim: a duplexagem fecha a última folha.
+        if let Some(ultimo) = lotes.last_mut() {
+            if ultimo.duas_faces
+                && ultimo
+                    .passada1
+                    .last()
+                    .is_some_and(|pagina| pagina.numero.is_none())
+            {
+                ultimo.passada1.pop();
+            }
+        }
     }
     Ok(lotes)
 }
@@ -1377,19 +1388,10 @@ mod tests {
         let numeros: Vec<Option<usize>> = lotes[0].passada1.iter().map(|p| p.numero).collect();
         assert_eq!(
             numeros,
-            [
-                Some(1),
-                Some(2),
-                Some(3),
-                None,
-                Some(1),
-                Some(2),
-                Some(3),
-                None
-            ],
-            "o branco de cada cópia ímpar tem de chegar ao envio"
+            [Some(1), Some(2), Some(3), None, Some(1), Some(2), Some(3)],
+            "o branco entre as cópias chega ao envio, e o do fim não vira página extra"
         );
-        assert_eq!(lotes[0].passada1.len(), 8);
+        assert_eq!(lotes[0].passada1.len(), 7);
     }
 
     #[test]

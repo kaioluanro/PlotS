@@ -68,7 +68,7 @@ Concluído no código em 2026-11-07, em `09727ac`, com a correção da revisão 
   `enviar, consultar, consultar, enviar...` — a próxima só sai depois do `Concluido`. Há testes
   para a parada na troca de papel, para o verso não avançar sozinho e para o branco entre cópias
   ímpares.
-- Gate: `cargo test --workspace --locked` verde, `tsc` limpo, 1.174 testes de UI e build da
+- Gate: `cargo test --workspace --locked` verde, `tsc` limpo, 1.175 testes de UI e build da
   interface concluído.
 
 ## Pronto quando

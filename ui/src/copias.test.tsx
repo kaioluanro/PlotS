@@ -112,10 +112,28 @@ describe("uma copia por vez", () => {
     expect(frente).toContain('type="checkbox"');
     expect(frente).toContain("Uma cópia por vez");
     expect(frente).toContain("cada cópia é um trabalho");
+    expect(frente).toContain("aria-describedby=");
+    const desligada = renderToStaticMarkup(
+      <CampoSequencia face="frente" ligada={false} aoDefinir={() => undefined} />,
+    );
+    expect(desligada).toContain("Todas as cópias da frente saem em um trabalho contínuo.");
     const verso = renderToStaticMarkup(
       <CampoSequencia face="verso" ligada aoDefinir={() => undefined} />,
     );
     expect(verso).toContain("No verso, as cópias saem juntas");
+  });
+
+  it("tem alvo de 28 px e foco visivel", async () => {
+    const modulo = "node:fs";
+    const fs = (await import(/* @vite-ignore */ modulo)) as {
+      readFileSync(caminho: URL, codificacao: "utf8"): string;
+    };
+    const css = fs.readFileSync(
+      new URL("./components/CampoSequencia.module.css", import.meta.url),
+      "utf8",
+    );
+    expect(css).toMatch(/min-height:\s*28px/);
+    expect(css).toContain(":has(:focus-visible)");
   });
 });
 
