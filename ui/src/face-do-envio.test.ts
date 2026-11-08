@@ -325,6 +325,28 @@ describe("confirmacao do verso", () => {
   const conteudo = (mudancas: Partial<ResumoDoEnvio> = {}, mudou = false, destinos = [SALA]) =>
     conteudoDoVerso(destinos, [], { ...RESUMO, ...mudancas }, null, null, mudou, "pt-BR");
 
+  it("avisa uma copia por vez tambem no verso", () => {
+    const comOpcao = (uma: boolean) =>
+      conteudoDoVerso(
+        [SALA],
+        [],
+        RESUMO,
+        null,
+        null,
+        false,
+        "pt-BR",
+        { frente: 3, verso: 3 },
+        false,
+        uma,
+      );
+    expect(comOpcao(true).notas).toContain(
+      "Uma cópia por vez: a próxima só sai depois que a impressora confirmar a anterior.",
+    );
+    expect(comOpcao(false).notas).not.toContain(
+      "Uma cópia por vez: a próxima só sai depois que a impressora confirmar a anterior.",
+    );
+  });
+
   it("pergunta, com a frase e a figura do gesto de cada impressora", () => {
     const dialogo = conteudo();
     expect(traduzir("pt-BR", dialogo.texto)).toBe(

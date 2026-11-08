@@ -11,13 +11,11 @@ cada trabalho antes de mandar o próximo. O verso continua saindo inteiro, num s
 
 - Uma caixinha **“Uma cópia por vez”** fica logo acima do campo **Quantidade**, marcada por
   padrão em cada aba. A escolha vale só para aquela aba; não é preferência global.
-- **Frente e verso manual:** com a caixinha marcada, cada cópia da frente vira um trabalho
+- **Frente e verso manual:** com a caixinha marcada, cada cópia da face escolhida vira um trabalho
   separado. O próximo só é enviado depois que o spooler confirma o anterior (o mesmo
-  `JOB_STATUS_PRINTED`/`COMPLETO` que o PlotS já usa). Os versos de todas as cópias saem juntos,
-  como hoje, quando a pessoa escolhe **Verso**.
-- **Frente:** cada cópia da face escolhida é um trabalho; a próxima só sai depois da
-  confirmação. Num documento de uma página é a página inteira; num de várias, são as páginas da
-  frente.
+  `JOB_STATUS_PRINTED`/`COMPLETO` que o PlotS já usa). Quando a pessoa escolhe **Verso**, as
+  cópias do verso também saem uma a uma; num documento de uma página é a página inteira, num de
+  várias são as páginas daquela face.
 - **Impressora automática:** marcada, uma cópia por trabalho (comportamento atual); desmarcada,
   todas as cópias num trabalho só, mas com o branco entre cópias de total ímpar preservado para
   nenhuma começar na folha da anterior.
@@ -28,8 +26,9 @@ cada trabalho antes de mandar o próximo. O verso continua saindo inteiro, num s
 
 ## Decisões
 
-- A separação vale para as **frentes** (`Alcance::SoFrentes`). O verso (`Alcance::SoVersos`) é
-  sempre planejado junto, como o usuário pediu.
+- A separação vale para as duas faces: `Alcance::SoFrentes` e `Alcance::SoVersos`. No verso, a
+  pilha virada continua na entrada enquanto cada cópia é enviada e confirmada; o cartão mostra
+  “Cópia N de M”.
 - O avanço é automático, feito pela mesma thread do trabalho; não há clique sintético nem um
   novo comando de “imprimir de novo”.
 - O backend recebe a opção por argumento. No manual, o padrão do backend continua o comportamento
@@ -58,24 +57,25 @@ Concluído no código em 2026-11-07, em `09727ac`, com as correções da revisã
   `plano_automatico_copias_do_intervalo_juntas`, com o `juntar_lotes` compartilhado. No automático
   juntado, o branco de cada cópia ímpar entra no `passada1`, senão a última página de uma cópia
   dividiria a folha com a primeira da seguinte.
-- `src-tauri/src/trabalhos.rs`: `Pedido.uma_copia_por_vez`, planejamento separado só nas frentes,
+- `src-tauri/src/trabalhos.rs`: `Pedido.uma_copia_por_vez`, planejamento separado nas duas faces,
   avanço automático no `Passo::LoteConcluido` e `Cartao.por_copia`.
 - `src-tauri/src/comandos_trabalho.rs`: `iniciar_impressao` recebe `umaCopiaPorVez`.
-- Interface: `CampoSequencia` acima da quantidade, estado por aba, dica que muda no verso e nota
-  na confirmação; o cartão mostra “Cópia N de M” também no fluxo manual separado e não multiplica
+- Interface: `CampoSequencia` acima da quantidade, estado por aba, a mesma dica nas duas faces e
+  nota na confirmação; o cartão mostra “Cópia N de M” também no verso separado e não multiplica
   as folhas no lote automático juntado.
-- Provas: 3 cópias de 2 páginas geram 3 frentes, e o teste registra
+- Provas: 3 cópias de 2 páginas geram 3 frentes e 3 versos, e os testes registram
   `enviar, consultar, consultar, enviar...` — a próxima só sai depois do `Concluido`. Há testes
-  para a parada na troca de papel, para o verso não avançar sozinho e para o branco entre cópias
-  ímpares.
-- Gate: `cargo test --workspace --locked` verde, `tsc` limpo, 1.175 testes de UI e build da
+  para a parada na troca de papel (frente e verso) e para o branco entre cópias ímpares.
+- Gate: `cargo test --workspace --locked` verde, `tsc` limpo, 1.176 testes de UI e build da
   interface concluído.
+- Correção final: o verso passou a seguir a mesma lógica da frente; a frase “no verso as cópias
+  saem juntas” foi removida da dica e dos planos.
 
 ## Pronto quando
 
 - Com a caixinha marcada, um documento de 3 páginas e 3 cópias envia três trabalhos de frente,
   um de cada vez, e o segundo só começa depois de o primeiro ser confirmado.
-- O verso desse envio sai num trabalho só com as 3 cópias.
+- O verso desse envio também sai em três trabalhos, um por cópia, na mesma ordem.
 - O automático marcado envia uma cópia por trabalho; desmarcado, um trabalho com todas quando o
   papel permite, com o branco entre cópias ímpares.
 - Uma cópia, a caixinha desmarcada e o fluxo de verso atual continuam iguais.

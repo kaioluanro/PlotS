@@ -105,22 +105,23 @@ describe("uma copia por vez", () => {
     expect(umaCopiaPorVezDaAba(null)).toBe(true);
   });
 
-  it("a caixinha fica acima da quantidade e a dica muda no verso", () => {
+  it("a caixinha fica acima da quantidade e a mesma dica vale para as duas faces", () => {
     const frente = renderToStaticMarkup(
       <CampoSequencia face="frente" ligada aoDefinir={() => undefined} />,
     );
     expect(frente).toContain('type="checkbox"');
     expect(frente).toContain("Uma cópia por vez");
-    expect(frente).toContain("cada cópia é um trabalho");
+    expect(frente).toContain("Cada cópia é um trabalho");
     expect(frente).toContain("aria-describedby=");
     const desligada = renderToStaticMarkup(
       <CampoSequencia face="frente" ligada={false} aoDefinir={() => undefined} />,
     );
-    expect(desligada).toContain("Todas as cópias da frente saem em um trabalho contínuo.");
+    expect(desligada).toContain("Todas as cópias saem em um trabalho contínuo.");
     const verso = renderToStaticMarkup(
       <CampoSequencia face="verso" ligada aoDefinir={() => undefined} />,
     );
-    expect(verso).toContain("No verso, as cópias saem juntas");
+    expect(verso).toContain("Cada cópia é um trabalho");
+    expect(verso).not.toContain("No verso, as cópias saem juntas");
   });
 
   it("tem alvo de 28 px e foco visivel", async () => {

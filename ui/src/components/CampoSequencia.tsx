@@ -31,13 +31,7 @@ export function CampoSequencia({
         <span>{t("sequencia.rotulo")}</span>
       </label>
       <p id={idDica} className={styles.dica}>
-        {t(
-          face === "verso"
-            ? "sequencia.dica.verso"
-            : ligada
-              ? "sequencia.dica.frente"
-              : "sequencia.dica.frente.desligada",
-        )}
+        {t(ligada ? "sequencia.dica" : "sequencia.dica.desligada")}
       </p>
     </div>
   );

@@ -25,8 +25,8 @@ Guiar o usuário do primeiro envio ao verso, com um cartão por impressora.
 - **Avisos (`ca10be1`):** papel acabado, atolado e sem resposta, com frase por passada; no verso, o texto proíbe pôr folhas em branco. Só a condição mais urgente na frase principal, e o texto do driver em linha própria. O aviso oferece "Reimprimir lote", e a confirmação manda deixar só folhas em branco na entrada.
 - **Rolagem adiada:** uma linha fixa avisa que um cartão pede ação. Ao sumir sob o ponteiro, por qualquer causa, deixa um espaço inerte. Ao trocar de aba, o rodapé da outra aba pode empurrar esse espaço para fora do ponteiro; aceito, porque a própria pessoa provocou a mudança.
 - **Uma cópia por vez (2026-11-07):** a caixinha acima da Quantidade, marcada por padrão, manda
-  as frentes uma cópia por trabalho e só envia a próxima depois da confirmação da impressora. O
-  verso continua em um trabalho só; desmarcada, volta ao maço único. Detalhes em
+  cada cópia da face escolhida num trabalho e só envia a próxima depois da confirmação da
+  impressora. No verso vale a mesma lógica; desmarcada, volta ao maço único. Detalhes em
   `31-copia-por-vez`.
 - **Pendente:** `src-tauri` usa `plots_print` pelo reexport de `plots-windows`; `leitura_pdf.rs` repete o limite de leitura de `documento.rs`.
 - **Não verificado:** quais bits cada driver liga em atolamento e falta de papel (só backend falso e cartões do gancho); reimprimir confirmado em fila real; impressora real; o que o spooler faz com trabalho parcial quando a janela fecha no meio do envio; cancelamento com spooler real (só backend falso); fechar a aba durante a preparação no app (coberto por teste).

@@ -594,6 +594,7 @@ export function App() {
                 ? { frente: copiasDaFace(aba, "frente"), verso: copiasDaFace(aba, "verso") }
                 : { frente: plano.copias, verso: plano.copias },
               quemDeuErro(aba, destinos).length > 0,
+              umaCopiaPorVezDaAba(aba),
             ),
             aba,
             destinos,

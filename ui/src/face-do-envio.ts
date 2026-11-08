@@ -329,6 +329,7 @@ export function conteudoDoVerso(
   idioma: Idioma = idiomaAtual,
   copias?: { frente: number; verso: number },
   erroAnterior = false,
+  umaCopiaPorVez = false,
 ): ConteudoConfirmacao {
   const { linhaDoPapel } = linhasDoEnvio(destinos, resumo, idioma, new Set(), { papel: papelAjustado });
   const soSimuladas = destinos.every((destino) => destino.tipo === "simulada");
@@ -363,6 +364,9 @@ export function conteudoDoVerso(
     notas: [
       // O trabalho anterior pode seguir na fila do Windows: vale antes da frente e antes do verso.
       ...(erroAnterior ? [traduzir(idioma, "face.envio.erroAnterior")] : []),
+      ...(umaCopiaPorVez && (copias?.verso ?? 1) > 1
+        ? [traduzir(idioma, "sequencia.nota")]
+        : []),
       ...(mudou ? [traduzir(idioma, "face.envio.mudou")] : []),
       ...(resumo.paresSeparados ?? []).map(([a, b]) =>
         traduzir(idioma, "cartao.envio.separado", { a: String(a), b: String(b) }),

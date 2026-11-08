@@ -106,7 +106,7 @@ fn uma_copia_por_vez_separa_as_frentes_manuais_e_o_automatico() {
 }
 
 #[test]
-fn uma_copia_por_vez_nao_separa_o_verso() {
+fn uma_copia_por_vez_separa_o_verso() {
     let pedido = Pedido::novo("documento.pdf".into(), None)
         .com_copias(3)
         .com_alcance(Alcance::SoVersos)
@@ -114,9 +114,18 @@ fn uma_copia_por_vez_nao_separa_o_verso() {
     let lotes = planejar_pedido(&[A4; 2], &pedido, PerfilImpressora::default(), false).unwrap();
     assert_eq!(
         lotes.len(),
-        1,
-        "o verso sai num maço só, mesmo com a opção ligada"
+        3,
+        "cada cópia do verso sai num trabalho próprio"
     );
+    for (indice, lote) in lotes.iter().enumerate() {
+        assert!(
+            lote.lote
+                .paginas
+                .iter()
+                .all(|pagina| pagina.copia == indice),
+            "cópia {indice}"
+        );
+    }
 }
 
 impl ParaMotivo for String {
@@ -2677,8 +2686,8 @@ fn uma_copia_por_vez_para_na_troca_de_papel() {
 }
 
 #[test]
-fn uma_copia_por_vez_nao_avanca_sozinho_no_verso() {
-    let plano = plots_core::plano_lotes_do_intervalo(
+fn uma_copia_por_vez_avanca_o_verso_depois_da_confirmacao() {
+    let plano = plots_core::plano_copias_do_intervalo_separadas(
         &[A4; 2],
         None,
         2,
@@ -2686,19 +2695,65 @@ fn uma_copia_por_vez_nao_avanca_sozinho_no_verso() {
         PerfilImpressora::default(),
     )
     .unwrap();
-    let mut lotes = fluxo::lotes_do_plano(&plano);
-    lotes.extend(fluxo::lotes_do_plano(&plano));
+    let lotes = fluxo::lotes_do_plano(&plano);
+    assert_eq!(lotes.len(), 2);
+    let leituras = [
+        Leitura::Estado(EstadoEnvio::EmAndamento),
+        Leitura::Estado(EstadoEnvio::Concluido),
+        Leitura::Estado(EstadoEnvio::EmAndamento),
+        Leitura::Estado(EstadoEnvio::Concluido),
+    ];
+    let cena = Cena::nova();
+    assert!(cena.iniciar_com_lotes("a", &leituras, lotes, Alcance::SoVersos, true));
+    cena.esperar_envios(2);
+    let fim = cena.esperar("a", |estado| matches!(estado, EstadoCartao::Concluido));
+    assert_eq!(fim.copias, 2);
+    assert!(fim.por_copia);
+    assert_eq!(cena.enviados(), vec![Passada::Verso, Passada::Verso]);
+    assert_eq!(
+        cena.eventos(),
+        vec![
+            "enviar", "consultar", "consultar",
+            "enviar", "consultar", "consultar",
+        ],
+        "o próximo verso só sai depois do segundo consultar, que confirma o anterior"
+    );
+}
+
+#[test]
+fn uma_copia_por_vez_para_no_verso_quando_o_papel_muda() {
+    let perfil = PerfilImpressora::default();
+    let a4 = plots_core::plano_lotes_do_intervalo(
+        &[A4; 2],
+        None,
+        2,
+        OrdemPassadas::default(),
+        perfil,
+    )
+    .unwrap();
+    let a5 = plots_core::plano_lotes_do_intervalo(
+        &[A5; 2],
+        None,
+        2,
+        OrdemPassadas::default(),
+        perfil,
+    )
+    .unwrap();
+    let mut lotes = fluxo::lotes_do_plano(&a4);
+    lotes.extend(fluxo::lotes_do_plano(&a5));
     assert_eq!(lotes.len(), 2);
     let cena = Cena::nova();
     assert!(cena.iniciar_com_lotes("a", &[], lotes, Alcance::SoVersos, true));
-    cena.comandar("a", Comando::EnviarVerso);
     cena.esperar_envios(1);
     let espera = cena.esperar("a", aguardando);
-    assert!(espera.troca_de_papel.is_none());
+    assert_eq!(
+        espera.troca_de_papel.map(|papel| papel.formato),
+        Some("a5")
+    );
     assert_eq!(
         cena.enviados(),
         vec![Passada::Verso],
-        "o verso não avança sozinho para o lote seguinte"
+        "o verso não passa do papel A4"
     );
     cena.comandar("a", Comando::EnviarVerso);
     cena.esperar_envios(2);

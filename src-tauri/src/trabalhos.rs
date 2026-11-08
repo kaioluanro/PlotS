@@ -477,7 +477,7 @@ where
             .condutor
             .lote()
             .and_then(|item| copia_unica(&item.lote.paginas));
-        cartao.por_copia = self.uma_copia_por_vez && self.condutor.alcance() == Alcance::SoFrentes;
+        cartao.por_copia = self.uma_copia_por_vez;
         cartao.copias = copias_do_trabalho(self.condutor.lotes());
         cartao.troca_de_papel = self
             .condutor
@@ -758,10 +758,13 @@ where
                 if self.condutor.proximo_segue_sozinho() {
                     return self.enviar(PassadaDoCartao::DuasFaces);
                 }
-                // Na frente, cada lote e uma copia: a proxima sai so depois da confirmacao acima.
+                // Na frente e no verso, cada lote e uma copia: a proxima sai so depois da confirmacao acima.
                 // Trocar de papel continua pedindo a pessoa, para nao imprimir no papel errado.
                 if self.uma_copia_por_vez
-                    && self.condutor.alcance() == Alcance::SoFrentes
+                    && matches!(
+                        self.condutor.alcance(),
+                        Alcance::SoFrentes | Alcance::SoVersos
+                    )
                     && self.condutor.troca_de_papel().is_none()
                 {
                     return self.enviar(self.primeira_passada());
@@ -1324,8 +1327,8 @@ pub(crate) fn planejar_pedido(
         .map(|papel| papel.dimensoes_no_papel(dimensoes));
     let medidas = ajustadas.as_deref().unwrap_or(dimensoes);
     let ordem = OrdemPassadas::default();
-    // O verso é sempre um maço só; a separação por cópia vale para as frentes.
-    let separar = pedido.uma_copia_por_vez && pedido.alcance != Alcance::SoVersos;
+    // A opção vale para as duas faces: cada cópia da frente e cada cópia do verso viram um lote.
+    let separar = pedido.uma_copia_por_vez;
     let plano = if automatico {
         if separar {
             plano_automatico_copias_do_intervalo(
