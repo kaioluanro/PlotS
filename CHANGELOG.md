@@ -2,7 +2,9 @@
 
 O PlotS segue o [versionamento semântico](https://semver.org/lang/pt-BR/). As versões alfa ainda não têm teste em papel.
 
-## Em desenvolvimento
+## 1.0.0-alpha.8
+
+Gerada em 2026-11-07.
 
 - PlotS: a caixinha **Uma cópia por vez**, acima da Quantidade e marcada por padrão, separa as frentes em um trabalho por cópia e só manda a próxima depois que a impressora confirma a anterior. No verso, as cópias continuam saindo juntas; desmarcada, volta ao maço único. Em impressora de duas faces, marcada mantém uma cópia por trabalho e desmarcada junta todas, preservando o branco entre cópias de total ímpar. O cartão mostra “Cópia N de M” também nesse fluxo manual.
 
